@@ -7,7 +7,7 @@ import { users, events, accounts } from '~/db/schema'
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getEventsData = createServerFn({ method: 'GET' })
-  .validator((data: unknown) => data as { accountId?: string })
+  .inputValidator((data: unknown) => data as { accountId?: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) return { user: null, events: [], accounts: [] }
@@ -25,9 +25,6 @@ const getEventsData = createServerFn({ method: 'GET' })
       ),
       orderBy: [desc(events.effectiveAt)],
       limit: 100,
-      with: {
-        eventViews: { with: { view: true } },
-      },
     })
 
     return { user, events: userEvents, accounts: userAccounts }
@@ -139,9 +136,6 @@ function EventsPage() {
                 <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400 w-28">
                   Type
                 </th>
-                <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
-                  Views
-                </th>
                 <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400 w-28">
                   Account
                 </th>
@@ -174,18 +168,6 @@ function EventsPage() {
                       >
                         {event.eventType}
                       </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {event.eventViews.map((ev: any) => (
-                          <span
-                            key={ev.viewId}
-                            className="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded"
-                          >
-                            {ev.view.name}
-                          </span>
-                        ))}
-                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs truncate max-w-[8rem]">
                       {account?.name ?? '—'}

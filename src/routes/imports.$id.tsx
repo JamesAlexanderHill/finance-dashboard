@@ -8,7 +8,7 @@ import { formatAmount } from '~/lib/balance'
 // ─── Server function ──────────────────────────────────────────────────────────
 
 const getImportRunDetail = createServerFn({ method: 'GET' })
-  .validator((data: unknown) => data as { id: string })
+  .inputValidator((data: unknown) => data as { id: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user')

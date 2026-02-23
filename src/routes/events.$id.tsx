@@ -11,8 +11,6 @@ import {
   instruments,
   accounts,
   categories,
-  views,
-  eventViews,
   eventRelations,
 } from '~/db/schema'
 import { formatAmount } from '~/lib/balance'
@@ -20,7 +18,7 @@ import { formatAmount } from '~/lib/balance'
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getEventDetail = createServerFn({ method: 'GET' })
-  .validator((data: unknown) => data as { id: string })
+  .inputValidator((data: unknown) => data as { id: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user')
@@ -35,7 +33,6 @@ const getEventDetail = createServerFn({ method: 'GET' })
             lineItems: { with: { category: true } },
           },
         },
-        eventViews: { with: { view: true } },
         parentRelations: { with: { childEvent: true } },
         childRelations: { with: { parentEvent: true } },
       },
@@ -43,17 +40,16 @@ const getEventDetail = createServerFn({ method: 'GET' })
 
     if (!event) throw new Error('Event not found')
 
-    const [account, userViews, userCategories] = await Promise.all([
+    const [account, userCategories] = await Promise.all([
       db.query.accounts.findFirst({ where: eq(accounts.id, event.accountId) }),
-      db.select().from(views).where(eq(views.userId, user.id)),
       db.select().from(categories).where(eq(categories.userId, user.id)),
     ])
 
-    return { event, account, userViews, userCategories }
+    return { event, account, userCategories }
   })
 
 const softDeleteEvent = createServerFn({ method: 'POST' })
-  .validator((data: unknown) => data as { id: string; deletedAt: string | null })
+  .inputValidator((data: unknown) => data as { id: string; deletedAt: string | null })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user')
@@ -64,7 +60,7 @@ const softDeleteEvent = createServerFn({ method: 'POST' })
   })
 
 const updateLegCategory = createServerFn({ method: 'POST' })
-  .validator((data: unknown) => data as { legId: string; categoryId: string | null })
+  .inputValidator((data: unknown) => data as { legId: string; categoryId: string | null })
   .handler(async ({ data }) => {
     await db
       .update(legs)
@@ -73,7 +69,7 @@ const updateLegCategory = createServerFn({ method: 'POST' })
   })
 
 const upsertLineItems = createServerFn({ method: 'POST' })
-  .validator(
+  .inputValidator(
     (data: unknown) =>
       data as {
         legId: string
@@ -97,23 +93,8 @@ const upsertLineItems = createServerFn({ method: 'POST' })
     }
   })
 
-const toggleEventView = createServerFn({ method: 'POST' })
-  .validator((data: unknown) => data as { eventId: string; viewId: string; add: boolean })
-  .handler(async ({ data }) => {
-    if (data.add) {
-      await db
-        .insert(eventViews)
-        .values({ eventId: data.eventId, viewId: data.viewId })
-        .onConflictDoNothing()
-    } else {
-      await db
-        .delete(eventViews)
-        .where(and(eq(eventViews.eventId, data.eventId), eq(eventViews.viewId, data.viewId)))
-    }
-  })
-
 const unlinkRelation = createServerFn({ method: 'POST' })
-  .validator(
+  .inputValidator(
     (data: unknown) => data as { parentEventId: string; childEventId: string },
   )
   .handler(async ({ data }) => {
@@ -149,7 +130,7 @@ function formatDate(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function EventDetailPage() {
-  const { event, account, userViews, userCategories } = Route.useLoaderData()
+  const { event, account, userCategories } = Route.useLoaderData()
   const router = useRouter()
   const [expandedLegId, setExpandedLegId] = React.useState<string | null>(null)
 
@@ -170,11 +151,6 @@ function EventDetailPage() {
     router.invalidate()
   }
 
-  async function handleToggleView(viewId: string, currentlyOn: boolean) {
-    await toggleEventView({ data: { eventId: event.id, viewId, add: !currentlyOn } })
-    router.invalidate()
-  }
-
   async function handleUnlinkRelation(parentId: string, childId: string) {
     await unlinkRelation({ data: { parentEventId: parentId, childEventId: childId } })
     router.invalidate()
@@ -190,8 +166,6 @@ function EventDetailPage() {
     }
     return parts.join(' › ')
   }
-
-  const assignedViewIds = new Set(event.eventViews.map((ev: any) => ev.viewId))
 
   return (
     <div className="max-w-3xl">
@@ -241,45 +215,7 @@ function EventDetailPage() {
         {event.dedupeKey && (
           <MetaRow label="Dedupe Key" value={<code className="text-xs break-all">{event.dedupeKey}</code>} />
         )}
-        {event.meta && (
-          <div className="col-span-2">
-            <MetaRow
-              label="Meta"
-              value={
-                <pre className="text-xs bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-auto">
-                  {JSON.stringify(event.meta, null, 2)}
-                </pre>
-              }
-            />
-          </div>
-        )}
       </div>
-
-      {/* Views */}
-      <Section title="Views">
-        <div className="flex flex-wrap gap-2">
-          {userViews.map((v) => {
-            const on = assignedViewIds.has(v.id)
-            return (
-              <button
-                key={v.id}
-                onClick={() => handleToggleView(v.id, on)}
-                className={[
-                  'px-3 py-1 rounded-full text-sm border transition-colors',
-                  on
-                    ? 'bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-                    : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400',
-                ].join(' ')}
-              >
-                {v.name}
-              </button>
-            )
-          })}
-          {userViews.length === 0 && (
-            <span className="text-sm text-gray-400 dark:text-gray-500">No views defined.</span>
-          )}
-        </div>
-      </Section>
 
       {/* Legs */}
       <Section title="Legs">

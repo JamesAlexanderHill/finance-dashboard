@@ -7,7 +7,6 @@ import {
   boolean,
   timestamp,
   jsonb,
-  primaryKey,
   unique,
 } from 'drizzle-orm/pg-core'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
@@ -135,7 +134,6 @@ export const events = pgTable('events', {
   dedupeKey: text('dedupe_key').notNull().unique(),
   importRunId: text('import_run_id').references(() => importRuns.id),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
-  meta: jsonb('meta'),
   createdAt: createdAt(),
 })
 
@@ -170,21 +168,6 @@ export const lineItems = pgTable('line_items', {
   description: text('description'),
 })
 
-// ─── EventView (join table) ───────────────────────────────────────────────────
-
-export const eventViews = pgTable(
-  'event_views',
-  {
-    eventId: text('event_id')
-      .notNull()
-      .references(() => events.id),
-    viewId: text('view_id')
-      .notNull()
-      .references(() => views.id),
-  },
-  (t) => [primaryKey({ columns: [t.eventId, t.viewId] })],
-)
-
 // ─── Event Relations ──────────────────────────────────────────────────────────
 
 export const eventRelations = pgTable(
@@ -212,5 +195,4 @@ export type ImportRun = typeof importRuns.$inferSelect
 export type Event = typeof events.$inferSelect
 export type Leg = typeof legs.$inferSelect
 export type LineItem = typeof lineItems.$inferSelect
-export type EventView = typeof eventViews.$inferSelect
 export type EventRelation = typeof eventRelations.$inferSelect

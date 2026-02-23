@@ -8,7 +8,6 @@ import {
   instruments,
   legs,
   lineItems,
-  eventViews,
   users,
   views,
 } from '~/db/schema'
@@ -18,7 +17,6 @@ import {
 /** Delete all data in dependency order. Dev-only. */
 export async function clearAllData(): Promise<void> {
   await db.delete(eventRelations)
-  await db.delete(eventViews)
   await db.delete(lineItems)
   await db.delete(legs)
   await db.delete(events)
@@ -173,7 +171,6 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     amountMinor: BigInt(-5520),
     categoryId: categoryIds.groceries,
   })
-  await db.insert(eventViews).values({ eventId: purchase.id, viewId: viewIds.personal })
 
   // Transfer: CommBank → Wise $500 AUD
   const [transfer] = await db
@@ -232,7 +229,6 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
       postedAt: new Date('2025-02-01T00:00:00Z'),
       description: 'Converted 100 USD to AUD',
       dedupeKey: 'seed:exchange:wise-usd-aud',
-      meta: { from: 'USD', to: 'AUD', rate: 0.63 },
     })
     .returning()
   await db.insert(legs).values([
@@ -251,7 +247,6 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
       postedAt: new Date('2025-04-06T00:00:00Z'),
       description: 'Buy VDAL x19',
       dedupeKey: 'seed:trade:vdal-buy-2025-04-06',
-      meta: { type: 'Buy', code: 'VDAL', units: 19 },
     })
     .returning()
   await db.insert(legs).values([

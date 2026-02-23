@@ -1,23 +1,19 @@
 import * as React from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, views } from '~/db/schema'
+import { users } from '~/db/schema'
 import { getUserBalances, formatAmount } from '~/lib/balance'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
   const [user] = await db.select().from(users).limit(1)
-  if (!user) return { user: null, balances: [], views: [] }
+  if (!user) return { user: null, balances: [] }
 
-  const [balances, userViews] = await Promise.all([
-    getUserBalances(user.id),
-    db.select().from(views).where(eq(views.userId, user.id)),
-  ])
+  const balances = await getUserBalances(user.id)
 
-  return { user, balances, views: userViews }
+  return { user, balances }
 })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -30,10 +26,7 @@ export const Route = createFileRoute('/')({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function DashboardPage() {
-  const { user, balances, views } = Route.useLoaderData()
-  const [enabledViewIds, setEnabledViewIds] = React.useState<Set<string>>(
-    () => new Set(views.map((v) => v.id)),
-  )
+  const { user, balances } = Route.useLoaderData()
 
   if (!user) {
     return (
@@ -50,15 +43,6 @@ function DashboardPage() {
         </p>
       </div>
     )
-  }
-
-  function toggleView(viewId: string) {
-    setEnabledViewIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(viewId)) next.delete(viewId)
-      else next.add(viewId)
-      return next
-    })
   }
 
   // Group balances by account
@@ -85,27 +69,6 @@ function DashboardPage() {
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Dashboard</h1>
         <span className="text-sm text-gray-500 dark:text-gray-400">{user.name}</span>
       </div>
-
-      {/* View toggles */}
-      {views.length > 0 && (
-        <div className="flex items-center gap-2 mb-6 flex-wrap">
-          <span className="text-sm text-gray-500 dark:text-gray-400 mr-1">Views:</span>
-          {views.map((v) => (
-            <button
-              key={v.id}
-              onClick={() => toggleView(v.id)}
-              className={[
-                'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-                enabledViewIds.has(v.id)
-                  ? 'bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-                  : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400',
-              ].join(' ')}
-            >
-              {v.name}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* Net worth */}
       <div className="mb-6 p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">

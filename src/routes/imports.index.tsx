@@ -3,7 +3,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { eq, desc } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts, instruments, importRuns, views } from '~/db/schema'
+import { users, accounts, instruments, importRuns } from '~/db/schema'
 import { parseCanonicalCsv } from '~/importers/canonical'
 import type { ParsedEvent } from '~/importers/canonical'
 import { commitImport } from '~/lib/import-runner'
@@ -13,9 +13,9 @@ import type { InstrumentDraft } from '~/lib/import-runner'
 
 const getImportsPageData = createServerFn({ method: 'GET' }).handler(async () => {
   const [user] = await db.select().from(users).limit(1)
-  if (!user) return { user: null, accounts: [], importRuns: [], views: [] }
+  if (!user) return { user: null, accounts: [], importRuns: [] }
 
-  const [userAccounts, runs, userViews] = await Promise.all([
+  const [userAccounts, runs] = await Promise.all([
     db.select().from(accounts).where(eq(accounts.userId, user.id)),
     db
       .select()
@@ -23,14 +23,13 @@ const getImportsPageData = createServerFn({ method: 'GET' }).handler(async () =>
       .where(eq(importRuns.userId, user.id))
       .orderBy(desc(importRuns.createdAt))
       .limit(50),
-    db.select().from(views).where(eq(views.userId, user.id)),
   ])
 
-  return { user, accounts: userAccounts, importRuns: runs, views: userViews }
+  return { user, accounts: userAccounts, importRuns: runs }
 })
 
 const getAccountInstruments = createServerFn({ method: 'GET' })
-  .validator((data: unknown) => data as { accountId: string })
+  .inputValidator((data: unknown) => data as { accountId: string })
   .handler(async ({ data }) => {
     return db
       .select()
@@ -39,7 +38,7 @@ const getAccountInstruments = createServerFn({ method: 'GET' })
   })
 
 const doCommitImport = createServerFn({ method: 'POST' })
-  .validator((data: unknown) => data as Parameters<typeof commitImport>[0])
+  .inputValidator((data: unknown) => data as Parameters<typeof commitImport>[0])
   .handler(async ({ data }) => commitImport(data))
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -60,8 +59,6 @@ interface WizardState {
   parsedEvents: ParsedEvent[]
   parseErrors: Array<{ line: number; message: string }>
   instrumentDrafts: InstrumentDraft[]
-  /** eventGroup → array of view names */
-  viewAssignments: Record<string, string[]>
   /** `${eventGroup}_${legIndex}` → categoryPath or null */
   categoryAssignments: Record<string, string | null>
   restoreDeletedChosen: boolean
@@ -75,7 +72,6 @@ const EMPTY_WIZARD: WizardState = {
   parsedEvents: [],
   parseErrors: [],
   instrumentDrafts: [],
-  viewAssignments: {},
   categoryAssignments: {},
   restoreDeletedChosen: false,
   committing: false,
@@ -84,7 +80,7 @@ const EMPTY_WIZARD: WizardState = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function ImportsPage() {
-  const { user, accounts, importRuns, views } = Route.useLoaderData()
+  const { user, accounts, importRuns } = Route.useLoaderData()
   const router = useRouter()
   const [wizard, setWizard] = React.useState<WizardState>(EMPTY_WIZARD)
 
@@ -139,12 +135,6 @@ function ImportsPage() {
       return { code, name: code, kind: 'fiat', minorUnit: 2 }
     })
 
-    // Pre-populate view assignments from CSV viewNames
-    const viewAssignments: Record<string, string[]> = {}
-    for (const ev of result.events) {
-      viewAssignments[ev.eventGroup] = ev.viewNames
-    }
-
     setWizard((w) => ({
       ...w,
       step: 2,
@@ -153,7 +143,6 @@ function ImportsPage() {
       parsedEvents: result.events,
       parseErrors: result.errors,
       instrumentDrafts: drafts,
-      viewAssignments,
       categoryAssignments: {},
     }))
   }
@@ -169,7 +158,6 @@ function ImportsPage() {
           filename: wizard.filename,
           events: wizard.parsedEvents,
           instrumentDrafts: wizard.instrumentDrafts,
-          viewAssignments: wizard.viewAssignments,
           categoryAssignments: wizard.categoryAssignments,
           restoreDeletedChosen: wizard.restoreDeletedChosen,
         },
@@ -251,16 +239,8 @@ function ImportsPage() {
             {wizard.step === 3 && (
               <Step3
                 events={wizard.parsedEvents}
-                userViews={views}
-                viewAssignments={wizard.viewAssignments}
                 categoryAssignments={wizard.categoryAssignments}
                 restoreDeletedChosen={wizard.restoreDeletedChosen}
-                onViewAssign={(eventGroup, viewNames) =>
-                  setWizard((w) => ({
-                    ...w,
-                    viewAssignments: { ...w.viewAssignments, [eventGroup]: viewNames },
-                  }))
-                }
                 onCategoryAssign={(key, path) =>
                   setWizard((w) => ({
                     ...w,
@@ -421,7 +401,7 @@ function Step1({
         Expected columns:{' '}
         <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">
           eventGroup, externalEventId, eventType, effectiveAt, postedAt, description,
-          viewNames, meta, instrumentCode, amountMinor, categoryPath
+          instrumentCode, amountMinor, categoryPath
         </code>
       </div>
     </div>
@@ -521,22 +501,16 @@ function Step2({
 
 function Step3({
   events,
-  userViews,
-  viewAssignments,
   categoryAssignments,
   restoreDeletedChosen,
-  onViewAssign,
   onCategoryAssign,
   onRestoreToggle,
   onBack,
   onNext,
 }: {
   events: ParsedEvent[]
-  userViews: any[]
-  viewAssignments: Record<string, string[]>
   categoryAssignments: Record<string, string | null>
   restoreDeletedChosen: boolean
-  onViewAssign: (eventGroup: string, viewNames: string[]) => void
   onCategoryAssign: (key: string, path: string | null) => void
   onRestoreToggle: (v: boolean) => void
   onBack: () => void
@@ -568,47 +542,13 @@ function Step3({
             className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
           >
             {/* Event header */}
-            <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800 flex items-center justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                  {ev.description}
-                </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">
-                  {ev.effectiveAt.toLocaleDateString('en-AU')} · {ev.eventType} · group {ev.eventGroup}
-                </p>
-              </div>
-
-              {/* View assignment */}
-              {userViews.length > 0 && (
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  {userViews.map((v) => {
-                    const assigned = (viewAssignments[ev.eventGroup] ?? [])
-                      .map((n) => n.toLowerCase())
-                      .includes(v.nameNormalized)
-                    return (
-                      <button
-                        key={v.id}
-                        onClick={() => {
-                          const current = viewAssignments[ev.eventGroup] ?? []
-                          if (assigned) {
-                            onViewAssign(ev.eventGroup, current.filter((n) => n.toLowerCase() !== v.nameNormalized))
-                          } else {
-                            onViewAssign(ev.eventGroup, [...current, v.name])
-                          }
-                        }}
-                        className={[
-                          'text-xs px-2 py-0.5 rounded border transition-colors',
-                          assigned
-                            ? 'bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                            : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400',
-                        ].join(' ')}
-                      >
-                        {v.name}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
+            <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800">
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                {ev.description}
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                {ev.effectiveAt.toLocaleDateString('en-AU')} · {ev.eventType} · group {ev.eventGroup}
+              </p>
             </div>
 
             {/* Legs */}

@@ -21,7 +21,7 @@ const getAccountsData = createServerFn({ method: 'GET' }).handler(async () => {
 })
 
 const createAccount = createServerFn({ method: 'POST' })
-  .validator((data: unknown) => data as { name: string; importerKey: string })
+  .inputValidator((data: unknown) => data as { name: string; importerKey: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user found')
@@ -33,7 +33,7 @@ const createAccount = createServerFn({ method: 'POST' })
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
-  .validator((data: unknown) => data as { id: string; name: string; importerKey: string })
+  .inputValidator((data: unknown) => data as { id: string; name: string; importerKey: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user found')

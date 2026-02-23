@@ -6,7 +6,7 @@
  *
  * Columns:
  *   eventGroup, externalEventId, eventType, effectiveAt, postedAt,
- *   description, viewNames, meta, instrumentCode, amountMinor, categoryPath
+ *   description, instrumentCode, amountMinor, categoryPath
  */
 
 export type EventType =
@@ -30,8 +30,6 @@ export interface ParsedEvent {
   effectiveAt: Date
   postedAt: Date
   description: string
-  viewNames: string[]
-  meta: Record<string, unknown> | null
   legs: ParsedLeg[]
 }
 
@@ -163,22 +161,6 @@ export function parseCanonicalCsv(csvContent: string): ParseResult {
     const description = firstRow[idx('description')]?.trim() ?? ''
     const externalEventId = firstRow[idx('externalEventId')]?.trim() || null
 
-    const viewNamesRaw = firstRow[idx('viewNames')]?.trim() ?? ''
-    const viewNames = viewNamesRaw
-      ? viewNamesRaw.split(';').map((v) => v.trim()).filter(Boolean)
-      : []
-
-    let meta: Record<string, unknown> | null = null
-    const metaRaw = firstRow[idx('meta')]?.trim() ?? ''
-    if (metaRaw) {
-      try {
-        meta = JSON.parse(metaRaw)
-      } catch {
-        errors.push({ line: firstLine, message: `Invalid JSON in meta: "${metaRaw}"` })
-        continue
-      }
-    }
-
     // Parse legs from all rows in the group
     const legs: ParsedLeg[] = []
     let legError = false
@@ -214,8 +196,6 @@ export function parseCanonicalCsv(csvContent: string): ParseResult {
       effectiveAt,
       postedAt,
       description,
-      viewNames,
-      meta,
       legs,
     })
   }

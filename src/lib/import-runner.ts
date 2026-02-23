@@ -3,14 +3,12 @@ import { db } from '~/db'
 import {
   accounts,
   events,
-  eventViews,
   importRuns,
   instruments,
   legs,
-  views,
   categories,
 } from '~/db/schema'
-import type { Instrument, View, Category } from '~/db/schema'
+import type { Instrument, Category } from '~/db/schema'
 import { computeDedupeKey } from './dedupe'
 import type { ParsedEvent } from '~/importers/canonical'
 
@@ -30,8 +28,6 @@ export interface CommitImportParams {
   events: ParsedEvent[]
   /** Instruments to create or reuse. Keyed by code (uppercase). */
   instrumentDrafts: InstrumentDraft[]
-  /** View assignments: eventGroup → array of view names */
-  viewAssignments: Record<string, string[]>
   /** Category assignments: eventGroup_legIndex → categoryPath */
   categoryAssignments: Record<string, string | null>
   restoreDeletedChosen: boolean
@@ -62,7 +58,6 @@ async function resolveCategoryPath(
  *
  * - Creates any new instruments listed in instrumentDrafts
  * - Inserts events+legs with dedupe logic
- * - Creates EventView links from viewAssignments
  * - Assigns categories from categoryAssignments
  * - Records an ImportRun with stats and returns its ID
  */
@@ -105,22 +100,13 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
     }
   }
 
-  // ── 3. Resolve views for this user ─────────────────────────────────────────
-  const userViews = await db
-    .select()
-    .from(views)
-    .where(eq(views.userId, userId))
-  const viewByName = new Map<string, string>(
-    userViews.map((v) => [v.nameNormalized, v.id]),
-  )
-
-  // ── 4. Resolve categories for this user ───────────────────────────────────
+  // ── 3. Resolve categories for this user ───────────────────────────────────
   const userCategories = await db
     .select()
     .from(categories)
     .where(eq(categories.userId, userId))
 
-  // ── 5. Process events ─────────────────────────────────────────────────────
+  // ── 4. Process events ─────────────────────────────────────────────────────
   let importedCount = 0
   let skippedCount = 0
   let restoredCount = 0
@@ -167,12 +153,6 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
         continue
       }
 
-      // Build view IDs for this event
-      const eventViewNames = params.viewAssignments[parsed.eventGroup] ?? parsed.viewNames
-      const viewIds = eventViewNames
-        .map((name) => viewByName.get(name.toLowerCase()))
-        .filter((id): id is string => !!id)
-
       // Insert event + legs in a transaction
       await db.transaction(async (tx) => {
         const [newEvent] = await tx
@@ -186,7 +166,6 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
             description: parsed.description,
             externalId: parsed.externalEventId,
             dedupeKey,
-            meta: parsed.meta ?? null,
           })
           .returning({ id: events.id })
 
@@ -209,10 +188,6 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
             categoryId,
           })
         }
-
-        for (const viewId of viewIds) {
-          await tx.insert(eventViews).values({ eventId: newEvent.id, viewId })
-        }
       })
 
       importedCount++
@@ -222,7 +197,7 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
     }
   }
 
-  // ── 6. Create ImportRun record ─────────────────────────────────────────────
+  // ── 5. Create ImportRun record ─────────────────────────────────────────────
   const [run] = await db
     .insert(importRuns)
     .values({
