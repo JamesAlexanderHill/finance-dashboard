@@ -1,12 +1,178 @@
+import * as React from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-export const Route = createFileRoute('/')({
-  component: Home,
+import { createServerFn } from '@tanstack/react-start'
+import { eq } from 'drizzle-orm'
+import { db } from '~/db'
+import { users, views } from '~/db/schema'
+import { getUserBalances, formatAmount } from '~/lib/balance'
+
+// ─── Server functions ─────────────────────────────────────────────────────────
+
+const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
+  const [user] = await db.select().from(users).limit(1)
+  if (!user) return { user: null, balances: [], views: [] }
+
+  const [balances, userViews] = await Promise.all([
+    getUserBalances(user.id),
+    db.select().from(views).where(eq(views.userId, user.id)),
+  ])
+
+  return { user, balances, views: userViews }
 })
 
-function Home() {
+// ─── Route ────────────────────────────────────────────────────────────────────
+
+export const Route = createFileRoute('/')({
+  loader: () => getDashboardData(),
+  component: DashboardPage,
+})
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+function DashboardPage() {
+  const { user, balances, views } = Route.useLoaderData()
+  const [enabledViewIds, setEnabledViewIds] = React.useState<Set<string>>(
+    () => new Set(views.map((v) => v.id)),
+  )
+
+  if (!user) {
+    return (
+      <div className="max-w-lg mx-auto mt-16 text-center">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+          No data yet
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Use the{' '}
+          <a href="/dev" className="text-blue-600 dark:text-blue-400 underline">
+            Dev Tools
+          </a>{' '}
+          page to seed a demo user.
+        </p>
+      </div>
+    )
+  }
+
+  function toggleView(viewId: string) {
+    setEnabledViewIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(viewId)) next.delete(viewId)
+      else next.add(viewId)
+      return next
+    })
+  }
+
+  // Group balances by account
+  const byAccount = new Map<string, typeof balances>()
+  for (const b of balances) {
+    if (!byAccount.has(b.accountId)) byAccount.set(b.accountId, [])
+    byAccount.get(b.accountId)!.push(b)
+  }
+
+  // Net worth: sum fiat balances in the user's home currency only
+  const homeCurrency = user.homeCurrencyCode
+  const homeBalances = balances.filter(
+    (b) => b.instrumentCode === homeCurrency && b.instrumentKind === 'fiat',
+  )
+  const netWorthMinor = homeBalances.reduce((sum, b) => sum + b.amountMinor, BigInt(0))
+  const homeMinorUnit = homeBalances[0]?.instrumentMinorUnit ?? 2
+  const isNegative = netWorthMinor < 0
+  const absWorth = isNegative ? -netWorthMinor : netWorthMinor
+
   return (
-    <div className="p-2">
-      <h3>Welcome Home!!!</h3>
+    <div className="max-w-4xl">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Dashboard</h1>
+        <span className="text-sm text-gray-500 dark:text-gray-400">{user.name}</span>
+      </div>
+
+      {/* View toggles */}
+      {views.length > 0 && (
+        <div className="flex items-center gap-2 mb-6 flex-wrap">
+          <span className="text-sm text-gray-500 dark:text-gray-400 mr-1">Views:</span>
+          {views.map((v) => (
+            <button
+              key={v.id}
+              onClick={() => toggleView(v.id)}
+              className={[
+                'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
+                enabledViewIds.has(v.id)
+                  ? 'bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                  : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400',
+              ].join(' ')}
+            >
+              {v.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Net worth */}
+      <div className="mb-6 p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+          Net Worth ({homeCurrency})
+        </p>
+        <p
+          className={[
+            'text-3xl font-bold tabular-nums',
+            isNegative ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
+          ].join(' ')}
+        >
+          {isNegative ? '−' : ''}{homeCurrency} {formatAmount(absWorth, homeMinorUnit)}
+        </p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          {homeCurrency} fiat balances only — no cross-currency conversion
+        </p>
+      </div>
+
+      {/* Account balance cards */}
+      {balances.length === 0 ? (
+        <p className="text-gray-500 dark:text-gray-400 text-sm">
+          No transactions yet. Import a CSV to get started.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from(byAccount.entries()).map(([accountId, accountBalances]) => {
+            const accountName = accountBalances[0].accountName
+            return (
+              <div
+                key={accountId}
+                className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4"
+              >
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  {accountName}
+                </p>
+                <div className="space-y-1.5">
+                  {accountBalances.map((b) => {
+                    const neg = b.amountMinor < 0
+                    const abs = neg ? -b.amountMinor : b.amountMinor
+                    return (
+                      <div key={b.instrumentId} className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                          {b.instrumentCode}
+                          {b.instrumentKind === 'security' && (
+                            <span className="bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 text-xs px-1 rounded">
+                              ETF
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className={[
+                            'text-sm font-medium tabular-nums',
+                            neg ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
+                          ].join(' ')}
+                        >
+                          {neg ? '−' : ''}{formatAmount(abs, b.instrumentMinorUnit)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
