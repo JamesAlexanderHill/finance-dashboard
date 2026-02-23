@@ -1,4 +1,4 @@
-import { eq, isNull, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '~/db'
 import { events, legs, instruments, accounts } from '~/db/schema'
 
@@ -20,7 +20,7 @@ export interface AccountBalance {
 export async function getUserBalances(userId: string): Promise<AccountBalance[]> {
   const rows = await db
     .select({
-      accountId: legs.accountId,
+      accountId: events.accountId,
       accountName: accounts.name,
       instrumentId: legs.instrumentId,
       instrumentCode: instruments.code,
@@ -30,11 +30,11 @@ export async function getUserBalances(userId: string): Promise<AccountBalance[]>
     })
     .from(legs)
     .innerJoin(events, eq(legs.eventId, events.id))
-    .innerJoin(accounts, eq(legs.accountId, accounts.id))
+    .innerJoin(accounts, eq(events.accountId, accounts.id))
     .innerJoin(instruments, eq(legs.instrumentId, instruments.id))
     .where(sql`${events.userId} = ${userId} AND ${events.deletedAt} IS NULL`)
     .groupBy(
-      legs.accountId,
+      events.accountId,
       accounts.name,
       legs.instrumentId,
       instruments.code,
