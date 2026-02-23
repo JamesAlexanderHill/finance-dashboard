@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import tsConfigPaths from 'vite-tsconfig-paths'
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import path from 'path'
 
 export default defineConfig({
   server: {
@@ -16,4 +17,17 @@ export default defineConfig({
     tanstackStart(),
     viteReact(),
   ],
+  resolve: {
+    // In the browser/client bundle, replace the Node.js-only postgres driver
+    // with an empty stub. TanStack Start's createServerFn ensures DB code never
+    // executes in the browser — this keeps Rollup happy at build time.
+    // The ssr.external config below overrides this for the server environment.
+    alias: {
+      postgres: path.resolve(__dirname, 'src/db/browser-stub.ts'),
+    },
+  },
+  ssr: {
+    // In the SSR/server environment, use the real postgres package (not the alias).
+    external: ['postgres', 'drizzle-orm', 'drizzle-orm/postgres-js', 'uuidv7'],
+  },
 })
