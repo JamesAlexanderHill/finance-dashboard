@@ -8,6 +8,7 @@ import {
   timestamp,
   jsonb,
   unique,
+  primaryKey,
 } from 'drizzle-orm/pg-core'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { uuidv7 } from 'uuidv7'
