@@ -8,7 +8,7 @@ import {
   legs,
   categories,
 } from '~/db/schema'
-import type { Instrument, Category } from '~/db/schema'
+import type { Category } from '~/db/schema'
 import { computeDedupeKey } from './dedupe'
 import type { ParsedEvent } from '~/importers/canonical'
 

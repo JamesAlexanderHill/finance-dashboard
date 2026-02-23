@@ -10,6 +10,7 @@ import {
   unique,
   primaryKey,
 } from 'drizzle-orm/pg-core'
+import { relations } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { uuidv7 } from 'uuidv7'
 
@@ -184,6 +185,41 @@ export const eventRelations = pgTable(
   },
   (t) => [primaryKey({ columns: [t.parentEventId, t.childEventId] })],
 )
+
+// ─── Relations ────────────────────────────────────────────────────────────────
+
+export const eventsRelations = relations(events, ({ many }) => ({
+  legs: many(legs),
+  // eventRelations where this event is the parent
+  parentRelations: many(eventRelations, { relationName: 'parentEvent' }),
+  // eventRelations where this event is the child
+  childRelations: many(eventRelations, { relationName: 'childEvent' }),
+}))
+
+export const legsRelations = relations(legs, ({ one, many }) => ({
+  event: one(events, { fields: [legs.eventId], references: [events.id] }),
+  instrument: one(instruments, { fields: [legs.instrumentId], references: [instruments.id] }),
+  category: one(categories, { fields: [legs.categoryId], references: [categories.id] }),
+  lineItems: many(lineItems),
+}))
+
+export const lineItemsRelations = relations(lineItems, ({ one }) => ({
+  leg: one(legs, { fields: [lineItems.legId], references: [legs.id] }),
+  category: one(categories, { fields: [lineItems.categoryId], references: [categories.id] }),
+}))
+
+export const eventRelationRelations = relations(eventRelations, ({ one }) => ({
+  parentEvent: one(events, {
+    fields: [eventRelations.parentEventId],
+    references: [events.id],
+    relationName: 'parentEvent',
+  }),
+  childEvent: one(events, {
+    fields: [eventRelations.childEventId],
+    references: [events.id],
+    relationName: 'childEvent',
+  }),
+}))
 
 // ─── Type exports ─────────────────────────────────────────────────────────────
 
