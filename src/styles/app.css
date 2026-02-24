@@ -1,5 +1,8 @@
 @import 'tailwindcss' source('../');
 
+/* Support both system preference and manual class-based toggle */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   *,
   ::after,
@@ -21,7 +24,7 @@
 
   html,
   body {
-    @apply text-gray-900 bg-gray-50 dark:bg-gray-950 dark:text-gray-200;
+    @apply text-gray-900 bg-gray-50 dark:bg-gray-950 dark:text-gray-100;
   }
 
   .using-mouse * {
