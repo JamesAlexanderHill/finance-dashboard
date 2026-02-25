@@ -110,8 +110,8 @@ const unlinkRelation = createServerFn({ method: 'POST' })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-export const Route = createFileRoute('/events/$id')({
-  loader: ({ params }) => getEventDetail({ data: { id: params.id } }),
+export const Route = createFileRoute('/events/$eventId')({
+  loader: ({ params }) => getEventDetail({ data: { id: params.eventId } }),
   component: EventDetailPage,
 })
 
@@ -296,8 +296,8 @@ function EventDetailPage() {
                   {rel.relationType}
                 </span>
                 <Link
-                  to="/events/$id"
-                  params={{ id: rel.childEventId }}
+                  to="/events/$eventId"
+                  params={{ eventId: rel.childEventId }}
                   className="text-blue-600 dark:text-blue-400 hover:underline flex-1"
                 >
                   {rel.childEvent?.description ?? rel.childEventId}
@@ -316,8 +316,8 @@ function EventDetailPage() {
                   {rel.relationType} (parent)
                 </span>
                 <Link
-                  to="/events/$id"
-                  params={{ id: rel.parentEventId }}
+                  to="/events/$eventId"
+                  params={{ eventId: rel.parentEventId }}
                   className="text-blue-600 dark:text-blue-400 hover:underline flex-1"
                 >
                   {rel.parentEvent?.description ?? rel.parentEventId}

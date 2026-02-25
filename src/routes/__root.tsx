@@ -52,7 +52,6 @@ const NAV_LINKS = [
   { to: '/accounts', label: 'Accounts', exact: false },
   { to: '/events', label: 'Events', exact: false },
   { to: '/categories', label: 'Categories', exact: false },
-  { to: '/imports', label: 'Imports', exact: false },
 ] as const
 
 const DEV_LINK = { to: '/dev', label: 'Dev Tools', exact: false } as const

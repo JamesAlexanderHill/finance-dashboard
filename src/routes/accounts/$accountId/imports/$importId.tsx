@@ -39,8 +39,8 @@ const getImportRunDetail = createServerFn({ method: 'GET' })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-export const Route = createFileRoute('/imports/$id')({
-  loader: ({ params }) => getImportRunDetail({ data: { id: params.id } }),
+export const Route = createFileRoute('/accounts/$accountId/imports/$importId')({
+  loader: ({ params }) => getImportRunDetail({ data: { id: params.importId } }),
   component: ImportRunPage,
 })
 
@@ -63,10 +63,11 @@ function ImportRunPage() {
   return (
     <div className="max-w-3xl">
       <Link
-        to="/imports"
+        to="/accounts/$accountId"
+        params={{ accountId: account?.id ?? '' }}
         className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 mb-4 inline-block"
       >
-        ← Imports
+        ← Back to {account?.name ?? 'Account'}
       </Link>
 
       <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-1">
@@ -151,8 +152,8 @@ function ImportRunPage() {
                     </td>
                     <td className="px-4 py-2">
                       <Link
-                        to="/events/$id"
-                        params={{ id: ev.id }}
+                        to="/events/$eventId"
+                        params={{ eventId: ev.id }}
                         className="text-blue-600 dark:text-blue-400 hover:underline"
                       >
                         {ev.description}

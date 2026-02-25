@@ -11,14 +11,20 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as DevRouteImport } from './routes/dev'
 import { Route as CategoriesRouteImport } from './routes/categories'
-import { Route as AccountsRouteImport } from './routes/accounts'
-import { Route as ImportsRouteRouteImport } from './routes/imports.route'
-import { Route as EventsRouteRouteImport } from './routes/events.route'
+import { Route as EventsRouteRouteImport } from './routes/events/route'
+import { Route as AccountsRouteRouteImport } from './routes/accounts/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ImportsIndexRouteImport } from './routes/imports.index'
-import { Route as EventsIndexRouteImport } from './routes/events.index'
-import { Route as ImportsIdRouteImport } from './routes/imports.$id'
-import { Route as EventsIdRouteImport } from './routes/events.$id'
+import { Route as EventsIndexRouteImport } from './routes/events/index'
+import { Route as AccountsIndexRouteImport } from './routes/accounts/index'
+import { Route as EventsEventIdRouteImport } from './routes/events/$eventId'
+import { Route as AccountsAccountIdRouteRouteImport } from './routes/accounts/$accountId/route'
+import { Route as AccountsAccountIdIndexRouteImport } from './routes/accounts/$accountId/index'
+import { Route as AccountsAccountIdInstrumentsRouteRouteImport } from './routes/accounts/$accountId/instruments/route'
+import { Route as AccountsAccountIdImportsRouteRouteImport } from './routes/accounts/$accountId/imports/route'
+import { Route as AccountsAccountIdInstrumentsIndexRouteImport } from './routes/accounts/$accountId/instruments/index'
+import { Route as AccountsAccountIdImportsIndexRouteImport } from './routes/accounts/$accountId/imports/index'
+import { Route as AccountsAccountIdInstrumentsInstrumentIdRouteImport } from './routes/accounts/$accountId/instruments/$instrumentId'
+import { Route as AccountsAccountIdImportsImportIdRouteImport } from './routes/accounts/$accountId/imports/$importId'
 
 const DevRoute = DevRouteImport.update({
   id: '/dev',
@@ -30,19 +36,14 @@ const CategoriesRoute = CategoriesRouteImport.update({
   path: '/categories',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AccountsRoute = AccountsRouteImport.update({
-  id: '/accounts',
-  path: '/accounts',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ImportsRouteRoute = ImportsRouteRouteImport.update({
-  id: '/imports',
-  path: '/imports',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const EventsRouteRoute = EventsRouteRouteImport.update({
   id: '/events',
   path: '/events',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountsRouteRoute = AccountsRouteRouteImport.update({
+  id: '/accounts',
+  path: '/accounts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -50,104 +51,174 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ImportsIndexRoute = ImportsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => ImportsRouteRoute,
-} as any)
 const EventsIndexRoute = EventsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => EventsRouteRoute,
 } as any)
-const ImportsIdRoute = ImportsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => ImportsRouteRoute,
+const AccountsIndexRoute = AccountsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AccountsRouteRoute,
 } as any)
-const EventsIdRoute = EventsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
+const EventsEventIdRoute = EventsEventIdRouteImport.update({
+  id: '/$eventId',
+  path: '/$eventId',
   getParentRoute: () => EventsRouteRoute,
 } as any)
+const AccountsAccountIdRouteRoute = AccountsAccountIdRouteRouteImport.update({
+  id: '/$accountId',
+  path: '/$accountId',
+  getParentRoute: () => AccountsRouteRoute,
+} as any)
+const AccountsAccountIdIndexRoute = AccountsAccountIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AccountsAccountIdRouteRoute,
+} as any)
+const AccountsAccountIdInstrumentsRouteRoute =
+  AccountsAccountIdInstrumentsRouteRouteImport.update({
+    id: '/instruments',
+    path: '/instruments',
+    getParentRoute: () => AccountsAccountIdRouteRoute,
+  } as any)
+const AccountsAccountIdImportsRouteRoute =
+  AccountsAccountIdImportsRouteRouteImport.update({
+    id: '/imports',
+    path: '/imports',
+    getParentRoute: () => AccountsAccountIdRouteRoute,
+  } as any)
+const AccountsAccountIdInstrumentsIndexRoute =
+  AccountsAccountIdInstrumentsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AccountsAccountIdInstrumentsRouteRoute,
+  } as any)
+const AccountsAccountIdImportsIndexRoute =
+  AccountsAccountIdImportsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AccountsAccountIdImportsRouteRoute,
+  } as any)
+const AccountsAccountIdInstrumentsInstrumentIdRoute =
+  AccountsAccountIdInstrumentsInstrumentIdRouteImport.update({
+    id: '/$instrumentId',
+    path: '/$instrumentId',
+    getParentRoute: () => AccountsAccountIdInstrumentsRouteRoute,
+  } as any)
+const AccountsAccountIdImportsImportIdRoute =
+  AccountsAccountIdImportsImportIdRouteImport.update({
+    id: '/$importId',
+    path: '/$importId',
+    getParentRoute: () => AccountsAccountIdImportsRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/accounts': typeof AccountsRouteRouteWithChildren
   '/events': typeof EventsRouteRouteWithChildren
-  '/imports': typeof ImportsRouteRouteWithChildren
-  '/accounts': typeof AccountsRoute
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
-  '/events/$id': typeof EventsIdRoute
-  '/imports/$id': typeof ImportsIdRoute
+  '/accounts/$accountId': typeof AccountsAccountIdRouteRouteWithChildren
+  '/events/$eventId': typeof EventsEventIdRoute
+  '/accounts/': typeof AccountsIndexRoute
   '/events/': typeof EventsIndexRoute
-  '/imports/': typeof ImportsIndexRoute
+  '/accounts/$accountId/imports': typeof AccountsAccountIdImportsRouteRouteWithChildren
+  '/accounts/$accountId/instruments': typeof AccountsAccountIdInstrumentsRouteRouteWithChildren
+  '/accounts/$accountId/': typeof AccountsAccountIdIndexRoute
+  '/accounts/$accountId/imports/$importId': typeof AccountsAccountIdImportsImportIdRoute
+  '/accounts/$accountId/instruments/$instrumentId': typeof AccountsAccountIdInstrumentsInstrumentIdRoute
+  '/accounts/$accountId/imports/': typeof AccountsAccountIdImportsIndexRoute
+  '/accounts/$accountId/instruments/': typeof AccountsAccountIdInstrumentsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/accounts': typeof AccountsRoute
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
-  '/events/$id': typeof EventsIdRoute
-  '/imports/$id': typeof ImportsIdRoute
+  '/events/$eventId': typeof EventsEventIdRoute
+  '/accounts': typeof AccountsIndexRoute
   '/events': typeof EventsIndexRoute
-  '/imports': typeof ImportsIndexRoute
+  '/accounts/$accountId': typeof AccountsAccountIdIndexRoute
+  '/accounts/$accountId/imports/$importId': typeof AccountsAccountIdImportsImportIdRoute
+  '/accounts/$accountId/instruments/$instrumentId': typeof AccountsAccountIdInstrumentsInstrumentIdRoute
+  '/accounts/$accountId/imports': typeof AccountsAccountIdImportsIndexRoute
+  '/accounts/$accountId/instruments': typeof AccountsAccountIdInstrumentsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/accounts': typeof AccountsRouteRouteWithChildren
   '/events': typeof EventsRouteRouteWithChildren
-  '/imports': typeof ImportsRouteRouteWithChildren
-  '/accounts': typeof AccountsRoute
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
-  '/events/$id': typeof EventsIdRoute
-  '/imports/$id': typeof ImportsIdRoute
+  '/accounts/$accountId': typeof AccountsAccountIdRouteRouteWithChildren
+  '/events/$eventId': typeof EventsEventIdRoute
+  '/accounts/': typeof AccountsIndexRoute
   '/events/': typeof EventsIndexRoute
-  '/imports/': typeof ImportsIndexRoute
+  '/accounts/$accountId/imports': typeof AccountsAccountIdImportsRouteRouteWithChildren
+  '/accounts/$accountId/instruments': typeof AccountsAccountIdInstrumentsRouteRouteWithChildren
+  '/accounts/$accountId/': typeof AccountsAccountIdIndexRoute
+  '/accounts/$accountId/imports/$importId': typeof AccountsAccountIdImportsImportIdRoute
+  '/accounts/$accountId/instruments/$instrumentId': typeof AccountsAccountIdInstrumentsInstrumentIdRoute
+  '/accounts/$accountId/imports/': typeof AccountsAccountIdImportsIndexRoute
+  '/accounts/$accountId/instruments/': typeof AccountsAccountIdInstrumentsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/events'
-    | '/imports'
     | '/accounts'
+    | '/events'
     | '/categories'
     | '/dev'
-    | '/events/$id'
-    | '/imports/$id'
+    | '/accounts/$accountId'
+    | '/events/$eventId'
+    | '/accounts/'
     | '/events/'
-    | '/imports/'
+    | '/accounts/$accountId/imports'
+    | '/accounts/$accountId/instruments'
+    | '/accounts/$accountId/'
+    | '/accounts/$accountId/imports/$importId'
+    | '/accounts/$accountId/instruments/$instrumentId'
+    | '/accounts/$accountId/imports/'
+    | '/accounts/$accountId/instruments/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/accounts'
     | '/categories'
     | '/dev'
-    | '/events/$id'
-    | '/imports/$id'
+    | '/events/$eventId'
+    | '/accounts'
     | '/events'
-    | '/imports'
+    | '/accounts/$accountId'
+    | '/accounts/$accountId/imports/$importId'
+    | '/accounts/$accountId/instruments/$instrumentId'
+    | '/accounts/$accountId/imports'
+    | '/accounts/$accountId/instruments'
   id:
     | '__root__'
     | '/'
-    | '/events'
-    | '/imports'
     | '/accounts'
+    | '/events'
     | '/categories'
     | '/dev'
-    | '/events/$id'
-    | '/imports/$id'
+    | '/accounts/$accountId'
+    | '/events/$eventId'
+    | '/accounts/'
     | '/events/'
-    | '/imports/'
+    | '/accounts/$accountId/imports'
+    | '/accounts/$accountId/instruments'
+    | '/accounts/$accountId/'
+    | '/accounts/$accountId/imports/$importId'
+    | '/accounts/$accountId/instruments/$instrumentId'
+    | '/accounts/$accountId/imports/'
+    | '/accounts/$accountId/instruments/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccountsRouteRoute: typeof AccountsRouteRouteWithChildren
   EventsRouteRoute: typeof EventsRouteRouteWithChildren
-  ImportsRouteRoute: typeof ImportsRouteRouteWithChildren
-  AccountsRoute: typeof AccountsRoute
   CategoriesRoute: typeof CategoriesRoute
   DevRoute: typeof DevRoute
 }
@@ -168,25 +239,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CategoriesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/accounts': {
-      id: '/accounts'
-      path: '/accounts'
-      fullPath: '/accounts'
-      preLoaderRoute: typeof AccountsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/imports': {
-      id: '/imports'
-      path: '/imports'
-      fullPath: '/imports'
-      preLoaderRoute: typeof ImportsRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/events': {
       id: '/events'
       path: '/events'
       fullPath: '/events'
       preLoaderRoute: typeof EventsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/accounts': {
+      id: '/accounts'
+      path: '/accounts'
+      fullPath: '/accounts'
+      preLoaderRoute: typeof AccountsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -196,13 +260,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/imports/': {
-      id: '/imports/'
-      path: '/'
-      fullPath: '/imports/'
-      preLoaderRoute: typeof ImportsIndexRouteImport
-      parentRoute: typeof ImportsRouteRoute
-    }
     '/events/': {
       id: '/events/'
       path: '/'
@@ -210,30 +267,155 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventsIndexRouteImport
       parentRoute: typeof EventsRouteRoute
     }
-    '/imports/$id': {
-      id: '/imports/$id'
-      path: '/$id'
-      fullPath: '/imports/$id'
-      preLoaderRoute: typeof ImportsIdRouteImport
-      parentRoute: typeof ImportsRouteRoute
+    '/accounts/': {
+      id: '/accounts/'
+      path: '/'
+      fullPath: '/accounts/'
+      preLoaderRoute: typeof AccountsIndexRouteImport
+      parentRoute: typeof AccountsRouteRoute
     }
-    '/events/$id': {
-      id: '/events/$id'
-      path: '/$id'
-      fullPath: '/events/$id'
-      preLoaderRoute: typeof EventsIdRouteImport
+    '/events/$eventId': {
+      id: '/events/$eventId'
+      path: '/$eventId'
+      fullPath: '/events/$eventId'
+      preLoaderRoute: typeof EventsEventIdRouteImport
       parentRoute: typeof EventsRouteRoute
+    }
+    '/accounts/$accountId': {
+      id: '/accounts/$accountId'
+      path: '/$accountId'
+      fullPath: '/accounts/$accountId'
+      preLoaderRoute: typeof AccountsAccountIdRouteRouteImport
+      parentRoute: typeof AccountsRouteRoute
+    }
+    '/accounts/$accountId/': {
+      id: '/accounts/$accountId/'
+      path: '/'
+      fullPath: '/accounts/$accountId/'
+      preLoaderRoute: typeof AccountsAccountIdIndexRouteImport
+      parentRoute: typeof AccountsAccountIdRouteRoute
+    }
+    '/accounts/$accountId/instruments': {
+      id: '/accounts/$accountId/instruments'
+      path: '/instruments'
+      fullPath: '/accounts/$accountId/instruments'
+      preLoaderRoute: typeof AccountsAccountIdInstrumentsRouteRouteImport
+      parentRoute: typeof AccountsAccountIdRouteRoute
+    }
+    '/accounts/$accountId/imports': {
+      id: '/accounts/$accountId/imports'
+      path: '/imports'
+      fullPath: '/accounts/$accountId/imports'
+      preLoaderRoute: typeof AccountsAccountIdImportsRouteRouteImport
+      parentRoute: typeof AccountsAccountIdRouteRoute
+    }
+    '/accounts/$accountId/instruments/': {
+      id: '/accounts/$accountId/instruments/'
+      path: '/'
+      fullPath: '/accounts/$accountId/instruments/'
+      preLoaderRoute: typeof AccountsAccountIdInstrumentsIndexRouteImport
+      parentRoute: typeof AccountsAccountIdInstrumentsRouteRoute
+    }
+    '/accounts/$accountId/imports/': {
+      id: '/accounts/$accountId/imports/'
+      path: '/'
+      fullPath: '/accounts/$accountId/imports/'
+      preLoaderRoute: typeof AccountsAccountIdImportsIndexRouteImport
+      parentRoute: typeof AccountsAccountIdImportsRouteRoute
+    }
+    '/accounts/$accountId/instruments/$instrumentId': {
+      id: '/accounts/$accountId/instruments/$instrumentId'
+      path: '/$instrumentId'
+      fullPath: '/accounts/$accountId/instruments/$instrumentId'
+      preLoaderRoute: typeof AccountsAccountIdInstrumentsInstrumentIdRouteImport
+      parentRoute: typeof AccountsAccountIdInstrumentsRouteRoute
+    }
+    '/accounts/$accountId/imports/$importId': {
+      id: '/accounts/$accountId/imports/$importId'
+      path: '/$importId'
+      fullPath: '/accounts/$accountId/imports/$importId'
+      preLoaderRoute: typeof AccountsAccountIdImportsImportIdRouteImport
+      parentRoute: typeof AccountsAccountIdImportsRouteRoute
     }
   }
 }
 
+interface AccountsAccountIdImportsRouteRouteChildren {
+  AccountsAccountIdImportsImportIdRoute: typeof AccountsAccountIdImportsImportIdRoute
+  AccountsAccountIdImportsIndexRoute: typeof AccountsAccountIdImportsIndexRoute
+}
+
+const AccountsAccountIdImportsRouteRouteChildren: AccountsAccountIdImportsRouteRouteChildren =
+  {
+    AccountsAccountIdImportsImportIdRoute:
+      AccountsAccountIdImportsImportIdRoute,
+    AccountsAccountIdImportsIndexRoute: AccountsAccountIdImportsIndexRoute,
+  }
+
+const AccountsAccountIdImportsRouteRouteWithChildren =
+  AccountsAccountIdImportsRouteRoute._addFileChildren(
+    AccountsAccountIdImportsRouteRouteChildren,
+  )
+
+interface AccountsAccountIdInstrumentsRouteRouteChildren {
+  AccountsAccountIdInstrumentsInstrumentIdRoute: typeof AccountsAccountIdInstrumentsInstrumentIdRoute
+  AccountsAccountIdInstrumentsIndexRoute: typeof AccountsAccountIdInstrumentsIndexRoute
+}
+
+const AccountsAccountIdInstrumentsRouteRouteChildren: AccountsAccountIdInstrumentsRouteRouteChildren =
+  {
+    AccountsAccountIdInstrumentsInstrumentIdRoute:
+      AccountsAccountIdInstrumentsInstrumentIdRoute,
+    AccountsAccountIdInstrumentsIndexRoute:
+      AccountsAccountIdInstrumentsIndexRoute,
+  }
+
+const AccountsAccountIdInstrumentsRouteRouteWithChildren =
+  AccountsAccountIdInstrumentsRouteRoute._addFileChildren(
+    AccountsAccountIdInstrumentsRouteRouteChildren,
+  )
+
+interface AccountsAccountIdRouteRouteChildren {
+  AccountsAccountIdImportsRouteRoute: typeof AccountsAccountIdImportsRouteRouteWithChildren
+  AccountsAccountIdInstrumentsRouteRoute: typeof AccountsAccountIdInstrumentsRouteRouteWithChildren
+  AccountsAccountIdIndexRoute: typeof AccountsAccountIdIndexRoute
+}
+
+const AccountsAccountIdRouteRouteChildren: AccountsAccountIdRouteRouteChildren =
+  {
+    AccountsAccountIdImportsRouteRoute:
+      AccountsAccountIdImportsRouteRouteWithChildren,
+    AccountsAccountIdInstrumentsRouteRoute:
+      AccountsAccountIdInstrumentsRouteRouteWithChildren,
+    AccountsAccountIdIndexRoute: AccountsAccountIdIndexRoute,
+  }
+
+const AccountsAccountIdRouteRouteWithChildren =
+  AccountsAccountIdRouteRoute._addFileChildren(
+    AccountsAccountIdRouteRouteChildren,
+  )
+
+interface AccountsRouteRouteChildren {
+  AccountsAccountIdRouteRoute: typeof AccountsAccountIdRouteRouteWithChildren
+  AccountsIndexRoute: typeof AccountsIndexRoute
+}
+
+const AccountsRouteRouteChildren: AccountsRouteRouteChildren = {
+  AccountsAccountIdRouteRoute: AccountsAccountIdRouteRouteWithChildren,
+  AccountsIndexRoute: AccountsIndexRoute,
+}
+
+const AccountsRouteRouteWithChildren = AccountsRouteRoute._addFileChildren(
+  AccountsRouteRouteChildren,
+)
+
 interface EventsRouteRouteChildren {
-  EventsIdRoute: typeof EventsIdRoute
+  EventsEventIdRoute: typeof EventsEventIdRoute
   EventsIndexRoute: typeof EventsIndexRoute
 }
 
 const EventsRouteRouteChildren: EventsRouteRouteChildren = {
-  EventsIdRoute: EventsIdRoute,
+  EventsEventIdRoute: EventsEventIdRoute,
   EventsIndexRoute: EventsIndexRoute,
 }
 
@@ -241,25 +423,10 @@ const EventsRouteRouteWithChildren = EventsRouteRoute._addFileChildren(
   EventsRouteRouteChildren,
 )
 
-interface ImportsRouteRouteChildren {
-  ImportsIdRoute: typeof ImportsIdRoute
-  ImportsIndexRoute: typeof ImportsIndexRoute
-}
-
-const ImportsRouteRouteChildren: ImportsRouteRouteChildren = {
-  ImportsIdRoute: ImportsIdRoute,
-  ImportsIndexRoute: ImportsIndexRoute,
-}
-
-const ImportsRouteRouteWithChildren = ImportsRouteRoute._addFileChildren(
-  ImportsRouteRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccountsRouteRoute: AccountsRouteRouteWithChildren,
   EventsRouteRoute: EventsRouteRouteWithChildren,
-  ImportsRouteRoute: ImportsRouteRouteWithChildren,
-  AccountsRoute: AccountsRoute,
   CategoriesRoute: CategoriesRoute,
   DevRoute: DevRoute,
 }

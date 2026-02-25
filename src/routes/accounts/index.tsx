@@ -45,7 +45,7 @@ const updateAccount = createServerFn({ method: 'POST' })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-export const Route = createFileRoute('/accounts')({
+export const Route = createFileRoute('/accounts/')({
   loader: () => getAccountsData(),
   component: AccountsPage,
 })
@@ -140,8 +140,8 @@ function AccountsPage() {
                     {/* Account info + balances */}
                     <div className="flex-1">
                       <Link
-                        to="/events"
-                        search={{ accountId: account.id }}
+                        to="/accounts/$accountId"
+                        params={{ accountId: account.id }}
                         className="text-base font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400"
                       >
                         {account.name}

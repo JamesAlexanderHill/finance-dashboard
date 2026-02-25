@@ -117,6 +117,7 @@ export const importRuns = pgTable('import_runs', {
     .notNull()
     .default([]),
   restoreDeletedChosen: boolean('restore_deleted_chosen').notNull().default(false),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 })
 
 // ─── Events ───────────────────────────────────────────────────────────────────
