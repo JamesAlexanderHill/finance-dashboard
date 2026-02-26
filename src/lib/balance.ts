@@ -6,15 +6,14 @@ export interface AccountBalance {
   accountId: string
   accountName: string
   instrumentId: string
-  instrumentCode: string
-  instrumentMinorUnit: number
-  instrumentKind: string
-  amountMinor: bigint
+  instrumentTicker: string
+  instrumentExponent: number
+  unitCount: bigint
 }
 
 /**
  * Compute live balances for all accounts belonging to a user.
- * Balance = SUM(legs.amount_minor) GROUP BY (accountId, instrumentId)
+ * Balance = SUM(legs.unit_count) GROUP BY (accountId, instrumentId)
  * Excludes legs from soft-deleted events.
  */
 export async function getUserBalances(userId: string): Promise<AccountBalance[]> {
@@ -23,10 +22,9 @@ export async function getUserBalances(userId: string): Promise<AccountBalance[]>
       accountId: events.accountId,
       accountName: accounts.name,
       instrumentId: legs.instrumentId,
-      instrumentCode: instruments.code,
-      instrumentMinorUnit: instruments.minorUnit,
-      instrumentKind: instruments.kind,
-      amountMinor: sql<string>`SUM(${legs.amountMinor})`,
+      instrumentTicker: instruments.ticker,
+      instrumentExponent: instruments.exponent,
+      unitCount: sql<string>`SUM(${legs.unitCount})`,
     })
     .from(legs)
     .innerJoin(events, eq(legs.eventId, events.id))
@@ -37,20 +35,21 @@ export async function getUserBalances(userId: string): Promise<AccountBalance[]>
       events.accountId,
       accounts.name,
       legs.instrumentId,
-      instruments.code,
-      instruments.minorUnit,
-      instruments.kind,
+      instruments.ticker,
+      instruments.exponent,
     )
 
-  return rows.map((r) => ({ ...r, amountMinor: BigInt(r.amountMinor) }))
+  return rows.map((r) => ({ ...r, unitCount: BigInt(r.unitCount) }))
 }
 
-/** Format an amountMinor as a localised decimal string using the instrument's minorUnit. */
-export function formatAmount(amountMinor: bigint, minorUnit: number): string {
-  if (minorUnit === 0) return amountMinor.toString()
-  const value = Number(amountMinor) / Math.pow(10, minorUnit)
-  return value.toLocaleString('en-AU', {
-    minimumFractionDigits: minorUnit,
-    maximumFractionDigits: minorUnit,
-  })
+/**
+ * Format a unit count with the given exponent (decimal places).
+ */
+export function formatAmount(unitCount: bigint, exponent: number): string {
+  if (exponent === 0) return unitCount.toString()
+  const divisor = BigInt(10 ** exponent)
+  const whole = unitCount / divisor
+  const frac = unitCount % divisor
+  const fracStr = frac.toString().padStart(exponent, '0')
+  return `${whole}.${fracStr}`
 }

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { db } from '~/db'
 import { users } from '~/db/schema'
@@ -22,73 +22,58 @@ const devSeedBase = createServerFn({ method: 'POST' }).handler(async () => {
 const devSeedSampleEvents = createServerFn({ method: 'POST' }).handler(async () => {
   const [user] = await db.select().from(users).limit(1)
   if (!user) return { ok: false, message: 'No user found. Seed base data first.' }
-  const seedResult = await seedBase()
-    .then(async () => null)
-    .catch(() => null)
-  // Re-fetch user
-  const [u] = await db.select().from(users).limit(1)
-  if (!u) return { ok: false, message: 'No user.' }
-  const seedRes = {
-    userId: u.id,
-    accountIds: {} as Record<string, string>,
-    instrumentIds: {} as Record<string, string>,
-    categoryIds: {} as Record<string, string>,
-    viewIds: {} as Record<string, string>,
-  }
-  // Use the existing data to build seed result
-  const { accounts, instruments, categories, views } = await import('~/db/schema')
+
+  // Build seed result from existing data
+  const { accounts, instruments, categories } = await import('~/db/schema')
   const { eq } = await import('drizzle-orm')
-  const [accs, instrs, cats, vws] = await Promise.all([
-    db.select().from(accounts).where(eq(accounts.userId, u.id)),
-    db.select().from(instruments).where(eq(instruments.userId, u.id)),
-    db.select().from(categories).where(eq(categories.userId, u.id)),
-    db.select().from(views).where(eq(views.userId, u.id)),
+  const [accs, instrs, cats] = await Promise.all([
+    db.select().from(accounts).where(eq(accounts.userId, user.id)),
+    db.select().from(instruments).where(eq(instruments.userId, user.id)),
+    db.select().from(categories).where(eq(categories.userId, user.id)),
   ])
-  for (const a of accs) seedRes.accountIds[a.name.toLowerCase().replace(/\s+/g, '_')] = a.id
-  for (const i of instrs) seedRes.instrumentIds[`${i.code.toLowerCase()}_${i.accountId.slice(0, 6)}`] = i.id
-  for (const c of cats) seedRes.categoryIds[c.nameNormalized] = c.id
-  for (const v of vws) seedRes.viewIds[v.nameNormalized] = v.id
 
   // Map to expected keys used by seedSampleEvents
   const commbank = accs.find((a) => a.name.toLowerCase().includes('commbank'))
+  const amex = accs.find((a) => a.name.toLowerCase() === 'amex')
   const wise = accs.find((a) => a.name.toLowerCase() === 'wise')
   const vanguardCash = accs.find((a) => a.name.toLowerCase().includes('vanguard cash'))
   const vanguardHoldings = accs.find((a) => a.name.toLowerCase().includes('vanguard holdings'))
 
-  if (!commbank || !wise || !vanguardCash || !vanguardHoldings) {
+  if (!commbank || !amex || !wise || !vanguardCash || !vanguardHoldings) {
     return { ok: false, message: 'Expected accounts not found. Run "Seed Base" first.' }
   }
 
-  const cbAudInstr = instrs.find((i) => i.accountId === commbank.id && i.code === 'AUD')
-  const wiseAudInstr = instrs.find((i) => i.accountId === wise.id && i.code === 'AUD')
-  const wiseUsdInstr = instrs.find((i) => i.accountId === wise.id && i.code === 'USD')
-  const vCashAudInstr = instrs.find((i) => i.accountId === vanguardCash.id && i.code === 'AUD')
-  const vHoldVdalInstr = instrs.find((i) => i.accountId === vanguardHoldings.id && i.code === 'VDAL')
+  const cbAudInstr = instrs.find((i) => i.accountId === commbank.id && i.ticker === 'AUD')
+  const amexAudInstr = instrs.find((i) => i.accountId === amex.id && i.ticker === 'AUD')
+  const wiseAudInstr = instrs.find((i) => i.accountId === wise.id && i.ticker === 'AUD')
+  const wiseUsdInstr = instrs.find((i) => i.accountId === wise.id && i.ticker === 'USD')
+  const vCashAudInstr = instrs.find((i) => i.accountId === vanguardCash.id && i.ticker === 'AUD')
+  const vHoldVdalInstr = instrs.find((i) => i.accountId === vanguardHoldings.id && i.ticker === 'VDAL')
 
-  if (!cbAudInstr || !wiseAudInstr || !wiseUsdInstr || !vCashAudInstr || !vHoldVdalInstr) {
+  if (!cbAudInstr || !amexAudInstr || !wiseAudInstr || !wiseUsdInstr || !vCashAudInstr || !vHoldVdalInstr) {
     return { ok: false, message: 'Expected instruments not found. Run "Seed Base" first.' }
   }
 
-  const groceries = cats.find((c) => c.nameNormalized === 'groceries')
-  const personal = vws.find((v) => v.nameNormalized === 'personal')
+  const groceries = cats.find((c) => c.name.toLowerCase() === 'groceries')
 
   const mappedSeedResult = {
-    userId: u.id,
+    userId: user.id,
     accountIds: {
       commbank: commbank.id,
+      amex: amex.id,
       wise: wise.id,
       vanguardCash: vanguardCash.id,
       vanguardHoldings: vanguardHoldings.id,
     },
     instrumentIds: {
       cbAud: cbAudInstr.id,
+      amexAud: amexAudInstr.id,
       wiseAud: wiseAudInstr.id,
       wiseUsd: wiseUsdInstr.id,
       vCashAud: vCashAudInstr.id,
       vHoldVdal: vHoldVdalInstr.id,
     },
     categoryIds: { groceries: groceries?.id ?? '' },
-    viewIds: { personal: personal?.id ?? '' },
   }
 
   await seedSampleEvents(mappedSeedResult as any)
@@ -133,7 +118,6 @@ type ActionState = 'idle' | 'loading' | 'success' | 'error'
 function useAction(fn: () => Promise<{ ok: boolean; message?: string }>) {
   const [state, setState] = React.useState<ActionState>('idle')
   const [message, setMessage] = React.useState('')
-  const router = Route.useRouter ? Route.useRouter() : null
 
   async function run() {
     setState('loading')
@@ -160,7 +144,7 @@ function useAction(fn: () => Promise<{ ok: boolean; message?: string }>) {
 
 function DevPage() {
   const status = Route.useLoaderData()
-  const router = { invalidate: () => window.location.reload() }
+  const router = useRouter()
 
   const clearAction = useAction(async () => {
     const r = await devClearAll()

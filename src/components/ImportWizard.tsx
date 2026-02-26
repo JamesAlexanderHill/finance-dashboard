@@ -85,20 +85,20 @@ export function ImportWizard({ userId, accountId, accountName, onClose, onSucces
 
     // Load existing instruments for the account
     const existingInstruments = await getAccountInstruments({ data: { accountId } })
-    const existingByCode = new Map(existingInstruments.map((i) => [i.code.toUpperCase(), i]))
+    const existingByTicker = new Map(existingInstruments.map((i) => [i.ticker.toUpperCase(), i]))
 
     // Infer required instrument codes from the parsed CSV
-    const requiredCodes = new Set<string>()
+    const requiredTickers = new Set<string>()
     for (const ev of result.events) {
-      for (const leg of ev.legs) requiredCodes.add(leg.instrumentCode.toUpperCase())
+      for (const leg of ev.legs) requiredTickers.add(leg.instrumentCode.toUpperCase())
     }
 
-    const drafts: InstrumentDraft[] = Array.from(requiredCodes).map((code) => {
-      const existing = existingByCode.get(code)
+    const drafts: InstrumentDraft[] = Array.from(requiredTickers).map((ticker) => {
+      const existing = existingByTicker.get(ticker)
       if (existing) {
-        return { code, name: existing.name, kind: existing.kind, minorUnit: existing.minorUnit, existingId: existing.id }
+        return { ticker, name: existing.name, exponent: existing.exponent, existingId: existing.id }
       }
-      return { code, name: code, kind: 'fiat', minorUnit: 2 }
+      return { ticker, name: ticker, exponent: 2 }
     })
 
     setWizard((w) => ({
@@ -295,17 +295,17 @@ function Step2({
       <div className="space-y-2">
         {drafts.map((draft, idx) => (
           <div
-            key={draft.code}
+            key={draft.ticker}
             className={[
-              'grid grid-cols-4 gap-3 items-center p-3 rounded-lg border',
+              'grid grid-cols-3 gap-3 items-center p-3 rounded-lg border',
               draft.existingId
                 ? 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 opacity-70'
                 : 'bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800',
             ].join(' ')}
           >
             <div>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Code</p>
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{draft.code}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Ticker</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{draft.ticker}</p>
               {draft.existingId ? (
                 <span className="text-xs text-gray-400 dark:text-gray-500">existing</span>
               ) : (
@@ -324,29 +324,14 @@ function Step2({
             </div>
 
             <div>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Kind</p>
-              <select
-                disabled={!!draft.existingId}
-                value={draft.kind}
-                onChange={(e) => update(idx, 'kind', e.target.value)}
-                className="w-full text-xs border border-gray-200 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 disabled:opacity-50"
-              >
-                <option value="fiat">fiat</option>
-                <option value="security">security</option>
-                <option value="crypto">crypto</option>
-                <option value="other">other</option>
-              </select>
-            </div>
-
-            <div>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Minor Unit</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Exponent (decimals)</p>
               <input
                 type="number"
                 min={0}
                 max={8}
                 disabled={!!draft.existingId}
-                value={draft.minorUnit}
-                onChange={(e) => update(idx, 'minorUnit', parseInt(e.target.value, 10))}
+                value={draft.exponent}
+                onChange={(e) => update(idx, 'exponent', parseInt(e.target.value, 10))}
                 className="w-full text-xs border border-gray-200 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 disabled:opacity-50"
               />
             </div>
@@ -580,7 +565,7 @@ function Step4({
         <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
           <p className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">New instruments</p>
           <p className="font-medium text-gray-900 dark:text-gray-100">
-            {newInstruments.length > 0 ? newInstruments.map((d) => d.code).join(', ') : 'None'}
+            {newInstruments.length > 0 ? newInstruments.map((d) => d.ticker).join(', ') : 'None'}
           </p>
         </div>
         <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">

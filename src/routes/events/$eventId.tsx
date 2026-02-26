@@ -13,7 +13,7 @@ import {
   categories,
   eventRelations,
 } from '~/db/schema'
-import { formatAmount } from '~/lib/balance'
+import { formatCurrency } from '~/lib/format-currency'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -74,7 +74,7 @@ const upsertLineItems = createServerFn({ method: 'POST' })
       data as {
         legId: string
         userId: string
-        items: Array<{ id?: string; amountMinor: string; categoryId: string | null; description: string }>
+        items: Array<{ id?: string; unitCount: string; categoryId: string | null; description: string }>
       },
   )
   .handler(async ({ data }) => {
@@ -85,7 +85,7 @@ const upsertLineItems = createServerFn({ method: 'POST' })
         data.items.map((item) => ({
           userId: data.userId,
           legId: data.legId,
-          amountMinor: BigInt(item.amountMinor),
+          unitCount: BigInt(item.unitCount),
           categoryId: item.categoryId,
           description: item.description || null,
         })),
@@ -190,9 +190,6 @@ function EventDetailPage() {
           >
             {event.description}
           </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            {account?.name} · {event.eventType}
-          </p>
         </div>
         <button
           onClick={handleToggleDelete}
@@ -221,8 +218,8 @@ function EventDetailPage() {
       <Section title="Legs">
         <div className="space-y-3">
           {event.legs.map((leg: any) => {
-            const neg = leg.amountMinor < BigInt(0)
-            const abs = neg ? -leg.amountMinor : leg.amountMinor
+            const neg = leg.unitCount < BigInt(0)
+            const abs = neg ? -leg.unitCount : leg.unitCount
             const isExpanded = expandedLegId === leg.id
 
             return (
@@ -239,7 +236,10 @@ function EventDetailPage() {
                     ].join(' ')}
                   >
                     {neg ? '−' : '+'}
-                    {formatAmount(abs, leg.instrument.minorUnit)} {leg.instrument.code}
+                    {formatCurrency(leg.unitCount, {
+                      exponent: leg.instrument.exponent,
+                      ticker: leg.instrument.ticker,
+                    })}
                   </span>
 
                   {/* Category selector */}
@@ -390,7 +390,7 @@ function LineItemEditor({
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
-  const legTotal = leg.amountMinor as bigint
+  const legTotal = leg.unitCount as bigint
   const itemTotal = items.reduce((sum, item) => {
     try {
       return sum + BigInt(item.amountMinor || '0')

@@ -21,10 +21,13 @@ import { Route as AccountsAccountIdRouteRouteImport } from './routes/accounts/$a
 import { Route as AccountsAccountIdIndexRouteImport } from './routes/accounts/$accountId/index'
 import { Route as AccountsAccountIdInstrumentsRouteRouteImport } from './routes/accounts/$accountId/instruments/route'
 import { Route as AccountsAccountIdImportsRouteRouteImport } from './routes/accounts/$accountId/imports/route'
+import { Route as AccountsAccountIdEventsRouteRouteImport } from './routes/accounts/$accountId/events/route'
 import { Route as AccountsAccountIdInstrumentsIndexRouteImport } from './routes/accounts/$accountId/instruments/index'
 import { Route as AccountsAccountIdImportsIndexRouteImport } from './routes/accounts/$accountId/imports/index'
+import { Route as AccountsAccountIdEventsIndexRouteImport } from './routes/accounts/$accountId/events/index'
 import { Route as AccountsAccountIdInstrumentsInstrumentIdRouteImport } from './routes/accounts/$accountId/instruments/$instrumentId'
 import { Route as AccountsAccountIdImportsImportIdRouteImport } from './routes/accounts/$accountId/imports/$importId'
+import { Route as AccountsAccountIdEventsEventIdRouteImport } from './routes/accounts/$accountId/events/$eventId'
 
 const DevRoute = DevRouteImport.update({
   id: '/dev',
@@ -88,6 +91,12 @@ const AccountsAccountIdImportsRouteRoute =
     path: '/imports',
     getParentRoute: () => AccountsAccountIdRouteRoute,
   } as any)
+const AccountsAccountIdEventsRouteRoute =
+  AccountsAccountIdEventsRouteRouteImport.update({
+    id: '/events',
+    path: '/events',
+    getParentRoute: () => AccountsAccountIdRouteRoute,
+  } as any)
 const AccountsAccountIdInstrumentsIndexRoute =
   AccountsAccountIdInstrumentsIndexRouteImport.update({
     id: '/',
@@ -99,6 +108,12 @@ const AccountsAccountIdImportsIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AccountsAccountIdImportsRouteRoute,
+  } as any)
+const AccountsAccountIdEventsIndexRoute =
+  AccountsAccountIdEventsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AccountsAccountIdEventsRouteRoute,
   } as any)
 const AccountsAccountIdInstrumentsInstrumentIdRoute =
   AccountsAccountIdInstrumentsInstrumentIdRouteImport.update({
@@ -112,6 +127,12 @@ const AccountsAccountIdImportsImportIdRoute =
     path: '/$importId',
     getParentRoute: () => AccountsAccountIdImportsRouteRoute,
   } as any)
+const AccountsAccountIdEventsEventIdRoute =
+  AccountsAccountIdEventsEventIdRouteImport.update({
+    id: '/$eventId',
+    path: '/$eventId',
+    getParentRoute: () => AccountsAccountIdEventsRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -123,11 +144,14 @@ export interface FileRoutesByFullPath {
   '/events/$eventId': typeof EventsEventIdRoute
   '/accounts/': typeof AccountsIndexRoute
   '/events/': typeof EventsIndexRoute
+  '/accounts/$accountId/events': typeof AccountsAccountIdEventsRouteRouteWithChildren
   '/accounts/$accountId/imports': typeof AccountsAccountIdImportsRouteRouteWithChildren
   '/accounts/$accountId/instruments': typeof AccountsAccountIdInstrumentsRouteRouteWithChildren
   '/accounts/$accountId/': typeof AccountsAccountIdIndexRoute
+  '/accounts/$accountId/events/$eventId': typeof AccountsAccountIdEventsEventIdRoute
   '/accounts/$accountId/imports/$importId': typeof AccountsAccountIdImportsImportIdRoute
   '/accounts/$accountId/instruments/$instrumentId': typeof AccountsAccountIdInstrumentsInstrumentIdRoute
+  '/accounts/$accountId/events/': typeof AccountsAccountIdEventsIndexRoute
   '/accounts/$accountId/imports/': typeof AccountsAccountIdImportsIndexRoute
   '/accounts/$accountId/instruments/': typeof AccountsAccountIdInstrumentsIndexRoute
 }
@@ -139,8 +163,10 @@ export interface FileRoutesByTo {
   '/accounts': typeof AccountsIndexRoute
   '/events': typeof EventsIndexRoute
   '/accounts/$accountId': typeof AccountsAccountIdIndexRoute
+  '/accounts/$accountId/events/$eventId': typeof AccountsAccountIdEventsEventIdRoute
   '/accounts/$accountId/imports/$importId': typeof AccountsAccountIdImportsImportIdRoute
   '/accounts/$accountId/instruments/$instrumentId': typeof AccountsAccountIdInstrumentsInstrumentIdRoute
+  '/accounts/$accountId/events': typeof AccountsAccountIdEventsIndexRoute
   '/accounts/$accountId/imports': typeof AccountsAccountIdImportsIndexRoute
   '/accounts/$accountId/instruments': typeof AccountsAccountIdInstrumentsIndexRoute
 }
@@ -155,11 +181,14 @@ export interface FileRoutesById {
   '/events/$eventId': typeof EventsEventIdRoute
   '/accounts/': typeof AccountsIndexRoute
   '/events/': typeof EventsIndexRoute
+  '/accounts/$accountId/events': typeof AccountsAccountIdEventsRouteRouteWithChildren
   '/accounts/$accountId/imports': typeof AccountsAccountIdImportsRouteRouteWithChildren
   '/accounts/$accountId/instruments': typeof AccountsAccountIdInstrumentsRouteRouteWithChildren
   '/accounts/$accountId/': typeof AccountsAccountIdIndexRoute
+  '/accounts/$accountId/events/$eventId': typeof AccountsAccountIdEventsEventIdRoute
   '/accounts/$accountId/imports/$importId': typeof AccountsAccountIdImportsImportIdRoute
   '/accounts/$accountId/instruments/$instrumentId': typeof AccountsAccountIdInstrumentsInstrumentIdRoute
+  '/accounts/$accountId/events/': typeof AccountsAccountIdEventsIndexRoute
   '/accounts/$accountId/imports/': typeof AccountsAccountIdImportsIndexRoute
   '/accounts/$accountId/instruments/': typeof AccountsAccountIdInstrumentsIndexRoute
 }
@@ -175,11 +204,14 @@ export interface FileRouteTypes {
     | '/events/$eventId'
     | '/accounts/'
     | '/events/'
+    | '/accounts/$accountId/events'
     | '/accounts/$accountId/imports'
     | '/accounts/$accountId/instruments'
     | '/accounts/$accountId/'
+    | '/accounts/$accountId/events/$eventId'
     | '/accounts/$accountId/imports/$importId'
     | '/accounts/$accountId/instruments/$instrumentId'
+    | '/accounts/$accountId/events/'
     | '/accounts/$accountId/imports/'
     | '/accounts/$accountId/instruments/'
   fileRoutesByTo: FileRoutesByTo
@@ -191,8 +223,10 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/events'
     | '/accounts/$accountId'
+    | '/accounts/$accountId/events/$eventId'
     | '/accounts/$accountId/imports/$importId'
     | '/accounts/$accountId/instruments/$instrumentId'
+    | '/accounts/$accountId/events'
     | '/accounts/$accountId/imports'
     | '/accounts/$accountId/instruments'
   id:
@@ -206,11 +240,14 @@ export interface FileRouteTypes {
     | '/events/$eventId'
     | '/accounts/'
     | '/events/'
+    | '/accounts/$accountId/events'
     | '/accounts/$accountId/imports'
     | '/accounts/$accountId/instruments'
     | '/accounts/$accountId/'
+    | '/accounts/$accountId/events/$eventId'
     | '/accounts/$accountId/imports/$importId'
     | '/accounts/$accountId/instruments/$instrumentId'
+    | '/accounts/$accountId/events/'
     | '/accounts/$accountId/imports/'
     | '/accounts/$accountId/instruments/'
   fileRoutesById: FileRoutesById
@@ -309,6 +346,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountsAccountIdImportsRouteRouteImport
       parentRoute: typeof AccountsAccountIdRouteRoute
     }
+    '/accounts/$accountId/events': {
+      id: '/accounts/$accountId/events'
+      path: '/events'
+      fullPath: '/accounts/$accountId/events'
+      preLoaderRoute: typeof AccountsAccountIdEventsRouteRouteImport
+      parentRoute: typeof AccountsAccountIdRouteRoute
+    }
     '/accounts/$accountId/instruments/': {
       id: '/accounts/$accountId/instruments/'
       path: '/'
@@ -322,6 +366,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/accounts/$accountId/imports/'
       preLoaderRoute: typeof AccountsAccountIdImportsIndexRouteImport
       parentRoute: typeof AccountsAccountIdImportsRouteRoute
+    }
+    '/accounts/$accountId/events/': {
+      id: '/accounts/$accountId/events/'
+      path: '/'
+      fullPath: '/accounts/$accountId/events/'
+      preLoaderRoute: typeof AccountsAccountIdEventsIndexRouteImport
+      parentRoute: typeof AccountsAccountIdEventsRouteRoute
     }
     '/accounts/$accountId/instruments/$instrumentId': {
       id: '/accounts/$accountId/instruments/$instrumentId'
@@ -337,8 +388,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountsAccountIdImportsImportIdRouteImport
       parentRoute: typeof AccountsAccountIdImportsRouteRoute
     }
+    '/accounts/$accountId/events/$eventId': {
+      id: '/accounts/$accountId/events/$eventId'
+      path: '/$eventId'
+      fullPath: '/accounts/$accountId/events/$eventId'
+      preLoaderRoute: typeof AccountsAccountIdEventsEventIdRouteImport
+      parentRoute: typeof AccountsAccountIdEventsRouteRoute
+    }
   }
 }
+
+interface AccountsAccountIdEventsRouteRouteChildren {
+  AccountsAccountIdEventsEventIdRoute: typeof AccountsAccountIdEventsEventIdRoute
+  AccountsAccountIdEventsIndexRoute: typeof AccountsAccountIdEventsIndexRoute
+}
+
+const AccountsAccountIdEventsRouteRouteChildren: AccountsAccountIdEventsRouteRouteChildren =
+  {
+    AccountsAccountIdEventsEventIdRoute: AccountsAccountIdEventsEventIdRoute,
+    AccountsAccountIdEventsIndexRoute: AccountsAccountIdEventsIndexRoute,
+  }
+
+const AccountsAccountIdEventsRouteRouteWithChildren =
+  AccountsAccountIdEventsRouteRoute._addFileChildren(
+    AccountsAccountIdEventsRouteRouteChildren,
+  )
 
 interface AccountsAccountIdImportsRouteRouteChildren {
   AccountsAccountIdImportsImportIdRoute: typeof AccountsAccountIdImportsImportIdRoute
@@ -376,6 +450,7 @@ const AccountsAccountIdInstrumentsRouteRouteWithChildren =
   )
 
 interface AccountsAccountIdRouteRouteChildren {
+  AccountsAccountIdEventsRouteRoute: typeof AccountsAccountIdEventsRouteRouteWithChildren
   AccountsAccountIdImportsRouteRoute: typeof AccountsAccountIdImportsRouteRouteWithChildren
   AccountsAccountIdInstrumentsRouteRoute: typeof AccountsAccountIdInstrumentsRouteRouteWithChildren
   AccountsAccountIdIndexRoute: typeof AccountsAccountIdIndexRoute
@@ -383,6 +458,8 @@ interface AccountsAccountIdRouteRouteChildren {
 
 const AccountsAccountIdRouteRouteChildren: AccountsAccountIdRouteRouteChildren =
   {
+    AccountsAccountIdEventsRouteRoute:
+      AccountsAccountIdEventsRouteRouteWithChildren,
     AccountsAccountIdImportsRouteRoute:
       AccountsAccountIdImportsRouteRouteWithChildren,
     AccountsAccountIdInstrumentsRouteRoute:

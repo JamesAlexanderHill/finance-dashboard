@@ -4,7 +4,8 @@ import { createServerFn } from '@tanstack/react-start'
 import { eq, and, desc, isNull, sql } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, accounts, instruments, events, legs, categories } from '~/db/schema'
-import { formatAmount } from '~/lib/balance'
+import { format } from 'path'
+import { formatCurrency } from '~/lib/format-currency'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ const getInstrumentDetailData = createServerFn({ method: 'GET' })
 
     // Calculate balance for this instrument
     const [balanceResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(${legs.amountMinor}), 0)` })
+      .select({ total: sql<string>`COALESCE(SUM(${legs.unitCount}), 0)` })
       .from(legs)
       .innerJoin(events, eq(legs.eventId, events.id))
       .where(and(eq(legs.instrumentId, data.instrumentId), isNull(events.deletedAt)))
@@ -73,8 +74,7 @@ const updateInstrument = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => data as {
     instrumentId: string
     name: string
-    kind: 'fiat' | 'security' | 'crypto' | 'other'
-    minorUnit: number
+    exponent: number
   })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
@@ -84,8 +84,7 @@ const updateInstrument = createServerFn({ method: 'POST' })
       .update(instruments)
       .set({
         name: data.name.trim(),
-        kind: data.kind,
-        minorUnit: data.minorUnit,
+        exponent: data.exponent,
       })
       .where(and(eq(instruments.id, data.instrumentId), eq(instruments.userId, user.id)))
   })
@@ -206,7 +205,7 @@ function InstrumentDetailPage() {
             Instruments
           </Link>
           <span>/</span>
-          <span className="text-gray-900 dark:text-gray-100">{instrument.code}</span>
+          <span className="text-gray-900 dark:text-gray-100">{instrument.ticker}</span>
         </div>
 
         {editing ? (
@@ -216,7 +215,7 @@ function InstrumentDetailPage() {
                 Code (read-only)
               </label>
               <input
-                value={instrument.code}
+                value={instrument.ticker}
                 disabled
                 className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
               />
@@ -239,7 +238,7 @@ function InstrumentDetailPage() {
                 </label>
                 <select
                   name="kind"
-                  defaultValue={instrument.kind}
+                  defaultValue={instrument.ticker}
                   className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="fiat">Fiat</option>
@@ -257,7 +256,7 @@ function InstrumentDetailPage() {
                   type="number"
                   min={0}
                   max={8}
-                  defaultValue={instrument.minorUnit}
+                  defaultValue={instrument.exponent}
                   className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -282,9 +281,9 @@ function InstrumentDetailPage() {
           <div className="flex items-start justify-between">
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{instrument.code}</h1>
+                <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{instrument.ticker}</h1>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-                  {instrument.kind}
+                  {instrument.ticker}
                 </span>
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{instrument.name}</p>
@@ -294,8 +293,10 @@ function InstrumentDetailPage() {
                   neg ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
                 ].join(' ')}
               >
-                {neg ? '−' : ''}
-                {formatAmount(abs, instrument.minorUnit)}
+                {formatCurrency(balance, {
+                  exponent: instrument.exponent,
+                  ticker: instrument.ticker,
+                })}
                 <span className="text-base font-normal text-gray-500 dark:text-gray-400 ml-2">
                   balance
                 </span>
@@ -320,7 +321,6 @@ function InstrumentDetailPage() {
         ) : (
           <div className="space-y-3">
             {recentEvents.map(({ event, legs: eventLegs }) => {
-              const badgeClass = EVENT_TYPE_BADGE[event.eventType] ?? ''
               return (
                 <div
                   key={event.id}
@@ -340,16 +340,13 @@ function InstrumentDetailPage() {
                         {event.description}
                       </Link>
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badgeClass}`}>
-                      {event.eventType}
-                    </span>
                   </div>
 
                   {/* Legs for this instrument */}
                   <div className="divide-y divide-gray-100 dark:divide-gray-800">
                     {eventLegs.map(({ leg, category }) => {
-                      const legNeg = leg.amountMinor < BigInt(0)
-                      const legAbs = legNeg ? -leg.amountMinor : leg.amountMinor
+                      const legNeg = leg.unitCount < BigInt(0)
+                      const legAbs = legNeg ? -leg.unitCount : leg.unitCount
                       return (
                         <div key={leg.id} className="px-4 py-2 flex items-center justify-between">
                           <span
@@ -359,7 +356,10 @@ function InstrumentDetailPage() {
                             ].join(' ')}
                           >
                             {legNeg ? '−' : '+'}
-                            {formatAmount(legAbs, instrument.minorUnit)}
+                            {formatCurrency(leg.unitCount, {
+                              exponent: instrument.exponent,
+                              // ticker: leg.instrumentId.ticker,// TODO: this needs to be the ticker of the current leg, not the main instrument
+                            })}
                           </span>
                           {category && (
                             <span className="text-xs text-gray-500 dark:text-gray-400">

@@ -155,8 +155,8 @@ function EventsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <Link
-                        to="/events/$id"
-                        params={{ id: event.id }}
+                        to="/events/$eventId"
+                        params={{ eventId: event.id }}
                         className="text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 font-medium"
                       >
                         {event.description}

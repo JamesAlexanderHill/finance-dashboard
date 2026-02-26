@@ -3,9 +3,11 @@ import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { eq, and, desc, isNull } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts, instruments, events, importRuns } from '~/db/schema'
-import { getUserBalances, formatAmount } from '~/lib/balance'
+import { users, accounts, instruments, events, files, Leg, Event } from '~/db/schema'
+import { getUserBalances } from '~/lib/balance'
 import { ImportWizard } from '~/components/ImportWizard'
+import InstrumentCard from '~/components/instrument-card'
+import { formatCurrency } from '~/lib/format-currency'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -27,10 +29,10 @@ const getAccountDetailData = createServerFn({ method: 'GET' })
       getUserBalances(user.id),
       db
         .select()
-        .from(importRuns)
-        .where(and(eq(importRuns.accountId, data.accountId), isNull(importRuns.deletedAt)))
-        .orderBy(desc(importRuns.createdAt))
-        .limit(20),
+        .from(files)
+        .where(eq(files.accountId, data.accountId))
+        .orderBy(desc(files.createdAt))
+        .limit(5),
       db.query.events.findMany({
         where: and(
           eq(events.accountId, data.accountId),
@@ -38,6 +40,9 @@ const getAccountDetailData = createServerFn({ method: 'GET' })
         ),
         orderBy: [desc(events.effectiveAt)],
         limit: 10,
+        with: {
+          legs: { with: { instrument: true } },
+        },
       }),
     ])
 
@@ -48,47 +53,33 @@ const getAccountDetailData = createServerFn({ method: 'GET' })
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { id: string; name: string; importerKey: string })
+  .inputValidator((data: unknown) => data as { id: string; name: string; importerKey: string; defaultInstrumentId: string | null })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user found')
     await db
       .update(accounts)
-      .set({ name: data.name.trim(), importerKey: data.importerKey.trim() })
+      .set({
+        name: data.name.trim(),
+        importerKey: data.importerKey.trim(),
+        defaultInstrumentId: data.defaultInstrumentId || null,
+      })
       .where(and(eq(accounts.id, data.id), eq(accounts.userId, user.id)))
   })
 
-const deleteImportRun = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { importRunId: string })
+const deleteFile = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { fileId: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user found')
 
-    // Verify the import run belongs to the user
-    const [run] = await db
-      .select()
-      .from(importRuns)
-      .where(and(eq(importRuns.id, data.importRunId), eq(importRuns.userId, user.id)))
+    const [file] = await db
+      .delete(files)
+      .where(and(eq(files.id, data.fileId), eq(files.userId, user.id)))
+      .returning();
 
-    if (!run) throw new Error('Import run not found')
-
-    const now = new Date()
-
-    // Soft-delete the import run and cascade to all events
-    await db.transaction(async (tx) => {
-      // Soft-delete all events from this import run
-      await tx
-        .update(events)
-        .set({ deletedAt: now })
-        .where(eq(events.importRunId, data.importRunId))
-
-      // Soft-delete the import run itself
-      await tx
-        .update(importRuns)
-        .set({ deletedAt: now })
-        .where(eq(importRuns.id, data.importRunId))
-    })
-  })
+    if (!file) throw new Error('File not found')
+  });
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
@@ -116,14 +107,26 @@ function formatDate(d: Date | string) {
   })
 }
 
+function formatDateTime(d: Date | string) {
+  return new Date(d).toLocaleDateString('en-AU', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function AccountDetailPage() {
   const { user, account, instruments, balances, importRuns, recentEvents } = Route.useLoaderData()
+  const { accountId } = Route.useParams()
   const router = useRouter()
   const [editing, setEditing] = React.useState(false)
   const [deletingImportId, setDeletingImportId] = React.useState<string | null>(null)
   const [showImportWizard, setShowImportWizard] = React.useState(false)
+  const [expandedEventId, setExpandedEventId] = React.useState<string | null>(null)
 
   if (!user) {
     return (
@@ -156,42 +159,57 @@ function AccountDetailPage() {
         id: account!.id,
         name: String(fd.get('name')),
         importerKey: String(fd.get('importerKey')),
+        defaultInstrumentId: String(fd.get('defaultInstrumentId')) || null,
       },
     })
     setEditing(false)
     router.invalidate()
   }
 
-  async function handleDeleteImport(importRunId: string) {
+  async function handleDeleteFile(fileId: string) {
     if (!confirm('Delete this import? All events from this import will be removed.')) {
       return
     }
-    setDeletingImportId(importRunId)
+    setDeletingImportId(fileId)
     try {
-      await deleteImportRun({ data: { importRunId } })
+      await deleteFile({ data: { fileId } })
       router.invalidate()
     } finally {
       setDeletingImportId(null)
     }
   }
 
-  // Map instruments by ID for quick lookup
-  const instrumentsById = new Map(instruments.map((i) => [i.id, i]))
+  // Sort instruments: default first, then by balance (descending)
+  const balanceMap = new Map(balances.map((b) => [b.instrumentId, b.unitCount]))
+  const sortedInstruments = [...instruments].sort((a, b) => {
+    // Default instrument first
+    if (a.id === account.defaultInstrumentId) return -1
+    if (b.id === account.defaultInstrumentId) return 1
+    // Then by balance (higher first)
+    const balA = balanceMap.get(a.id) ?? BigInt(0)
+    const balB = balanceMap.get(b.id) ?? BigInt(0)
+    if (balB > balA) return 1
+    if (balB < balA) return -1
+    return 0
+  })
+
+  const defaultInstrument = instruments.find((i) => i.id === account.defaultInstrumentId)
 
   return (
     <div className="max-w-5xl space-y-8">
-      {/* Header */}
-      <div>
-        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-2">
-          <Link to="/accounts" className="hover:text-blue-600 dark:hover:text-blue-400">
-            Accounts
-          </Link>
-          <span>/</span>
-          <span className="text-gray-900 dark:text-gray-100">{account.name}</span>
-        </div>
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+        <Link to="/accounts" className="hover:text-blue-600 dark:hover:text-blue-400">
+          Accounts
+        </Link>
+        <span>/</span>
+        <span className="text-gray-900 dark:text-gray-100">{account.name}</span>
+      </div>
 
+      {/* Section A: Account Details */}
+      <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
         {editing ? (
-          <form onSubmit={handleUpdate} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3 max-w-md">
+          <form onSubmit={handleUpdate} className="space-y-4 max-w-md">
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Name
@@ -202,6 +220,23 @@ function AccountDetailPage() {
                 required
                 className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                Default Instrument
+              </label>
+              <select
+                name="defaultInstrumentId"
+                defaultValue={account.defaultInstrumentId ?? ''}
+                className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">None</option>
+                {instruments.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.ticker} - {i.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -233,9 +268,17 @@ function AccountDetailPage() {
           <div className="flex items-start justify-between">
             <div>
               <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{account.name}</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Importer: {account.importerKey}
-              </p>
+              <div className="flex items-center gap-4 mt-2 text-sm text-gray-500 dark:text-gray-400">
+                <span>
+                  Default:{' '}
+                  {defaultInstrument ? (
+                    <span className="text-blue-600 dark:text-blue-400">{defaultInstrument.ticker}</span>
+                  ) : (
+                    <span className="text-gray-400 dark:text-gray-500">None</span>
+                  )}
+                </span>
+                <span>Importer: {account.importerKey}</span>
+              </div>
             </div>
             <button
               onClick={() => setEditing(true)}
@@ -245,9 +288,9 @@ function AccountDetailPage() {
             </button>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Instruments */}
+      {/* Section B: Instruments Carousel */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Instruments</h2>
@@ -260,60 +303,52 @@ function AccountDetailPage() {
           </Link>
         </div>
 
-        {instruments.length === 0 ? (
+        {sortedInstruments.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400 text-sm">No instruments yet.</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {instruments.map((instrument) => {
+          <div className="flex gap-4 overflow-x-auto pb-2 -mx-2 px-2">
+            {sortedInstruments.map((instrument) => {
               const balance = balances.find((b) => b.instrumentId === instrument.id)
-              const amountMinor = balance?.amountMinor ?? BigInt(0)
+              const amountMinor = balance?.unitCount ?? BigInt(0)
               const neg = amountMinor < 0
               const abs = neg ? -amountMinor : amountMinor
+              const isDefault = instrument.id === account.defaultInstrumentId
 
               return (
-                <Link
+                <InstrumentCard
                   key={instrument.id}
-                  to="/accounts/$accountId/instruments/$instrumentId"
-                  params={{ accountId: account.id, instrumentId: instrument.id }}
-                  className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-gray-100">{instrument.code}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{instrument.name}</p>
-                    </div>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-                      {instrument.kind}
-                    </span>
-                  </div>
-                  <p
-                    className={[
-                      'mt-3 text-lg font-semibold tabular-nums',
-                      neg ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
-                    ].join(' ')}
-                  >
-                    {neg ? '−' : ''}
-                    {formatAmount(abs, instrument.minorUnit)}
-                  </p>
-                </Link>
+                  instrument={instrument}
+                  account={account}
+                  unitCount={amountMinor}
+                  isDefault={isDefault}
+                />
               )
             })}
           </div>
         )}
       </section>
 
-      {/* Import History */}
+      {/* Section C: Recent Imports */}
       <section>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Import History</h2>
-          {!showImportWizard && (
-            <button
-              onClick={() => setShowImportWizard(true)}
-              className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recent Imports</h2>
+          <div className="flex items-center gap-3">
+            <Link
+              to="/accounts/$accountId/imports"
+              params={{ accountId: account.id }}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
             >
-              + Import CSV
-            </button>
-          )}
+              View all
+            </Link>
+            {!showImportWizard && (
+              <button
+                onClick={() => setShowImportWizard(true)}
+                className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+              >
+                + Import CSV
+              </button>
+            )}
+          </div>
         </div>
 
         {showImportWizard && (
@@ -334,76 +369,54 @@ function AccountDetailPage() {
         {importRuns.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400 text-sm">No imports yet.</p>
         ) : (
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Date</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">File</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Imported</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Skipped</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Errors</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {importRuns.map((run) => (
-                  <tr key={run.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                      {formatDate(run.createdAt)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        key={run.id}
-                        to="/accounts/$accountId/imports/$importId"
-                        params={{ accountId: account.id, importId: run.id }}
-                        className="text-blue-600 dark:text-blue-400 hover:underline"
-                      >
-                        {run.filename}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-right text-green-700 dark:text-green-400 tabular-nums">
-                      {run.importedCount}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400 tabular-nums">
-                      {run.skippedCount}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">
-                      <span
-                        className={
-                          run.errorCount > 0
-                            ? 'text-red-600 dark:text-red-400'
-                            : 'text-gray-400 dark:text-gray-500'
-                        }
-                      >
-                        {run.errorCount}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDeleteImport(run.id)}
-                        disabled={deletingImportId === run.id}
-                        className="text-xs text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50"
-                        title="Delete import"
-                      >
-                        {deletingImportId === run.id ? 'Deleting...' : 'Delete'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-2">
+            {importRuns.map((run) => (
+              <div
+                key={run.id}
+                className="flex items-center justify-between bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-3"
+              >
+                <div className="flex items-center gap-4">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
+                    {formatDateTime(run.createdAt)}
+                  </span>
+                  <Link
+                    to="/accounts/$accountId/imports/$importId"
+                    params={{ accountId: account.id, importId: run.id }}
+                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                  >
+                    {run.filename}
+                  </Link>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-green-700 dark:text-green-400 tabular-nums">{run.importedCount} imported</span>
+                    <span className="text-gray-400 dark:text-gray-500 tabular-nums">{run.skippedCount} skipped</span>
+                    {run.errorCount > 0 && (
+                      <span className="text-red-600 dark:text-red-400 tabular-nums">{run.errorCount} errors</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleDeleteFile(run.id)}
+                    disabled={deletingImportId === run.id}
+                    className="text-xs text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50"
+                    title="Delete import"
+                  >
+                    {deletingImportId === run.id ? '...' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </section>
 
-      {/* Recent Events */}
+      {/* Section D: Recent Events (Accordion) */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recent Events</h2>
           <Link
-            to="/events"
-            search={{ accountId: account.id }}
+            to="/accounts/$accountId/events"
+            params={{ accountId }}
             className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
           >
             View all
@@ -413,53 +426,48 @@ function AccountDetailPage() {
         {recentEvents.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400 text-sm">No events yet.</p>
         ) : (
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400 w-28">
-                    Date
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
-                    Description
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400 w-28">
-                    Type
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {recentEvents.map((event) => {
-                  const badgeClass = EVENT_TYPE_BADGE[event.eventType] ?? ''
-                  return (
-                    <tr
-                      key={event.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                    >
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+          <div className="space-y-2">
+            {recentEvents.map((event: Event) => {
+              const isExpanded = expandedEventId === event.id;
+              const badgeClass = '';
+
+              return (
+                <div
+                  key={event.id}
+                  className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden"
+                >
+                  {/* Collapsed header */}
+                  <button
+                    onClick={() => setExpandedEventId(isExpanded ? null : event.id)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
                         {formatDate(event.effectiveAt)}
-                      </td>
-                      <td className="px-4 py-3">
+                      </span>
+                      <span className="text-sm text-gray-900 dark:text-gray-100 font-medium truncate">
+                        {event.description}
+                      </span>
+                    </div>
+                  </button>
+
+                  {/* Expanded content */}
+                  {isExpanded && (
+                    <div className="px-4 pb-4 pt-2 border-t border-gray-100 dark:border-gray-800">
+                      <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
                         <Link
-                          to="/events/$eventId"
-                          params={{ eventId: event.id }}
-                          className="text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 font-medium"
+                          to="/accounts/$accountId/events/$eventId"
+                          params={{ accountId, eventId: event.id }}
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
                         >
-                          {event.description}
+                          View event details
                         </Link>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full font-medium ${badgeClass}`}
-                        >
-                          {event.eventType}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </section>

@@ -3,7 +3,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { db } from '~/db'
 import { users } from '~/db/schema'
-import { getUserBalances, formatAmount } from '~/lib/balance'
+import { getUserBalances } from '~/lib/balance'
+import { formatCurrency } from '~/lib/format-currency'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -55,10 +56,10 @@ function DashboardPage() {
   // Net worth: sum fiat balances in the user's home currency only
   const homeCurrency = user.homeCurrencyCode
   const homeBalances = balances.filter(
-    (b) => b.instrumentCode === homeCurrency && b.instrumentKind === 'fiat',
+    (b) => b.instrumentTicker === homeCurrency,
   )
-  const netWorthMinor = homeBalances.reduce((sum, b) => sum + b.amountMinor, BigInt(0))
-  const homeMinorUnit = homeBalances[0]?.instrumentMinorUnit ?? 2
+  const netWorthMinor = homeBalances.reduce((sum, b) => sum + b.unitCount, BigInt(0))
+  const homeMinorUnit = homeBalances[0]?.instrumentExponent ?? 2
   const isNegative = netWorthMinor < 0
   const absWorth = isNegative ? -netWorthMinor : netWorthMinor
 
@@ -81,7 +82,10 @@ function DashboardPage() {
             isNegative ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
           ].join(' ')}
         >
-          {isNegative ? '−' : ''}{homeCurrency} {formatAmount(absWorth, homeMinorUnit)}
+          {formatCurrency(absWorth, {
+            exponent: homeMinorUnit,
+            ticker: homeCurrency,
+          })}
         </p>
         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
           {homeCurrency} fiat balances only — no cross-currency conversion
@@ -107,17 +111,12 @@ function DashboardPage() {
                 </p>
                 <div className="space-y-1.5">
                   {accountBalances.map((b) => {
-                    const neg = b.amountMinor < 0
-                    const abs = neg ? -b.amountMinor : b.amountMinor
+                    const neg = b.unitCount < 0
+                    const abs = neg ? -b.unitCount : b.unitCount
                     return (
                       <div key={b.instrumentId} className="flex items-center justify-between">
                         <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                          {b.instrumentCode}
-                          {b.instrumentKind === 'security' && (
-                            <span className="bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 text-xs px-1 rounded">
-                              ETF
-                            </span>
-                          )}
+                          {b.instrumentTicker}
                         </span>
                         <span
                           className={[
@@ -125,7 +124,10 @@ function DashboardPage() {
                             neg ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
                           ].join(' ')}
                         >
-                          {neg ? '−' : ''}{formatAmount(abs, b.instrumentMinorUnit)}
+                          {formatCurrency(b.unitCount, {
+                            exponent: b.instrumentExponent,
+                            ticker: b.instrumentTicker,
+                          })}
                         </span>
                       </div>
                     )

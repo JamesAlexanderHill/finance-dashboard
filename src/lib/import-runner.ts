@@ -3,7 +3,7 @@ import { db } from '~/db'
 import {
   accounts,
   events,
-  importRuns,
+  files,
   instruments,
   legs,
   categories,
@@ -13,10 +13,9 @@ import { computeDedupeKey } from './dedupe'
 import type { ParsedEvent } from '~/importers/canonical'
 
 export interface InstrumentDraft {
-  code: string
+  ticker: string
   name: string
-  kind: 'fiat' | 'security' | 'crypto' | 'other'
-  minorUnit: number
+  exponent: number
   /** If set, this is an existing instrument ID — no creation needed. */
   existingId?: string
 }
@@ -26,7 +25,7 @@ export interface CommitImportParams {
   accountId: string
   filename: string
   events: ParsedEvent[]
-  /** Instruments to create or reuse. Keyed by code (uppercase). */
+  /** Instruments to create or reuse. Keyed by ticker (uppercase). */
   instrumentDrafts: InstrumentDraft[]
   /** Category assignments: eventGroup_legIndex → categoryPath */
   categoryAssignments: Record<string, string | null>
@@ -45,7 +44,7 @@ async function resolveCategoryPath(
 
   for (const part of parts) {
     const match = userCategories.find(
-      (c) => c.nameNormalized === part && c.parentId === parentId && c.userId === userId,
+      (c) => c.name.toLowerCase() === part && c.parentId === parentId && c.userId === userId,
     )
     if (!match) return null
     parentId = match.id
@@ -59,7 +58,7 @@ async function resolveCategoryPath(
  * - Creates any new instruments listed in instrumentDrafts
  * - Inserts events+legs with dedupe logic
  * - Assigns categories from categoryAssignments
- * - Records an ImportRun with stats and returns its ID
+ * - Records a File with stats and returns its ID
  */
 export async function commitImport(params: CommitImportParams): Promise<string> {
   const {
@@ -78,25 +77,24 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
   if (!account) throw new Error(`Account not found: ${accountId}`)
 
   // ── 2. Create / resolve instruments ───────────────────────────────────────
-  const instrumentMap = new Map<string, string>() // code.upper → id
+  const instrumentMap = new Map<string, string>() // ticker.upper → id
 
   for (const draft of params.instrumentDrafts) {
-    const code = draft.code.toUpperCase()
+    const ticker = draft.ticker.toUpperCase()
     if (draft.existingId) {
-      instrumentMap.set(code, draft.existingId)
+      instrumentMap.set(ticker, draft.existingId)
     } else {
       const [created] = await db
         .insert(instruments)
         .values({
           userId,
           accountId,
-          code: draft.code,
-          kind: draft.kind,
-          minorUnit: draft.minorUnit,
+          ticker: draft.ticker,
+          exponent: draft.exponent,
           name: draft.name,
         })
         .returning({ id: instruments.id })
-      instrumentMap.set(code, created.id)
+      instrumentMap.set(ticker, created.id)
     }
   }
 
@@ -112,19 +110,19 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
   let restoredCount = 0
   let errorCount = 0
   const skippedKeys: string[] = []
-  const errors: Array<{ line: number; message: string; phase: string }> = []
+  const importErrors: Array<{ line: number; message: string; phase: string }> = []
 
   for (let evIdx = 0; evIdx < params.events.length; evIdx++) {
     const parsed = params.events[evIdx]
     const line = evIdx + 2 // approximate CSV line number
 
     try {
-      const primaryAmountMinor = parsed.legs[0]?.amountMinor ?? BigInt(0)
+      const primaryUnitCount = parsed.legs[0]?.amountMinor ?? BigInt(0)
       const dedupeKey = computeDedupeKey({
         accountId,
         externalEventId: parsed.externalEventId,
         effectiveAt: parsed.effectiveAt,
-        primaryAmountMinor,
+        primaryAmountMinor: primaryUnitCount,
         description: parsed.description,
       })
 
@@ -160,7 +158,6 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
           .values({
             userId,
             accountId,
-            eventType: parsed.eventType,
             effectiveAt: parsed.effectiveAt,
             postedAt: parsed.postedAt,
             description: parsed.description,
@@ -184,7 +181,7 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
             userId,
             eventId: newEvent.id,
             instrumentId,
-            amountMinor: leg.amountMinor,
+            unitCount: leg.amountMinor,
             categoryId,
           })
         }
@@ -193,13 +190,13 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
       importedCount++
     } catch (err) {
       errorCount++
-      errors.push({ line, message: String(err), phase: 'insert' })
+      importErrors.push({ line, message: String(err), phase: 'insert' })
     }
   }
 
-  // ── 5. Create ImportRun record ─────────────────────────────────────────────
-  const [run] = await db
-    .insert(importRuns)
+  // ── 5. Create File record ─────────────────────────────────────────────────
+  const [file] = await db
+    .insert(files)
     .values({
       userId,
       accountId,
@@ -209,10 +206,9 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
       restoredCount,
       errorCount,
       skippedKeys,
-      errors,
-      restoreDeletedChosen,
+      errors: importErrors,
     })
-    .returning({ id: importRuns.id })
+    .returning({ id: files.id })
 
-  return run.id
+  return file.id
 }

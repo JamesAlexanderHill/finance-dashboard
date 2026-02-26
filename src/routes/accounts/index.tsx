@@ -1,23 +1,62 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts, instruments } from '~/db/schema'
-import { getUserBalances, formatAmount } from '~/lib/balance'
+import { users, accounts, instruments, files } from '~/db/schema'
+import { getUserBalances } from '~/lib/balance'
+import { formatCurrency } from '~/lib/format-currency'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getAccountsData = createServerFn({ method: 'GET' }).handler(async () => {
   const [user] = await db.select().from(users).limit(1)
-  if (!user) return { user: null, accounts: [], balances: [] }
+  if (!user) return { user: null, accounts: [] }
 
-  const [userAccounts, balances] = await Promise.all([
-    db.select().from(accounts).where(eq(accounts.userId, user.id)),
+  // Get accounts with counts
+  const userAccounts = await db.select().from(accounts).where(eq(accounts.userId, user.id))
+
+  // Get balances, instrument counts, and import counts
+  const [balances, instrumentCounts, importCounts, allInstruments] = await Promise.all([
     getUserBalances(user.id),
+    db
+      .select({
+        accountId: instruments.accountId,
+        count: sql<number>`count(*)`.as('count'),
+      })
+      .from(instruments)
+      .where(eq(instruments.userId, user.id))
+      .groupBy(instruments.accountId),
+    db
+      .select({
+        accountId: files.accountId,
+        count: sql<number>`count(*)`.as('count'),
+      })
+      .from(files)
+      .where(eq(files.userId, user.id))
+      .groupBy(files.accountId),
+    db.select().from(instruments).where(eq(instruments.userId, user.id)),
   ])
 
-  return { user, accounts: userAccounts, balances }
+  // Build account data with all info
+  const accountsWithData = userAccounts.map((account) => {
+    const acctBalances = balances.filter((b) => b.accountId === account.id)
+    const instrumentCount = instrumentCounts.find((c) => c.accountId === account.id)?.count ?? 0
+    const importCount = importCounts.find((c) => c.accountId === account.id)?.count ?? 0
+    const defaultInstrument = account.defaultInstrumentId
+      ? allInstruments.find((i) => i.id === account.defaultInstrumentId)
+      : null
+
+    return {
+      ...account,
+      balances: acctBalances,
+      instrumentCount: Number(instrumentCount),
+      importCount: Number(importCount),
+      defaultInstrument,
+    }
+  })
+
+  return { user, accounts: accountsWithData }
 })
 
 const createAccount = createServerFn({ method: 'POST' })
@@ -32,17 +71,6 @@ const createAccount = createServerFn({ method: 'POST' })
     })
   })
 
-const updateAccount = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { id: string; name: string; importerKey: string })
-  .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) throw new Error('No user found')
-    await db
-      .update(accounts)
-      .set({ name: data.name.trim(), importerKey: data.importerKey.trim() })
-      .where(and(eq(accounts.id, data.id), eq(accounts.userId, user.id)))
-  })
-
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute('/accounts/')({
@@ -53,9 +81,8 @@ export const Route = createFileRoute('/accounts/')({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function AccountsPage() {
-  const { user, accounts, balances } = Route.useLoaderData()
+  const { user, accounts } = Route.useLoaderData()
   const router = useRouter()
-  const [editingId, setEditingId] = React.useState<string | null>(null)
   const [showCreate, setShowCreate] = React.useState(false)
 
   if (!user) {
@@ -70,13 +97,6 @@ function AccountsPage() {
     )
   }
 
-  // Group balances by account
-  const balancesByAccount = new Map<string, typeof balances>()
-  for (const b of balances) {
-    if (!balancesByAccount.has(b.accountId)) balancesByAccount.set(b.accountId, [])
-    balancesByAccount.get(b.accountId)!.push(b)
-  }
-
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
@@ -85,16 +105,8 @@ function AccountsPage() {
     router.invalidate()
   }
 
-  async function handleUpdate(e: React.FormEvent<HTMLFormElement>, id: string) {
-    e.preventDefault()
-    const fd = new FormData(e.currentTarget)
-    await updateAccount({ data: { id, name: String(fd.get('name')), importerKey: String(fd.get('importerKey')) } })
-    setEditingId(null)
-    router.invalidate()
-  }
-
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Accounts</h1>
         <button
@@ -117,75 +129,88 @@ function AccountsPage() {
       {accounts.length === 0 ? (
         <p className="text-gray-500 dark:text-gray-400 text-sm">No accounts yet.</p>
       ) : (
-        <div className="space-y-3">
-          {accounts.map((account) => {
-            const acctBalances = balancesByAccount.get(account.id) ?? []
-            const isEditing = editingId === account.id
-
-            return (
-              <div
-                key={account.id}
-                className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4"
-              >
-                {isEditing ? (
-                  <AccountForm
-                    defaultName={account.name}
-                    defaultImporterKey={account.importerKey}
-                    onSubmit={(e) => handleUpdate(e, account.id)}
-                    onCancel={() => setEditingId(null)}
-                    submitLabel="Save"
-                  />
-                ) : (
-                  <div className="flex items-start justify-between gap-4">
-                    {/* Account info + balances */}
-                    <div className="flex-1">
-                      <Link
-                        to="/accounts/$accountId"
-                        params={{ accountId: account.id }}
-                        className="text-base font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        {account.name}
-                      </Link>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                        importer: {account.importerKey}
-                      </p>
-
-                      {acctBalances.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                          {acctBalances.map((b) => {
-                            const neg = b.amountMinor < 0
-                            const abs = neg ? -b.amountMinor : b.amountMinor
-                            return (
-                              <span
-                                key={b.instrumentId}
-                                className={[
-                                  'text-sm tabular-nums',
-                                  neg ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300',
-                                ].join(' ')}
-                              >
-                                {neg ? '−' : ''}{formatAmount(abs, b.instrumentMinorUnit)}{' '}
-                                <span className="text-xs text-gray-400 dark:text-gray-500">
-                                  {b.instrumentCode}
-                                </span>
-                              </span>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <button
-                      onClick={() => setEditingId(account.id)}
-                      className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
+                  Account Name
+                </th>
+                <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
+                  Balances
+                </th>
+                <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
+                  Imports
+                </th>
+                <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
+                  Instruments
+                </th>
+                <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
+                  Default Instrument
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {accounts.map((account) => (
+                <tr
+                  key={account.id}
+                  className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                >
+                  <td className="px-4 py-3">
+                    <Link
+                      to="/accounts/$accountId"
+                      params={{ accountId: account.id }}
+                      className="text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 font-medium"
                     >
-                      Edit
-                    </button>
-                  </div>
-                )}
-              </div>
-            )
-          })}
+                      {account.name}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    {account.balances.length === 0 ? (
+                      <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        {account.balances.map((b) => {
+                          const neg = b.unitCount < 0
+                          const abs = neg ? -b.unitCount : b.unitCount
+                          return (
+                            <span
+                              key={b.instrumentId}
+                              className={[
+                                'text-xs tabular-nums',
+                                neg ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300',
+                              ].join(' ')}
+                            >
+                              {formatCurrency(b.unitCount, {
+                                exponent: b.instrumentExponent,
+                                ticker: b.instrumentTicker,
+                              })}
+                              <span className="text-gray-400 dark:text-gray-500">{b.instrumentTicker}</span>
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400 tabular-nums">
+                    {account.importCount}
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400 tabular-nums">
+                    {account.instrumentCount}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                    {account.defaultInstrument ? (
+                      <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                        {account.defaultInstrument.ticker}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

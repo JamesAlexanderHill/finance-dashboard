@@ -4,12 +4,11 @@ import {
   categories,
   eventRelations,
   events,
-  importRuns,
+  files,
   instruments,
   legs,
   lineItems,
   users,
-  views,
 } from '~/db/schema'
 
 // ─── Clear ────────────────────────────────────────────────────────────────────
@@ -20,11 +19,12 @@ export async function clearAllData(): Promise<void> {
   await db.delete(lineItems)
   await db.delete(legs)
   await db.delete(events)
-  await db.delete(importRuns)
+  await db.delete(files)
   await db.delete(categories)
+  // Clear defaultInstrumentId before deleting instruments (circular FK)
+  await db.update(accounts).set({ defaultInstrumentId: null })
   await db.delete(instruments)
   await db.delete(accounts)
-  await db.delete(views)
   await db.delete(users)
 }
 
@@ -35,12 +35,11 @@ export interface SeedResult {
   accountIds: Record<string, string>
   instrumentIds: Record<string, string>
   categoryIds: Record<string, string>
-  viewIds: Record<string, string>
 }
 
 // ─── Base seed ────────────────────────────────────────────────────────────────
 
-/** Seed the single demo user, accounts, instruments, categories, and views. */
+/** Seed the single demo user, accounts, instruments, and categories. */
 export async function seedBase(): Promise<SeedResult> {
   // ── User ──────────────────────────────────────────────────────────────────
   const [user] = await db
@@ -64,23 +63,33 @@ export async function seedBase(): Promise<SeedResult> {
   const [cbAud, amexAud, wiseAud, wiseUsd, vCashAud, vHoldVdal] = await db
     .insert(instruments)
     .values([
-      { userId: user.id, accountId: commbank.id, code: 'AUD', kind: 'fiat', minorUnit: 2, name: 'Australian Dollar' },
-      { userId: user.id, accountId: amex.id, code: 'AUD', kind: 'fiat', minorUnit: 2, name: 'Australian Dollar' },
-      { userId: user.id, accountId: wise.id, code: 'AUD', kind: 'fiat', minorUnit: 2, name: 'Australian Dollar' },
-      { userId: user.id, accountId: wise.id, code: 'USD', kind: 'fiat', minorUnit: 2, name: 'US Dollar' },
-      { userId: user.id, accountId: vanguardCash.id, code: 'AUD', kind: 'fiat', minorUnit: 2, name: 'Australian Dollar' },
-      { userId: user.id, accountId: vanguardHoldings.id, code: 'VDAL', kind: 'security', minorUnit: 0, name: 'Vanguard Diversified All Growth ETF' },
+      { userId: user.id, accountId: commbank.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
+      { userId: user.id, accountId: amex.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
+      { userId: user.id, accountId: wise.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
+      { userId: user.id, accountId: wise.id, ticker: 'USD', exponent: 2, name: 'US Dollar' },
+      { userId: user.id, accountId: vanguardCash.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
+      { userId: user.id, accountId: vanguardHoldings.id, ticker: 'VDAL', exponent: 0, name: 'Vanguard Diversified All Growth ETF' },
     ])
     .returning()
+
+  // ── Set default instruments on accounts ─────────────────────────────────
+  const { eq } = await import('drizzle-orm')
+  await Promise.all([
+    db.update(accounts).set({ defaultInstrumentId: cbAud.id }).where(eq(accounts.id, commbank.id)),
+    db.update(accounts).set({ defaultInstrumentId: amexAud.id }).where(eq(accounts.id, amex.id)),
+    db.update(accounts).set({ defaultInstrumentId: wiseAud.id }).where(eq(accounts.id, wise.id)),
+    db.update(accounts).set({ defaultInstrumentId: vCashAud.id }).where(eq(accounts.id, vanguardCash.id)),
+    db.update(accounts).set({ defaultInstrumentId: vHoldVdal.id }).where(eq(accounts.id, vanguardHoldings.id)),
+  ])
 
   // ── Categories ────────────────────────────────────────────────────────────
   const [income, savings, lifestyle, essential] = await db
     .insert(categories)
     .values([
-      { userId: user.id, name: 'Income', nameNormalized: 'income' },
-      { userId: user.id, name: 'Savings', nameNormalized: 'savings' },
-      { userId: user.id, name: 'Lifestyle', nameNormalized: 'lifestyle' },
-      { userId: user.id, name: 'Essential', nameNormalized: 'essential' },
+      { userId: user.id, name: 'Income' },
+      { userId: user.id, name: 'Savings' },
+      { userId: user.id, name: 'Lifestyle' },
+      { userId: user.id, name: 'Essential' },
     ])
     .returning()
 
@@ -88,25 +97,16 @@ export async function seedBase(): Promise<SeedResult> {
   const [food, transport] = await db
     .insert(categories)
     .values([
-      { userId: user.id, parentId: lifestyle.id, name: 'Food', nameNormalized: 'food' },
-      { userId: user.id, parentId: essential.id, name: 'Transport', nameNormalized: 'transport' },
+      { userId: user.id, parentId: lifestyle.id, name: 'Food' },
+      { userId: user.id, parentId: essential.id, name: 'Transport' },
     ])
     .returning()
 
   const [coffee, groceries] = await db
     .insert(categories)
     .values([
-      { userId: user.id, parentId: food.id, name: 'Coffee', nameNormalized: 'coffee' },
-      { userId: user.id, parentId: food.id, name: 'Groceries', nameNormalized: 'groceries' },
-    ])
-    .returning()
-
-  // ── Views ─────────────────────────────────────────────────────────────────
-  const [personal, freelance] = await db
-    .insert(views)
-    .values([
-      { userId: user.id, name: 'Personal', nameNormalized: 'personal' },
-      { userId: user.id, name: 'Freelance', nameNormalized: 'freelance' },
+      { userId: user.id, parentId: food.id, name: 'Coffee' },
+      { userId: user.id, parentId: food.id, name: 'Groceries' },
     ])
     .returning()
 
@@ -137,10 +137,6 @@ export async function seedBase(): Promise<SeedResult> {
       coffee: coffee.id,
       groceries: groceries.id,
     },
-    viewIds: {
-      personal: personal.id,
-      freelance: freelance.id,
-    },
   }
 }
 
@@ -148,8 +144,7 @@ export async function seedBase(): Promise<SeedResult> {
 
 /** Seed sample purchase, transfer, exchange, and trade events. */
 export async function seedSampleEvents(seed: SeedResult): Promise<void> {
-  const { userId, accountIds, instrumentIds, categoryIds, viewIds } = seed
-  const now = new Date()
+  const { userId, accountIds, instrumentIds, categoryIds } = seed
 
   // Purchase: Woolworths $55.20 from CommBank
   const [purchase] = await db
@@ -157,7 +152,6 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     .values({
       userId,
       accountId: accountIds.commbank,
-      eventType: 'purchase',
       effectiveAt: new Date('2025-01-10T00:00:00Z'),
       postedAt: new Date('2025-01-11T00:00:00Z'),
       description: 'WOOLWORTHS 1234 PENRITH',
@@ -168,7 +162,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     userId,
     eventId: purchase.id,
     instrumentId: instrumentIds.cbAud,
-    amountMinor: BigInt(-5520),
+    unitCount: BigInt(-5520),
     categoryId: categoryIds.groceries,
   })
 
@@ -178,7 +172,6 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     .values({
       userId,
       accountId: accountIds.commbank,
-      eventType: 'transfer',
       effectiveAt: new Date('2025-01-15T00:00:00Z'),
       postedAt: new Date('2025-01-15T00:00:00Z'),
       description: 'Transfer to Wise',
@@ -189,7 +182,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     userId,
     eventId: transfer.id,
     instrumentId: instrumentIds.cbAud,
-    amountMinor: BigInt(-50000),
+    unitCount: BigInt(-50000),
   })
 
   const [transferIn] = await db
@@ -197,7 +190,6 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     .values({
       userId,
       accountId: accountIds.wise,
-      eventType: 'transfer',
       effectiveAt: new Date('2025-01-15T00:00:00Z'),
       postedAt: new Date('2025-01-15T00:00:00Z'),
       description: 'Transfer from CommBank',
@@ -208,7 +200,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     userId,
     eventId: transferIn.id,
     instrumentId: instrumentIds.wiseAud,
-    amountMinor: BigInt(50000),
+    unitCount: BigInt(50000),
   })
 
   // Link the two transfer events
@@ -224,7 +216,6 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     .values({
       userId,
       accountId: accountIds.wise,
-      eventType: 'exchange',
       effectiveAt: new Date('2025-02-01T00:00:00Z'),
       postedAt: new Date('2025-02-01T00:00:00Z'),
       description: 'Converted 100 USD to AUD',
@@ -232,8 +223,8 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     })
     .returning()
   await db.insert(legs).values([
-    { userId, eventId: exchange.id, instrumentId: instrumentIds.wiseUsd, amountMinor: BigInt(-10000) },
-    { userId, eventId: exchange.id, instrumentId: instrumentIds.wiseAud, amountMinor: BigInt(15873) },
+    { userId, eventId: exchange.id, instrumentId: instrumentIds.wiseUsd, unitCount: BigInt(-10000) },
+    { userId, eventId: exchange.id, instrumentId: instrumentIds.wiseAud, unitCount: BigInt(15873) },
   ])
 
   // Trade: Buy 19 VDAL for $855 AUD
@@ -242,7 +233,6 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     .values({
       userId,
       accountId: accountIds.vanguardCash,
-      eventType: 'trade',
       effectiveAt: new Date('2025-04-06T00:00:00Z'),
       postedAt: new Date('2025-04-06T00:00:00Z'),
       description: 'Buy VDAL x19',
@@ -250,7 +240,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     })
     .returning()
   await db.insert(legs).values([
-    { userId, eventId: trade.id, instrumentId: instrumentIds.vHoldVdal, amountMinor: BigInt(19) },
-    { userId, eventId: trade.id, instrumentId: instrumentIds.vCashAud, amountMinor: BigInt(-85500) },
+    { userId, eventId: trade.id, instrumentId: instrumentIds.vHoldVdal, unitCount: BigInt(19) },
+    { userId, eventId: trade.id, instrumentId: instrumentIds.vCashAud, unitCount: BigInt(-85500) },
   ])
 }
