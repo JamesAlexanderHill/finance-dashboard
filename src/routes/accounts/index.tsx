@@ -6,6 +6,7 @@ import { db } from '~/db'
 import { users, accounts, instruments, files } from '~/db/schema'
 import { getUserBalances } from '~/lib/balance'
 import { formatCurrency } from '~/lib/format-currency'
+import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -126,93 +127,86 @@ function AccountsPage() {
         />
       )}
 
-      {accounts.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400 text-sm">No accounts yet.</p>
-      ) : (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
-                  Account Name
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
-                  Balances
-                </th>
-                <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
-                  Imports
-                </th>
-                <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
-                  Instruments
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
-                  Default Instrument
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {accounts.map((account) => (
-                <tr
-                  key={account.id}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                >
-                  <td className="px-4 py-3">
-                    <Link
-                      to="/accounts/$accountId"
-                      params={{ accountId: account.id }}
-                      className="text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 font-medium"
+      <PaginatedTable
+        data={accounts}
+        columns={[
+          {
+            id: 'name',
+            header: 'Account Name',
+            accessorKey: 'name',
+            cell: ({ row }) => (
+              <span className="text-gray-900 dark:text-gray-100 font-medium">
+                {row.original.name}
+              </span>
+            ),
+          },
+          {
+            id: 'balances',
+            header: 'Balances',
+            cell: ({ row }) =>
+              row.original.balances.length === 0 ? (
+                <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
+              ) : (
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {row.original.balances.map((b) => (
+                    <span
+                      key={b.instrumentId}
+                      className={[
+                        'text-xs tabular-nums',
+                        b.unitCount < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300',
+                      ].join(' ')}
                     >
-                      {account.name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    {account.balances.length === 0 ? (
-                      <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-x-3 gap-y-1">
-                        {account.balances.map((b) => {
-                          const neg = b.unitCount < 0
-                          const abs = neg ? -b.unitCount : b.unitCount
-                          return (
-                            <span
-                              key={b.instrumentId}
-                              className={[
-                                'text-xs tabular-nums',
-                                neg ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300',
-                              ].join(' ')}
-                            >
-                              {formatCurrency(b.unitCount, {
-                                exponent: b.instrumentExponent,
-                                ticker: b.instrumentTicker,
-                              })}
-                              <span className="text-gray-400 dark:text-gray-500">{b.instrumentTicker}</span>
-                            </span>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400 tabular-nums">
-                    {account.importCount}
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400 tabular-nums">
-                    {account.instrumentCount}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                    {account.defaultInstrument ? (
-                      <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-                        {account.defaultInstrument.ticker}
-                      </span>
-                    ) : (
-                      <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                      {formatCurrency(b.unitCount, {
+                        exponent: b.instrumentExponent,
+                        ticker: b.instrumentTicker,
+                      })}
+                      <span className="text-gray-400 dark:text-gray-500">{b.instrumentTicker}</span>
+                    </span>
+                  ))}
+                </div>
+              ),
+          },
+          {
+            id: 'imports',
+            header: 'Imports',
+            accessorKey: 'importCount',
+            cell: ({ getValue }) => (
+              <span className="text-gray-600 dark:text-gray-400 tabular-nums">
+                {getValue() as number}
+              </span>
+            ),
+          },
+          {
+            id: 'instruments',
+            header: 'Instruments',
+            accessorKey: 'instrumentCount',
+            cell: ({ getValue }) => (
+              <span className="text-gray-600 dark:text-gray-400 tabular-nums">
+                {getValue() as number}
+              </span>
+            ),
+          },
+          {
+            id: 'defaultInstrument',
+            header: 'Default Instrument',
+            cell: ({ row }) =>
+              row.original.defaultInstrument ? (
+                <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                  {row.original.defaultInstrument.ticker}
+                </span>
+              ) : (
+                <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
+              ),
+          },
+        ] satisfies ColumnDef<typeof accounts[number]>[]}
+        pagination={{ page: 1, pageSize: accounts.length, totalCount: accounts.length }}
+        onPaginationChange={() => {}}
+        hidePagination
+        onRowClick={(account) => router.navigate({ to: '/accounts/$accountId', params: { accountId: account.id } })}
+        getRowId={(row) => row.id}
+      >
+        <p>No accounts yet.</p>
+      </PaginatedTable>
     </div>
   )
 }

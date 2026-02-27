@@ -6,11 +6,12 @@ import { db } from '~/db'
 import { users, accounts, instruments } from '~/db/schema'
 import { getUserBalances } from '~/lib/balance'
 import { formatCurrency } from '~/lib/format-currency'
+import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getInstrumentsData = createServerFn({ method: 'GET' })
-  .inputValidator((data: unknown) => data as { accountId: string; page?: number })
+  .inputValidator((data: unknown) => data as { accountId: string; page?: number; pageSize?: number })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) return { user: null, account: null, instruments: [], balances: [], totalCount: 0, page: 1, pageSize: 20 }
@@ -23,7 +24,7 @@ const getInstrumentsData = createServerFn({ method: 'GET' })
     if (!account) return { user, account: null, instruments: [], balances: [], totalCount: 0, page: 1, pageSize: 20 }
 
     const page = data.page ?? 1
-    const pageSize = 20
+    const pageSize = data.pageSize ?? 20
     const offset = (page - 1) * pageSize
 
     const [accountInstruments, allBalances, countResult] = await Promise.all([
@@ -82,17 +83,21 @@ const createInstrument = createServerFn({ method: 'POST' })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
+const DEFAULT_PAGE_SIZE = 20
+
 interface InstrumentsSearch {
   page?: number
+  pageSize?: number
 }
 
 export const Route = createFileRoute('/accounts/$accountId/instruments/')({
   validateSearch: (search: Record<string, unknown>): InstrumentsSearch => ({
     page: typeof search.page === 'number' ? search.page : 1,
+    pageSize: typeof search.pageSize === 'number' ? search.pageSize : DEFAULT_PAGE_SIZE,
   }),
-  loaderDeps: ({ search }) => ({ page: search.page }),
+  loaderDeps: ({ search }) => ({ page: search.page, pageSize: search.pageSize }),
   loader: ({ params, deps }) =>
-    getInstrumentsData({ data: { accountId: params.accountId, page: deps.page } }),
+    getInstrumentsData({ data: { accountId: params.accountId, page: deps.page, pageSize: deps.pageSize } }),
   component: InstrumentsPage,
 })
 
@@ -142,8 +147,6 @@ function InstrumentsPage() {
     setShowCreate(false)
     router.invalidate()
   }
-
-  const totalPages = Math.ceil(totalCount / pageSize)
 
   // Sort instruments with default first
   const sortedInstruments = [...instruments].sort((a, b) => {
@@ -246,96 +249,64 @@ function InstrumentsPage() {
       )}
 
       {/* Table */}
-      {sortedInstruments.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400 text-sm">No instruments yet.</p>
-      ) : (
-        <>
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
-                    Instrument
-                  </th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
-                    Balance
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {sortedInstruments.map((instrument) => {
-                  const balance = balances.find((b) => b.instrumentId === instrument.id)
-                  const unitCount = balance?.unitCount ?? BigInt(0)
-                  const neg = unitCount < 0
-                  const abs = neg ? -unitCount : unitCount
-                  const isDefault = instrument.id === account.defaultInstrumentId
-
-                  return (
-                    <tr
-                      key={instrument.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          to="/accounts/$accountId/instruments/$instrumentId"
-                          params={{ accountId, instrumentId: instrument.id }}
-                          className="text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 font-medium"
-                        >
-                          {instrument.ticker}
-                          {isDefault && (
-                            <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-                              Default
-                            </span>
-                          )}
-                        </Link>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{instrument.name}</p>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span
-                          className={[
-                            'font-medium tabular-nums',
-                            neg ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
-                          ].join(' ')}
-                        >
-                          {formatCurrency(unitCount, {
-                            exponent: instrument.exponent,
-                            ticker: instrument.ticker,
-                          })}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Page {page} of {totalPages}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => navigate({ search: { page: page - 1 } })}
-                  disabled={page <= 1}
-                  className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800"
+      <PaginatedTable
+        data={sortedInstruments}
+        columns={[
+          {
+            id: 'instrument',
+            header: 'Instrument',
+            cell: ({ row }) => {
+              const isDefault = row.original.id === account.defaultInstrumentId
+              return (
+                <div>
+                  <span className="text-gray-900 dark:text-gray-100 font-medium">
+                    {row.original.ticker}
+                    {isDefault && (
+                      <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                        Default
+                      </span>
+                    )}
+                  </span>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{row.original.name}</p>
+                </div>
+              )
+            },
+          },
+          {
+            id: 'balance',
+            header: 'Balance',
+            cell: ({ row }) => {
+              const balance = balances.find((b) => b.instrumentId === row.original.id)
+              const unitCount = balance?.unitCount ?? BigInt(0)
+              const neg = unitCount < 0
+              return (
+                <span
+                  className={[
+                    'font-medium tabular-nums',
+                    neg ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
+                  ].join(' ')}
                 >
-                  Previous
-                </button>
-                <button
-                  onClick={() => navigate({ search: { page: page + 1 } })}
-                  disabled={page >= totalPages}
-                  className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
+                  {formatCurrency(unitCount, {
+                    exponent: row.original.exponent,
+                    ticker: row.original.ticker,
+                  })}
+                </span>
+              )
+            },
+          },
+        ] satisfies ColumnDef<typeof sortedInstruments[number]>[]}
+        pagination={{ page, pageSize, totalCount }}
+        onPaginationChange={(p) => navigate({ search: p })}
+        onRowClick={(instrument) =>
+          navigate({
+            to: '/accounts/$accountId/instruments/$instrumentId',
+            params: { accountId, instrumentId: instrument.id },
+          })
+        }
+        getRowId={(row) => row.id}
+      >
+        <p>No instruments yet.</p>
+      </PaginatedTable>
     </div>
   )
 }

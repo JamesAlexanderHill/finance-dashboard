@@ -4,8 +4,8 @@ import { createServerFn } from '@tanstack/react-start'
 import { eq, and, desc, isNull, sql } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, accounts, instruments, events, legs, categories } from '~/db/schema'
-import { format } from 'path'
 import { formatCurrency } from '~/lib/format-currency'
+import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -99,15 +99,6 @@ export const Route = createFileRoute('/accounts/$accountId/instruments/$instrume
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const EVENT_TYPE_BADGE: Record<string, string> = {
-  purchase: 'bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300',
-  transfer: 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300',
-  exchange: 'bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300',
-  trade: 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300',
-  bill_payment: 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300',
-  payout: 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300',
-}
-
 function formatDate(d: Date | string) {
   return new Date(d).toLocaleDateString('en-AU', {
     day: 'numeric',
@@ -122,6 +113,7 @@ function InstrumentDetailPage() {
   const { user, account, instrument, balance, recentEvents } = Route.useLoaderData()
   const { accountId, instrumentId } = Route.useParams()
   const router = useRouter()
+  const navigate = Route.useNavigate()
   const [editing, setEditing] = React.useState(false)
 
   if (!user) {
@@ -316,65 +308,59 @@ function InstrumentDetailPage() {
       <section>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Recent Events</h2>
 
-        {recentEvents.length === 0 ? (
-          <p className="text-gray-500 dark:text-gray-400 text-sm">No events yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {recentEvents.map(({ event, legs: eventLegs }) => {
-              return (
-                <div
-                  key={event.id}
-                  className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden"
-                >
-                  {/* Event header */}
-                  <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100 dark:border-gray-800">
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-gray-500 dark:text-gray-400">
-                        {formatDate(event.effectiveAt)}
-                      </span>
-                      <Link
-                        to="/events/$eventId"
-                        params={{ eventId: event.id }}
-                        className="font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        {event.description}
-                      </Link>
-                    </div>
-                  </div>
-
-                  {/* Legs for this instrument */}
-                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {eventLegs.map(({ leg, category }) => {
-                      const legNeg = leg.unitCount < BigInt(0)
-                      const legAbs = legNeg ? -leg.unitCount : leg.unitCount
-                      return (
-                        <div key={leg.id} className="px-4 py-2 flex items-center justify-between">
-                          <span
-                            className={[
-                              'text-sm font-medium tabular-nums',
-                              legNeg ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400',
-                            ].join(' ')}
-                          >
-                            {legNeg ? '−' : '+'}
-                            {formatCurrency(leg.unitCount, {
-                              exponent: instrument.exponent,
-                              // ticker: leg.instrumentId.ticker,// TODO: this needs to be the ticker of the current leg, not the main instrument
-                            })}
-                          </span>
-                          {category && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {category.name}
-                            </span>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
+        <PaginatedTable
+          data={recentEvents}
+          columns={[
+            {
+              id: 'date',
+              header: 'Date',
+              cell: ({ row }) => (
+                <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {formatDate(row.original.event.effectiveAt)}
+                </span>
+              ),
+            },
+            {
+              id: 'description',
+              header: 'Description',
+              cell: ({ row }) => (
+                <span className="text-gray-900 dark:text-gray-100 font-medium">
+                  {row.original.event.description}
+                </span>
+              ),
+            },
+            {
+              id: 'amount',
+              header: 'Amount',
+              cell: ({ row }) => {
+                const totalAmount = row.original.legs.reduce(
+                  (sum, { leg }) => sum + leg.unitCount,
+                  BigInt(0)
+                )
+                const neg = totalAmount < BigInt(0)
+                return (
+                  <span
+                    className={[
+                      'font-medium tabular-nums',
+                      neg ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400',
+                    ].join(' ')}
+                  >
+                    {formatCurrency(totalAmount, { exponent: instrument.exponent })}
+                  </span>
+                )
+              },
+            },
+          ] satisfies ColumnDef<typeof recentEvents[number]>[]}
+          pagination={{ page: 1, pageSize: 10, totalCount: recentEvents.length }}
+          onPaginationChange={() => {}}
+          hidePagination
+          onRowClick={(row) =>
+            navigate({ to: '/events/$eventId', params: { eventId: row.event.id } })
+          }
+          getRowId={(row) => row.event.id}
+        >
+          <p>No events yet.</p>
+        </PaginatedTable>
       </section>
     </div>
   )

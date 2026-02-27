@@ -3,11 +3,11 @@ import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { eq, and, desc, isNull } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts, instruments, events, files, Leg, Event } from '~/db/schema'
+import { users, accounts, instruments, events, files } from '~/db/schema'
 import { getUserBalances } from '~/lib/balance'
 import { ImportWizard } from '~/components/ImportWizard'
 import InstrumentCard from '~/components/instrument-card'
-import { formatCurrency } from '~/lib/format-currency'
+import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -15,16 +15,16 @@ const getAccountDetailData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, instruments: [], balances: [], importRuns: [], recentEvents: [] }
+    if (!user) return { user: null, account: null, instruments: [], balances: [], files: [], recentEvents: [] }
 
     const [account] = await db
       .select()
       .from(accounts)
       .where(and(eq(accounts.id, data.accountId), eq(accounts.userId, user.id)))
 
-    if (!account) return { user, account: null, instruments: [], balances: [], importRuns: [], recentEvents: [] }
+    if (!account) return { user, account: null, instruments: [], balances: [], files: [], recentEvents: [] }
 
-    const [accountInstruments, allBalances, accountImportRuns, recentEvents] = await Promise.all([
+    const [accountInstruments, allBalances, accountFiles, recentEvents] = await Promise.all([
       db.select().from(instruments).where(eq(instruments.accountId, data.accountId)),
       getUserBalances(user.id),
       db
@@ -49,7 +49,7 @@ const getAccountDetailData = createServerFn({ method: 'GET' })
     // Filter balances to only this account
     const balances = allBalances.filter((b) => b.accountId === data.accountId)
 
-    return { user, account, instruments: accountInstruments, balances, importRuns: accountImportRuns, recentEvents }
+    return { user, account, instruments: accountInstruments, balances, files: accountFiles, recentEvents }
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
@@ -67,20 +67,6 @@ const updateAccount = createServerFn({ method: 'POST' })
       .where(and(eq(accounts.id, data.id), eq(accounts.userId, user.id)))
   })
 
-const deleteFile = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { fileId: string })
-  .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) throw new Error('No user found')
-
-    const [file] = await db
-      .delete(files)
-      .where(and(eq(files.id, data.fileId), eq(files.userId, user.id)))
-      .returning();
-
-    if (!file) throw new Error('File not found')
-  });
-
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute('/accounts/$accountId/')({
@@ -89,15 +75,6 @@ export const Route = createFileRoute('/accounts/$accountId/')({
 })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const EVENT_TYPE_BADGE: Record<string, string> = {
-  purchase: 'bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300',
-  transfer: 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300',
-  exchange: 'bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300',
-  trade: 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300',
-  bill_payment: 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300',
-  payout: 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300',
-}
 
 function formatDate(d: Date | string) {
   return new Date(d).toLocaleDateString('en-AU', {
@@ -120,13 +97,12 @@ function formatDateTime(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function AccountDetailPage() {
-  const { user, account, instruments, balances, importRuns, recentEvents } = Route.useLoaderData()
+  const { user, account, instruments, balances, files, recentEvents } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const router = useRouter()
   const [editing, setEditing] = React.useState(false)
-  const [deletingImportId, setDeletingImportId] = React.useState<string | null>(null)
   const [showImportWizard, setShowImportWizard] = React.useState(false)
-  const [expandedEventId, setExpandedEventId] = React.useState<string | null>(null)
+  const navigate = Route.useNavigate()
 
   if (!user) {
     return (
@@ -158,25 +134,12 @@ function AccountDetailPage() {
       data: {
         id: account!.id,
         name: String(fd.get('name')),
-        importerKey: String(fd.get('importerKey')),
+        fileKey: String(fd.get('fileKey')),
         defaultInstrumentId: String(fd.get('defaultInstrumentId')) || null,
       },
     })
     setEditing(false)
     router.invalidate()
-  }
-
-  async function handleDeleteFile(fileId: string) {
-    if (!confirm('Delete this import? All events from this import will be removed.')) {
-      return
-    }
-    setDeletingImportId(fileId)
-    try {
-      await deleteFile({ data: { fileId } })
-      router.invalidate()
-    } finally {
-      setDeletingImportId(null)
-    }
   }
 
   // Sort instruments: default first, then by balance (descending)
@@ -240,7 +203,7 @@ function AccountDetailPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Importer Key
+                File Key
               </label>
               <input
                 name="importerKey"
@@ -277,7 +240,7 @@ function AccountDetailPage() {
                     <span className="text-gray-400 dark:text-gray-500">None</span>
                   )}
                 </span>
-                <span>Importer: {account.importerKey}</span>
+                <span>Importer Key: {account.importerKey}</span>
               </div>
             </div>
             <button
@@ -328,13 +291,13 @@ function AccountDetailPage() {
         )}
       </section>
 
-      {/* Section C: Recent Imports */}
+      {/* Section C: Recent Files */}
       <section>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recent Imports</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recent Files</h2>
           <div className="flex items-center gap-3">
             <Link
-              to="/accounts/$accountId/imports"
+              to="/accounts/$accountId/files"
               params={{ accountId: account.id }}
               className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
             >
@@ -366,51 +329,65 @@ function AccountDetailPage() {
           </div>
         )}
 
-        {importRuns.length === 0 ? (
-          <p className="text-gray-500 dark:text-gray-400 text-sm">No imports yet.</p>
-        ) : (
-          <div className="space-y-2">
-            {importRuns.map((run) => (
-              <div
-                key={run.id}
-                className="flex items-center justify-between bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-3"
-              >
-                <div className="flex items-center gap-4">
-                  <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
-                    {formatDateTime(run.createdAt)}
+        <PaginatedTable
+          data={files}
+          columns={[
+            {
+              id: 'date',
+              header: 'Date',
+              accessorKey: 'createdAt',
+              cell: ({ getValue }) => (
+                <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {formatDateTime(getValue() as Date)}
+                </span>
+              ),
+            },
+            {
+              id: 'filename',
+              header: 'Filename',
+              accessorKey: 'filename',
+              cell: ({ row }) => (
+                <span className="text-gray-900 dark:text-gray-100 font-medium">
+                  {row.original.filename}
+                </span>
+              ),
+            },
+            {
+              id: 'stats',
+              header: 'Results',
+              cell: ({ row }) => (
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-green-700 dark:text-green-400 tabular-nums">
+                    {row.original.importedCount} imported
                   </span>
-                  <Link
-                    to="/accounts/$accountId/imports/$importId"
-                    params={{ accountId: account.id, importId: run.id }}
-                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline font-medium"
-                  >
-                    {run.filename}
-                  </Link>
+                  <span className="text-gray-400 dark:text-gray-500 tabular-nums">
+                    {row.original.skippedCount} skipped
+                  </span>
+                  {row.original.errorCount > 0 && (
+                    <span className="text-red-600 dark:text-red-400 tabular-nums">
+                      {row.original.errorCount} errors
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="text-green-700 dark:text-green-400 tabular-nums">{run.importedCount} imported</span>
-                    <span className="text-gray-400 dark:text-gray-500 tabular-nums">{run.skippedCount} skipped</span>
-                    {run.errorCount > 0 && (
-                      <span className="text-red-600 dark:text-red-400 tabular-nums">{run.errorCount} errors</span>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => handleDeleteFile(run.id)}
-                    disabled={deletingImportId === run.id}
-                    className="text-xs text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50"
-                    title="Delete import"
-                  >
-                    {deletingImportId === run.id ? '...' : 'Delete'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ),
+            },
+          ] satisfies ColumnDef<typeof files[number]>[]}
+          pagination={{ page: 1, pageSize: 5, totalCount: files.length }}
+          onPaginationChange={() => {}}
+          hidePagination
+          onRowClick={(row) =>
+            navigate({
+              to: '/accounts/$accountId/files/$fileId',
+              params: { accountId: account.id, fileId: row.id },
+            })
+          }
+          getRowId={(row) => row.id}
+        >
+          <p>No files yet.</p>
+        </PaginatedTable>
       </section>
 
-      {/* Section D: Recent Events (Accordion) */}
+      {/* Section D: Recent Events */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recent Events</h2>
@@ -423,53 +400,43 @@ function AccountDetailPage() {
           </Link>
         </div>
 
-        {recentEvents.length === 0 ? (
-          <p className="text-gray-500 dark:text-gray-400 text-sm">No events yet.</p>
-        ) : (
-          <div className="space-y-2">
-            {recentEvents.map((event: Event) => {
-              const isExpanded = expandedEventId === event.id;
-              const badgeClass = '';
-
-              return (
-                <div
-                  key={event.id}
-                  className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden"
-                >
-                  {/* Collapsed header */}
-                  <button
-                    onClick={() => setExpandedEventId(isExpanded ? null : event.id)}
-                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
-                        {formatDate(event.effectiveAt)}
-                      </span>
-                      <span className="text-sm text-gray-900 dark:text-gray-100 font-medium truncate">
-                        {event.description}
-                      </span>
-                    </div>
-                  </button>
-
-                  {/* Expanded content */}
-                  {isExpanded && (
-                    <div className="px-4 pb-4 pt-2 border-t border-gray-100 dark:border-gray-800">
-                      <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
-                        <Link
-                          to="/accounts/$accountId/events/$eventId"
-                          params={{ accountId, eventId: event.id }}
-                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                        >
-                          View event details
-                        </Link>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
+        <PaginatedTable
+          data={recentEvents}
+          columns={[
+            {
+              id: 'date',
+              header: 'Date',
+              accessorKey: 'effectiveAt',
+              cell: ({ getValue }) => (
+                <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {formatDate(getValue() as Date)}
+                </span>
+              ),
+            },
+            {
+              id: 'description',
+              header: 'Description',
+              accessorKey: 'description',
+              cell: ({ row }) => (
+                <span className="text-gray-900 dark:text-gray-100 font-medium">
+                  {row.original.description}
+                </span>
+              ),
+            },
+          ] satisfies ColumnDef<typeof recentEvents[number]>[]}
+          pagination={{ page: 1, pageSize: 10, totalCount: recentEvents.length }}
+          onPaginationChange={() => {}}
+          hidePagination
+          onRowClick={(event) =>
+            navigate({
+              to: '/accounts/$accountId/events/$eventId',
+              params: { accountId, eventId: event.id },
+            })
+          }
+          getRowId={(row) => row.id}
+        >
+          <p>No events yet.</p>
+        </PaginatedTable>
       </section>
     </div>
   )
