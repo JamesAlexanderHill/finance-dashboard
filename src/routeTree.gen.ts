@@ -16,7 +16,6 @@ import { Route as AccountsRouteRouteImport } from './routes/accounts/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as AccountsIndexRouteImport } from './routes/accounts/index'
-import { Route as EventsEventIdRouteImport } from './routes/events/$eventId'
 import { Route as AccountsAccountIdRouteRouteImport } from './routes/accounts/$accountId/route'
 import { Route as AccountsAccountIdIndexRouteImport } from './routes/accounts/$accountId/index'
 import { Route as AccountsAccountIdInstrumentsRouteRouteImport } from './routes/accounts/$accountId/instruments/route'
@@ -27,7 +26,6 @@ import { Route as AccountsAccountIdFilesIndexRouteImport } from './routes/accoun
 import { Route as AccountsAccountIdEventsIndexRouteImport } from './routes/accounts/$accountId/events/index'
 import { Route as AccountsAccountIdInstrumentsInstrumentIdRouteImport } from './routes/accounts/$accountId/instruments/$instrumentId'
 import { Route as AccountsAccountIdFilesFileIdRouteImport } from './routes/accounts/$accountId/files/$fileId'
-import { Route as AccountsAccountIdEventsEventIdRouteImport } from './routes/accounts/$accountId/events/$eventId'
 
 const DevRoute = DevRouteImport.update({
   id: '/dev',
@@ -63,11 +61,6 @@ const AccountsIndexRoute = AccountsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AccountsRouteRoute,
-} as any)
-const EventsEventIdRoute = EventsEventIdRouteImport.update({
-  id: '/$eventId',
-  path: '/$eventId',
-  getParentRoute: () => EventsRouteRoute,
 } as any)
 const AccountsAccountIdRouteRoute = AccountsAccountIdRouteRouteImport.update({
   id: '/$accountId',
@@ -127,12 +120,6 @@ const AccountsAccountIdFilesFileIdRoute =
     path: '/$fileId',
     getParentRoute: () => AccountsAccountIdFilesRouteRoute,
   } as any)
-const AccountsAccountIdEventsEventIdRoute =
-  AccountsAccountIdEventsEventIdRouteImport.update({
-    id: '/$eventId',
-    path: '/$eventId',
-    getParentRoute: () => AccountsAccountIdEventsRouteRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -141,14 +128,12 @@ export interface FileRoutesByFullPath {
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
   '/accounts/$accountId': typeof AccountsAccountIdRouteRouteWithChildren
-  '/events/$eventId': typeof EventsEventIdRoute
   '/accounts/': typeof AccountsIndexRoute
   '/events/': typeof EventsIndexRoute
   '/accounts/$accountId/events': typeof AccountsAccountIdEventsRouteRouteWithChildren
   '/accounts/$accountId/files': typeof AccountsAccountIdFilesRouteRouteWithChildren
   '/accounts/$accountId/instruments': typeof AccountsAccountIdInstrumentsRouteRouteWithChildren
   '/accounts/$accountId/': typeof AccountsAccountIdIndexRoute
-  '/accounts/$accountId/events/$eventId': typeof AccountsAccountIdEventsEventIdRoute
   '/accounts/$accountId/files/$fileId': typeof AccountsAccountIdFilesFileIdRoute
   '/accounts/$accountId/instruments/$instrumentId': typeof AccountsAccountIdInstrumentsInstrumentIdRoute
   '/accounts/$accountId/events/': typeof AccountsAccountIdEventsIndexRoute
@@ -159,11 +144,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
-  '/events/$eventId': typeof EventsEventIdRoute
   '/accounts': typeof AccountsIndexRoute
   '/events': typeof EventsIndexRoute
   '/accounts/$accountId': typeof AccountsAccountIdIndexRoute
-  '/accounts/$accountId/events/$eventId': typeof AccountsAccountIdEventsEventIdRoute
   '/accounts/$accountId/files/$fileId': typeof AccountsAccountIdFilesFileIdRoute
   '/accounts/$accountId/instruments/$instrumentId': typeof AccountsAccountIdInstrumentsInstrumentIdRoute
   '/accounts/$accountId/events': typeof AccountsAccountIdEventsIndexRoute
@@ -178,14 +161,12 @@ export interface FileRoutesById {
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
   '/accounts/$accountId': typeof AccountsAccountIdRouteRouteWithChildren
-  '/events/$eventId': typeof EventsEventIdRoute
   '/accounts/': typeof AccountsIndexRoute
   '/events/': typeof EventsIndexRoute
   '/accounts/$accountId/events': typeof AccountsAccountIdEventsRouteRouteWithChildren
   '/accounts/$accountId/files': typeof AccountsAccountIdFilesRouteRouteWithChildren
   '/accounts/$accountId/instruments': typeof AccountsAccountIdInstrumentsRouteRouteWithChildren
   '/accounts/$accountId/': typeof AccountsAccountIdIndexRoute
-  '/accounts/$accountId/events/$eventId': typeof AccountsAccountIdEventsEventIdRoute
   '/accounts/$accountId/files/$fileId': typeof AccountsAccountIdFilesFileIdRoute
   '/accounts/$accountId/instruments/$instrumentId': typeof AccountsAccountIdInstrumentsInstrumentIdRoute
   '/accounts/$accountId/events/': typeof AccountsAccountIdEventsIndexRoute
@@ -201,14 +182,12 @@ export interface FileRouteTypes {
     | '/categories'
     | '/dev'
     | '/accounts/$accountId'
-    | '/events/$eventId'
     | '/accounts/'
     | '/events/'
     | '/accounts/$accountId/events'
     | '/accounts/$accountId/files'
     | '/accounts/$accountId/instruments'
     | '/accounts/$accountId/'
-    | '/accounts/$accountId/events/$eventId'
     | '/accounts/$accountId/files/$fileId'
     | '/accounts/$accountId/instruments/$instrumentId'
     | '/accounts/$accountId/events/'
@@ -219,11 +198,9 @@ export interface FileRouteTypes {
     | '/'
     | '/categories'
     | '/dev'
-    | '/events/$eventId'
     | '/accounts'
     | '/events'
     | '/accounts/$accountId'
-    | '/accounts/$accountId/events/$eventId'
     | '/accounts/$accountId/files/$fileId'
     | '/accounts/$accountId/instruments/$instrumentId'
     | '/accounts/$accountId/events'
@@ -237,14 +214,12 @@ export interface FileRouteTypes {
     | '/categories'
     | '/dev'
     | '/accounts/$accountId'
-    | '/events/$eventId'
     | '/accounts/'
     | '/events/'
     | '/accounts/$accountId/events'
     | '/accounts/$accountId/files'
     | '/accounts/$accountId/instruments'
     | '/accounts/$accountId/'
-    | '/accounts/$accountId/events/$eventId'
     | '/accounts/$accountId/files/$fileId'
     | '/accounts/$accountId/instruments/$instrumentId'
     | '/accounts/$accountId/events/'
@@ -310,13 +285,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/accounts/'
       preLoaderRoute: typeof AccountsIndexRouteImport
       parentRoute: typeof AccountsRouteRoute
-    }
-    '/events/$eventId': {
-      id: '/events/$eventId'
-      path: '/$eventId'
-      fullPath: '/events/$eventId'
-      preLoaderRoute: typeof EventsEventIdRouteImport
-      parentRoute: typeof EventsRouteRoute
     }
     '/accounts/$accountId': {
       id: '/accounts/$accountId'
@@ -388,24 +356,15 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountsAccountIdFilesFileIdRouteImport
       parentRoute: typeof AccountsAccountIdFilesRouteRoute
     }
-    '/accounts/$accountId/events/$eventId': {
-      id: '/accounts/$accountId/events/$eventId'
-      path: '/$eventId'
-      fullPath: '/accounts/$accountId/events/$eventId'
-      preLoaderRoute: typeof AccountsAccountIdEventsEventIdRouteImport
-      parentRoute: typeof AccountsAccountIdEventsRouteRoute
-    }
   }
 }
 
 interface AccountsAccountIdEventsRouteRouteChildren {
-  AccountsAccountIdEventsEventIdRoute: typeof AccountsAccountIdEventsEventIdRoute
   AccountsAccountIdEventsIndexRoute: typeof AccountsAccountIdEventsIndexRoute
 }
 
 const AccountsAccountIdEventsRouteRouteChildren: AccountsAccountIdEventsRouteRouteChildren =
   {
-    AccountsAccountIdEventsEventIdRoute: AccountsAccountIdEventsEventIdRoute,
     AccountsAccountIdEventsIndexRoute: AccountsAccountIdEventsIndexRoute,
   }
 
@@ -486,12 +445,10 @@ const AccountsRouteRouteWithChildren = AccountsRouteRoute._addFileChildren(
 )
 
 interface EventsRouteRouteChildren {
-  EventsEventIdRoute: typeof EventsEventIdRoute
   EventsIndexRoute: typeof EventsIndexRoute
 }
 
 const EventsRouteRouteChildren: EventsRouteRouteChildren = {
-  EventsEventIdRoute: EventsEventIdRoute,
   EventsIndexRoute: EventsIndexRoute,
 }
 

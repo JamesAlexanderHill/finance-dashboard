@@ -1,6 +1,7 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { eq, desc, isNull, and } from 'drizzle-orm'
+import PaginatedTable, { ColumnDef } from '~/components/paginated-table'
 import { db } from '~/db'
 import { users, events, accounts } from '~/db/schema'
 
@@ -46,15 +47,6 @@ export const Route = createFileRoute('/events/')({
 })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const EVENT_TYPE_BADGE: Record<string, string> = {
-  purchase: 'bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300',
-  transfer: 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300',
-  exchange: 'bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300',
-  trade: 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300',
-  bill_payment: 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300',
-  payout: 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300',
-}
 
 function formatDate(d: Date | string) {
   return new Date(d).toLocaleDateString('en-AU', {
@@ -120,65 +112,78 @@ function EventsPage() {
         </div>
       </div>
 
-      {events.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400 text-sm">No events found.</p>
-      ) : (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400 w-28">
-                  Date
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">
-                  Description
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400 w-28">
-                  Type
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400 w-28">
-                  Account
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {events.map((event) => {
-                const account = accounts.find((a) => a.id === event.accountId)
-                const badgeClass = EVENT_TYPE_BADGE[event.eventType] ?? ''
+      {/* Recent Events */}
+      <section>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Recent Events</h2>
+
+        <PaginatedTable
+          data={events}
+          columns={[
+            {
+              id: 'date',
+              header: 'Date',
+              cell: ({ row }) => (
+                <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {formatDate(row.original.effectiveAt)}
+                </span>
+              ),
+            },
+            {
+              id: 'account',
+              header: 'Account',
+              cell: ({ row }) => {
+                const account = accounts.find((a) => a.id === row.original.accountId)
                 return (
-                  <tr
-                    key={event.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                  >
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                      {formatDate(event.effectiveAt)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        to="/events/$eventId"
-                        params={{ eventId: event.id }}
-                        className="text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 font-medium"
-                      >
-                        {event.description}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full font-medium ${badgeClass}`}
-                      >
-                        {event.eventType}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs truncate max-w-[8rem]">
-                      {account?.name ?? '—'}
-                    </td>
-                  </tr>
+                  <span className="text-gray-500 dark:text-gray-400 text-xs truncate max-w-[8rem]">
+                    {account?.name ?? '—'}
+                  </span>
                 )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+              }
+            },
+            {
+              id: 'description',
+              header: 'Description',
+              cell: ({ row }) => (
+                <span className="text-gray-900 dark:text-gray-100 font-medium">
+                  {row.original.description}
+                </span>
+              ),
+            },
+            {
+              id: 'amount',
+              header: 'Amount',
+              cell: ({ row }) => {
+                // const totalAmount = row.original.legs.reduce(
+                //   (sum, { leg }) => sum + leg.unitCount,
+                //   BigInt(0)
+                // )
+                const totalAmount = BigInt(1000) // TODO: fix this
+                const neg = totalAmount < BigInt(0)
+                return (
+                  <span
+                    className={[
+                      'font-medium tabular-nums',
+                      neg ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400',
+                    ].join(' ')}
+                  >
+                    {totalAmount}
+                    {/* {formatCurrency(totalAmount, { exponent: row.original.instrument.exponent })} */}
+                  </span>
+                )
+              },
+            },
+          ] satisfies ColumnDef<typeof events[number]>[]}
+          pagination={{ page: 1, pageSize: 10, totalCount: events.length }}
+          onPaginationChange={() => {}}
+          hidePagination
+          onRowClick={(row) =>
+            navigate({ search: (prev) => ({ ...prev, viewEvent: row.id }) })
+          }
+          getRowId={(row) => row.id}
+        >
+          <p>No events yet.</p>
+        </PaginatedTable>
+      </section>
     </div>
   )
 }

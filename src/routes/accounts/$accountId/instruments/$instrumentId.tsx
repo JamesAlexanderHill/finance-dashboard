@@ -354,7 +354,7 @@ function InstrumentDetailPage() {
           onPaginationChange={() => {}}
           hidePagination
           onRowClick={(row) =>
-            navigate({ to: '/events/$eventId', params: { eventId: row.event.id } })
+            navigate({ search: (prev) => ({ ...prev, viewEvent: row.event.id }) })
           }
           getRowId={(row) => row.event.id}
         >

@@ -319,10 +319,7 @@ function FileDetailPage() {
           pagination={{ page, pageSize, totalCount }}
           onPaginationChange={(p) => navigate({ search: p })}
           onRowClick={(event) =>
-            navigate({
-              to: '/accounts/$accountId/events/$eventId',
-              params: { accountId, eventId: event.id },
-            })
+            navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })
           }
           getRowId={(row) => row.id}
         >

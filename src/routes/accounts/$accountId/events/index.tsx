@@ -127,13 +127,9 @@ function EventsPage() {
       header: 'Description',
       accessorKey: 'description',
       cell: ({ row }) => (
-        <Link
-          to="/accounts/$accountId/events/$eventId"
-          params={{ accountId, eventId: row.original.id }}
-          className="text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 font-medium"
-        >
+        <span className="text-gray-900 dark:text-gray-100 font-medium">
           {row.original.description}
-        </Link>
+        </span>
       ),
     },
   ]
@@ -171,6 +167,7 @@ function EventsPage() {
         columns={columns}
         pagination={{ page, pageSize, totalCount }}
         onPaginationChange={(p) => navigate({ search: p })}
+        onRowClick={(event) => navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })}
         getRowId={(row) => row.id}
         showColumnVisibilityToggle
       >

@@ -5,6 +5,8 @@ import {
   Outlet,
   Scripts,
   createRootRouteWithContext,
+  useNavigate,
+  useSearch,
 } from '@tanstack/react-router'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
@@ -12,11 +14,19 @@ import * as React from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
 import { NotFound } from '~/components/NotFound'
+import { EventDrawer } from '~/components/event-drawer'
 import appCss from '~/styles/app.css?url'
+
+type RootSearch = {
+  viewEvent?: string
+}
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient
 }>()({
+  validateSearch: (search: Record<string, unknown>): RootSearch => ({
+    viewEvent: typeof search.viewEvent === 'string' ? search.viewEvent : undefined,
+  }),
   head: () => ({
     meta: [
       { charSet: 'utf-8' },
@@ -38,9 +48,17 @@ export const Route = createRootRouteWithContext<{
 })
 
 function RootComponent() {
+  const { viewEvent } = useSearch({ from: '__root__' })
+  const navigate = useNavigate()
+
+  function handleCloseDrawer() {
+    navigate({ search: (prev) => ({ ...prev, viewEvent: undefined }) })
+  }
+
   return (
     <RootDocument>
       <Outlet />
+      <EventDrawer eventId={viewEvent} onClose={handleCloseDrawer} />
     </RootDocument>
   )
 }
