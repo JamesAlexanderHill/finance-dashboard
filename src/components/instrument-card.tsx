@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { Instrument, Account } from "~/db/schema";
 import { formatCurrency } from "~/lib/format-currency";
-import Badge from "~/components/badge";
+import Badge from "~/components/atom/badge";
 
 type InstrumentCardProps = {
     instrument: Instrument;

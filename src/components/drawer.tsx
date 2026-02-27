@@ -4,7 +4,7 @@ import * as React from "react"
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 import { XIcon } from "lucide-react"
 
-import { Button } from "~/components/button"
+import { Button } from "~/components/atom/button"
 import cn from "~/lib/class-merge"
 
 function Sheet({ ...props }: SheetPrimitive.Root.Props) {

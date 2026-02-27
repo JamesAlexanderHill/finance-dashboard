@@ -6,7 +6,7 @@ import { db } from '~/db'
 import { users, accounts, instruments, events, legs, categories } from '~/db/schema'
 import { formatCurrency } from '~/lib/format-currency'
 import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
-import Badge from '~/components/badge'
+import Badge from '~/components/atom/badge'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
