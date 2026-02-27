@@ -6,6 +6,7 @@ import { db } from '~/db'
 import { users, accounts, instruments, events, legs, categories } from '~/db/schema'
 import { formatCurrency } from '~/lib/format-currency'
 import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
+import Badge from '~/components/badge'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -274,9 +275,7 @@ function InstrumentDetailPage() {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{instrument.ticker}</h1>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-                  {instrument.ticker}
-                </span>
+                {account.defaultInstrumentId === instrument.id ? (<Badge>Default</Badge>) : null}
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{instrument.name}</p>
               <p

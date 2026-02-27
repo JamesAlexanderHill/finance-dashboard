@@ -7,41 +7,41 @@ import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
-const getImportsData = createServerFn({ method: 'GET' })
+const getFilesData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string; page?: number; pageSize?: number })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, imports: [], totalCount: 0, page: 1, pageSize: 20 }
+    if (!user) return { user: null, account: null, files: [], totalCount: 0, page: 1, pageSize: 20 }
 
     const [account] = await db
       .select()
       .from(accounts)
       .where(and(eq(accounts.id, data.accountId), eq(accounts.userId, user.id)))
 
-    if (!account) return { user, account: null, imports: [], totalCount: 0, page: 1, pageSize: 20 }
+    if (!account) return { user, account: null, files: [], totalCount: 0, page: 1, pageSize: 20 }
 
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? 20
     const offset = (page - 1) * pageSize
 
-    const [imports, countResult] = await Promise.all([
+    const [fileData, countResult] = await Promise.all([
       db
         .select()
         .from(files)
-        .where(and(eq(files.accountId, data.accountId), isNull(files.deletedAt)))
+        .where(and(eq(files.accountId, data.accountId)))
         .orderBy(desc(files.createdAt))
         .limit(pageSize)
         .offset(offset),
       db
         .select({ count: sql<number>`count(*)` })
         .from(files)
-        .where(and(eq(files.accountId, data.accountId), isNull(files.deletedAt))),
+        .where(and(eq(files.accountId, data.accountId))),
     ])
 
     return {
       user,
       account,
-      imports,
+      files: fileData,
       totalCount: Number(countResult[0]?.count ?? 0),
       page,
       pageSize,
@@ -52,20 +52,20 @@ const getImportsData = createServerFn({ method: 'GET' })
 
 const DEFAULT_PAGE_SIZE = 20
 
-interface ImportsSearch {
+interface FilesSearch {
   page?: number
   pageSize?: number
 }
 
 export const Route = createFileRoute('/accounts/$accountId/files/')({
-  validateSearch: (search: Record<string, unknown>): ImportsSearch => ({
+  validateSearch: (search: Record<string, unknown>): FilesSearch => ({
     page: typeof search.page === 'number' ? search.page : 1,
     pageSize: typeof search.pageSize === 'number' ? search.pageSize : DEFAULT_PAGE_SIZE,
   }),
   loaderDeps: ({ search }) => ({ page: search.page, pageSize: search.pageSize }),
   loader: ({ params, deps }) =>
-    getImportsData({ data: { accountId: params.accountId, page: deps.page, pageSize: deps.pageSize } }),
-  component: ImportsPage,
+    getFilesData({ data: { accountId: params.accountId, page: deps.page, pageSize: deps.pageSize } }),
+  component: FilesPage,
 })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -82,8 +82,8 @@ function formatDateTime(d: Date | string) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-function ImportsPage() {
-  const { user, account, imports, totalCount, page, pageSize } = Route.useLoaderData()
+function FilesPage() {
+  const { user, account, files, totalCount, page, pageSize } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const navigate = Route.useNavigate()
 
@@ -126,24 +126,24 @@ function ImportsPage() {
           {account.name}
         </Link>
         <span>/</span>
-        <span className="text-gray-900 dark:text-gray-100">Imports</span>
+        <span className="text-gray-900 dark:text-gray-100">Files</span>
       </div>
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Imports</h1>
+        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Files</h1>
         <span className="text-sm text-gray-500 dark:text-gray-400">
-          {totalCount} import{totalCount !== 1 ? 's' : ''}
+          {totalCount} file{totalCount !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* Table */}
       <PaginatedTable
-        data={imports}
+        data={files}
         columns={[
           {
             id: 'date',
-            header: 'Import Date/Time',
+            header: 'File Date/Time',
             accessorKey: 'createdAt',
             cell: ({ getValue }) => (
               <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
@@ -200,18 +200,18 @@ function ImportsPage() {
               )
             },
           },
-        ] satisfies ColumnDef<typeof imports[number]>[]}
+        ] satisfies ColumnDef<typeof files[number]>[]}
         pagination={{ page, pageSize, totalCount }}
         onPaginationChange={(p) => navigate({ search: p })}
-        onRowClick={(importRun) =>
+        onRowClick={(file) =>
           navigate({
-            to: '/accounts/$accountId/imports/$importId',
-            params: { accountId, importId: importRun.id },
+            to: '/accounts/$accountId/files/$fileId',
+            params: { accountId, fileId: file.id },
           })
         }
         getRowId={(row) => row.id}
       >
-        <p>No imports yet.</p>
+        <p>No files yet.</p>
       </PaginatedTable>
     </div>
   )

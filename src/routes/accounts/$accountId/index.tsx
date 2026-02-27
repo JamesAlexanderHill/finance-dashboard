@@ -53,7 +53,7 @@ const getAccountDetailData = createServerFn({ method: 'GET' })
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { id: string; name: string; importerKey: string; defaultInstrumentId: string | null })
+  .inputValidator((data: unknown) => data as { id: string; name: string; defaultInstrumentId: string | null })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user found')
@@ -61,7 +61,6 @@ const updateAccount = createServerFn({ method: 'POST' })
       .update(accounts)
       .set({
         name: data.name.trim(),
-        importerKey: data.importerKey.trim(),
         defaultInstrumentId: data.defaultInstrumentId || null,
       })
       .where(and(eq(accounts.id, data.id), eq(accounts.userId, user.id)))
@@ -201,16 +200,6 @@ function AccountDetailPage() {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                File Key
-              </label>
-              <input
-                name="importerKey"
-                defaultValue={account.importerKey}
-                className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -240,7 +229,6 @@ function AccountDetailPage() {
                     <span className="text-gray-400 dark:text-gray-500">None</span>
                   )}
                 </span>
-                <span>Importer Key: {account.importerKey}</span>
               </div>
             </div>
             <button

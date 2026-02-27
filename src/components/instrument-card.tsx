@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { Instrument, Account } from "~/db/schema";
 import { formatCurrency } from "~/lib/format-currency";
+import Badge from "~/components/badge";
 
 type InstrumentCardProps = {
     instrument: Instrument;
@@ -29,9 +30,7 @@ export default function InstrumentCard({
                     <p className="font-medium text-gray-900 dark:text-gray-100">
                     {instrument.ticker}
                     {isDefault && (
-                        <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-                        Default
-                        </span>
+                        <Badge>Default</Badge>
                     )}
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{instrument.name}</p>

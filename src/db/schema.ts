@@ -47,7 +47,6 @@ export const accounts = pgTable('accounts', {
   id: id(),
   userId: userId().references(() => users.id),
   name: text('name').notNull(),
-  importerKey: text('importer_key').notNull().default('canonical_csv_v1'),
   defaultInstrumentId: text('default_instrument_id').references((): AnyPgColumn => instruments.id),
   createdAt: createdAt(),
 })

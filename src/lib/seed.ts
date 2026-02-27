@@ -48,38 +48,37 @@ export async function seedBase(): Promise<SeedResult> {
     .returning()
 
   // ── Accounts ──────────────────────────────────────────────────────────────
-  const [commbank, amex, wise, vanguardCash, vanguardHoldings] = await db
+  const [commbank, amex, wise, vanguard] = await db
     .insert(accounts)
     .values([
-      { userId: user.id, name: 'CommBank Everyday', importerKey: 'canonical_csv_v1' },
-      { userId: user.id, name: 'AMEX', importerKey: 'canonical_csv_v1' },
-      { userId: user.id, name: 'Wise', importerKey: 'canonical_csv_v1' },
-      { userId: user.id, name: 'Vanguard Cash', importerKey: 'canonical_csv_v1' },
-      { userId: user.id, name: 'Vanguard Holdings', importerKey: 'canonical_csv_v1' },
+      { userId: user.id, name: 'CommBank' },
+      { userId: user.id, name: 'AMEX' },
+      { userId: user.id, name: 'Wise' },
+      { userId: user.id, name: 'Vanguard' },
     ])
     .returning()
 
   // ── Instruments (account-scoped) ─────────────────────────────────────────
-  const [cbAud, amexAud, wiseAud, wiseUsd, vCashAud, vHoldVdal] = await db
+  const [commbankAud, amexAud, wiseAud, wiseNzd, vanguardAud, vanguardVhy] = await db
     .insert(instruments)
     .values([
       { userId: user.id, accountId: commbank.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
       { userId: user.id, accountId: amex.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
       { userId: user.id, accountId: wise.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
-      { userId: user.id, accountId: wise.id, ticker: 'USD', exponent: 2, name: 'US Dollar' },
-      { userId: user.id, accountId: vanguardCash.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
-      { userId: user.id, accountId: vanguardHoldings.id, ticker: 'VDAL', exponent: 0, name: 'Vanguard Diversified All Growth ETF' },
+      { userId: user.id, accountId: wise.id, ticker: 'NZD', exponent: 2, name: 'New Zealand Dollar' },
+      { userId: user.id, accountId: vanguard.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
+      { userId: user.id, accountId: vanguard.id, ticker: 'VHY', exponent: 0, name: 'Vanguard Australian Shares High Yield ETF' },
     ])
     .returning()
 
   // ── Set default instruments on accounts ─────────────────────────────────
   const { eq } = await import('drizzle-orm')
   await Promise.all([
-    db.update(accounts).set({ defaultInstrumentId: cbAud.id }).where(eq(accounts.id, commbank.id)),
+    db.update(accounts).set({ defaultInstrumentId: commbankAud.id }).where(eq(accounts.id, commbank.id)),
     db.update(accounts).set({ defaultInstrumentId: amexAud.id }).where(eq(accounts.id, amex.id)),
     db.update(accounts).set({ defaultInstrumentId: wiseAud.id }).where(eq(accounts.id, wise.id)),
-    db.update(accounts).set({ defaultInstrumentId: vCashAud.id }).where(eq(accounts.id, vanguardCash.id)),
-    db.update(accounts).set({ defaultInstrumentId: vHoldVdal.id }).where(eq(accounts.id, vanguardHoldings.id)),
+    db.update(accounts).set({ defaultInstrumentId: vanguardAud.id }).where(eq(accounts.id, vanguard.id)),
+    db.update(accounts).set({ defaultInstrumentId: vanguardVhy.id }).where(eq(accounts.id, vanguard.id)),
   ])
 
   // ── Categories ────────────────────────────────────────────────────────────
@@ -116,16 +115,15 @@ export async function seedBase(): Promise<SeedResult> {
       commbank: commbank.id,
       amex: amex.id,
       wise: wise.id,
-      vanguardCash: vanguardCash.id,
-      vanguardHoldings: vanguardHoldings.id,
+      vanguard: vanguard.id,
     },
     instrumentIds: {
-      cbAud: cbAud.id,
+      commbankAud: commbankAud.id,
       amexAud: amexAud.id,
       wiseAud: wiseAud.id,
-      wiseUsd: wiseUsd.id,
-      vCashAud: vCashAud.id,
-      vHoldVdal: vHoldVdal.id,
+      wiseNzd: wiseNzd.id,
+      vanguardAud: vanguardAud.id,
+      vanguardVhy: vanguardVhy.id,
     },
     categoryIds: {
       income: income.id,
@@ -161,7 +159,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
   await db.insert(legs).values({
     userId,
     eventId: purchase.id,
-    instrumentId: instrumentIds.cbAud,
+    instrumentId: instrumentIds.commbankAud,
     unitCount: BigInt(-5520),
     categoryId: categoryIds.groceries,
   })
@@ -181,7 +179,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
   await db.insert(legs).values({
     userId,
     eventId: transfer.id,
-    instrumentId: instrumentIds.cbAud,
+    instrumentId: instrumentIds.commbankAud,
     unitCount: BigInt(-50000),
   })
 
@@ -232,7 +230,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     .insert(events)
     .values({
       userId,
-      accountId: accountIds.vanguardCash,
+      accountId: accountIds.vanguard,
       effectiveAt: new Date('2025-04-06T00:00:00Z'),
       postedAt: new Date('2025-04-06T00:00:00Z'),
       description: 'Buy VDAL x19',
@@ -240,7 +238,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     })
     .returning()
   await db.insert(legs).values([
-    { userId, eventId: trade.id, instrumentId: instrumentIds.vHoldVdal, unitCount: BigInt(19) },
-    { userId, eventId: trade.id, instrumentId: instrumentIds.vCashAud, unitCount: BigInt(-85500) },
+    { userId, eventId: trade.id, instrumentId: instrumentIds.vanguardVhy, unitCount: BigInt(19) },
+    { userId, eventId: trade.id, instrumentId: instrumentIds.vanguardAud, unitCount: BigInt(-85500) },
   ])
 }

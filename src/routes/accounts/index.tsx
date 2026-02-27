@@ -61,14 +61,13 @@ const getAccountsData = createServerFn({ method: 'GET' }).handler(async () => {
 })
 
 const createAccount = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { name: string; importerKey: string })
+  .inputValidator((data: unknown) => data as { name: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user found')
     await db.insert(accounts).values({
       userId: user.id,
       name: data.name.trim(),
-      importerKey: data.importerKey.trim() || 'canonical_csv_v1',
     })
   })
 
@@ -101,7 +100,7 @@ function AccountsPage() {
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
-    await createAccount({ data: { name: String(fd.get('name')), importerKey: String(fd.get('importerKey')) } })
+    await createAccount({ data: { name: String(fd.get('name')) } })
     setShowCreate(false)
     router.invalidate()
   }
@@ -215,13 +214,11 @@ function AccountsPage() {
 
 function AccountForm({
   defaultName = '',
-  defaultImporterKey = 'canonical_csv_v1',
   onSubmit,
   onCancel,
   submitLabel,
 }: {
   defaultName?: string
-  defaultImporterKey?: string
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
   onCancel: () => void
   submitLabel: string
@@ -236,16 +233,6 @@ function AccountForm({
           name="name"
           defaultValue={defaultName}
           required
-          className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-          Importer Key
-        </label>
-        <input
-          name="importerKey"
-          defaultValue={defaultImporterKey}
           className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
