@@ -13,7 +13,7 @@ const classLookup = {
 
 export default function Badge({ color = 'blue', children }: BadgeProps) {
     return (
-        <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded ${classLookup[color]}`}>
+        <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${classLookup[color]}`}>
             {children}
         </span>
     )

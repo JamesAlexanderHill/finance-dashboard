@@ -5,28 +5,18 @@
  * Rows sharing the same `eventGroup` are merged into a single Event.
  *
  * Columns:
- *   eventGroup, externalEventId, eventType, effectiveAt, postedAt,
- *   description, instrumentCode, amountMinor, categoryPath
+ *   externalEventId, eventGroup, eventDescription, effectiveAt, postedAt,
+ *   legDescription, legTicker, legUnitCount
  */
-
-export type EventType =
-  | 'purchase'
-  | 'transfer'
-  | 'exchange'
-  | 'trade'
-  | 'bill_payment'
-  | 'payout'
 
 export interface ParsedLeg {
   instrumentCode: string
   amountMinor: bigint
-  categoryPath: string | null
 }
 
 export interface ParsedEvent {
   eventGroup: string
   externalEventId: string | null
-  eventType: EventType
   effectiveAt: Date
   postedAt: Date
   description: string
@@ -44,23 +34,15 @@ export interface ParseResult {
 }
 
 const REQUIRED_COLUMNS = [
+  'externalEventId',
   'eventGroup',
-  'eventType',
+  'eventDescription',
   'effectiveAt',
   'postedAt',
-  'description',
-  'instrumentCode',
-  'amountMinor',
+  'legDescription',
+  'legTicker',
+  'legUnitCount',
 ] as const
-
-const VALID_EVENT_TYPES: EventType[] = [
-  'purchase',
-  'transfer',
-  'exchange',
-  'trade',
-  'bill_payment',
-  'payout',
-]
 
 /** Parse a canonical finance CSV string into structured events. Runs in the browser. */
 export function parseCanonicalCsv(csvContent: string): ParseResult {
@@ -110,10 +92,9 @@ export function parseCanonicalCsv(csvContent: string): ParseResult {
     // Validate event-level field consistency across rows in the group
     const eventFields = [
       'externalEventId',
-      'eventType',
       'effectiveAt',
       'postedAt',
-      'description',
+      'eventDescription',
     ] as const
     let groupHasError = false
 
@@ -135,15 +116,6 @@ export function parseCanonicalCsv(csvContent: string): ParseResult {
     if (groupHasError) continue
 
     // Parse event-level fields from the first row
-    const eventType = firstRow[idx('eventType')]?.trim()
-    if (!VALID_EVENT_TYPES.includes(eventType as EventType)) {
-      errors.push({
-        line: firstLine,
-        message: `Invalid eventType "${eventType}". Must be one of: ${VALID_EVENT_TYPES.join(', ')}`,
-      })
-      continue
-    }
-
     const effectiveAtRaw = firstRow[idx('effectiveAt')]?.trim()
     const postedAtRaw = firstRow[idx('postedAt')]?.trim()
     const effectiveAt = parseDate(effectiveAtRaw)
@@ -158,7 +130,7 @@ export function parseCanonicalCsv(csvContent: string): ParseResult {
       continue
     }
 
-    const description = firstRow[idx('description')]?.trim() ?? ''
+    const description = firstRow[idx('eventDescription')]?.trim() ?? ''
     const externalEventId = firstRow[idx('externalEventId')]?.trim() || null
 
     // Parse legs from all rows in the group
@@ -166,24 +138,21 @@ export function parseCanonicalCsv(csvContent: string): ParseResult {
     let legError = false
 
     for (const { row, lineNum } of rowObjs) {
-      const instrumentCode = row[idx('instrumentCode')]?.trim()
+      const instrumentCode = row[idx('legTicker')]?.trim()
       if (!instrumentCode) {
-        errors.push({ line: lineNum, message: 'instrumentCode is required' })
+        errors.push({ line: lineNum, message: 'legTicker is required' })
         legError = true
         continue
       }
-      const amountMinorRaw = row[idx('amountMinor')]?.trim()
+      const amountMinorRaw = row[idx('legUnitCount')]?.trim()
       if (!amountMinorRaw || isNaN(Number(amountMinorRaw))) {
-        errors.push({ line: lineNum, message: `Invalid amountMinor: "${amountMinorRaw}"` })
+        errors.push({ line: lineNum, message: `Invalid legUnitCount: "${amountMinorRaw}"` })
         legError = true
         continue
       }
-      const categoryPath = row[idx('categoryPath')]?.trim() || null
-
       legs.push({
         instrumentCode,
         amountMinor: BigInt(amountMinorRaw),
-        categoryPath,
       })
     }
 
@@ -192,7 +161,6 @@ export function parseCanonicalCsv(csvContent: string): ParseResult {
     parsedEvents.push({
       eventGroup,
       externalEventId,
-      eventType: eventType as EventType,
       effectiveAt,
       postedAt,
       description,

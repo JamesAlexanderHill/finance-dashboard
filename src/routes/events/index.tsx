@@ -1,9 +1,12 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, desc, isNull, and } from 'drizzle-orm'
+import { eq, desc, and, inArray } from 'drizzle-orm'
+import Badge from '~/components/atom/badge'
 import PaginatedTable, { ColumnDef } from '~/components/paginated-table'
 import { db } from '~/db'
-import { users, events, accounts } from '~/db/schema'
+import { getUserAccounts, getUserInstruments } from '~/db/queries'
+import { users, events, legs } from '~/db/schema'
+import scaleUnit from '~/lib/scale-unit'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -13,22 +16,26 @@ const getEventsData = createServerFn({ method: 'GET' })
     const [user] = await db.select().from(users).limit(1)
     if (!user) return { user: null, events: [], accounts: [] }
 
-    const userAccounts = await db
-      .select()
-      .from(accounts)
-      .where(eq(accounts.userId, user.id))
+    const userAccounts = await getUserAccounts(user.id);
+    const userInstruments = await getUserInstruments(user.id);
 
     const userEvents = await db.query.events.findMany({
       where: and(
         eq(events.userId, user.id),
-        isNull(events.deletedAt),
         data.accountId ? eq(events.accountId, data.accountId) : undefined,
       ),
       orderBy: [desc(events.effectiveAt)],
       limit: 100,
-    })
+    });
 
-    return { user, events: userEvents, accounts: userAccounts }
+    const eventIds = userEvents.map(e => e.id);
+
+    const eventLegs = await db
+      .select()
+      .from(legs)
+      .where(inArray(legs.eventId, eventIds));
+
+    return { user, events: userEvents, legs: eventLegs, accounts: userAccounts, instruments: userInstruments }
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -59,7 +66,7 @@ function formatDate(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function EventsPage() {
-  const { user, events, accounts } = Route.useLoaderData()
+  const { user, accounts, events, legs, instruments } = Route.useLoaderData()
   const { accountId } = Route.useSearch()
   const navigate = Route.useNavigate()
 
@@ -150,25 +157,33 @@ function EventsPage() {
               ),
             },
             {
-              id: 'amount',
-              header: 'Amount',
+              id: 'change',
+              header: 'Change',
               cell: ({ row }) => {
-                // const totalAmount = row.original.legs.reduce(
-                //   (sum, { leg }) => sum + leg.unitCount,
-                //   BigInt(0)
-                // )
-                const totalAmount = BigInt(1000) // TODO: fix this
-                const neg = totalAmount < BigInt(0)
+                // show a ticker badge with with the net change (reg/green)
+                const eventId = row.original.id;
+                const legsForEvent = legs.filter(l => l.eventId === eventId);
+
+                const changesByInstrument: Record<string, bigint> = legsForEvent.reduce((acc, leg) => {
+                  const instrumentId = leg.instrumentId;
+                  acc[instrumentId] = (acc[instrumentId] || BigInt(0)) + leg.unitCount;
+                  return acc;
+                }, {} as Record<string, bigint>);
+
                 return (
-                  <span
-                    className={[
-                      'font-medium tabular-nums',
-                      neg ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400',
-                    ].join(' ')}
-                  >
-                    {totalAmount}
-                    {/* {formatCurrency(totalAmount, { exponent: row.original.instrument.exponent })} */}
-                  </span>
+                  <div>
+                    {Object.entries(changesByInstrument).map(([instrumentId, totalUnitCount]) => {
+                      const instrument = instruments.find(i => i.id === instrumentId);
+                      if (!instrument) return null;
+
+                      const neg = totalUnitCount < 0;
+                      const totalAmount = scaleUnit(totalUnitCount, instrument.exponent);
+
+                      return (
+                        <Badge key={instrumentId} color={neg ? 'red' : 'green'}>{neg ? '' : '+'}{totalAmount} {instrument.ticker}</Badge>
+                      );
+                    })}
+                  </div>
                 )
               },
             },

@@ -1,3 +1,5 @@
+import scaleUnit from "~/lib/scale-unit";
+
 type formatCurrencyOptions = {
   exponent?: number;
   ticker?: string;
@@ -18,10 +20,10 @@ export function formatCurrency(unitCount: bigint, {
   ticker = 'AUD',
   locale = 'en-AU',
 }: formatCurrencyOptions = {}): string {
-  // Convert from smallest unit (e.g. cents) to major unit (e.g. dollars)
-  const value = Number(unitCount) / 10 ** exponent;
-
   try {
+    // Convert from smallest unit (e.g. cents) to major unit (e.g. dollars)
+    const scaledValue = scaleUnit(unitCount, exponent);
+    
     const formatter = new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: ticker,
@@ -29,11 +31,12 @@ export function formatCurrency(unitCount: bigint, {
         maximumFractionDigits: exponent,
     });
 
-    return formatter.format(value);
+    return formatter.format(scaledValue);
   } catch (err) {
+    const scaledValue = scaleUnit(unitCount, exponent);
     console.error('Error formatting currency:', err);
 
     // Fallback to a simple format if Intl fails (e.g., due to unsupported currency code)
-    return `${ticker} ${value.toFixed(exponent)}`;
+    return `${ticker} ${scaledValue.toFixed(exponent)}`;
   };
 };

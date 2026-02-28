@@ -260,8 +260,8 @@ function Step1({
       <div className="text-xs text-gray-400 dark:text-gray-500 pt-2">
         Expected columns:{' '}
         <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">
-          eventGroup, externalEventId, eventType, effectiveAt, postedAt, description,
-          instrumentCode, amountMinor, categoryPath
+          externalEventId, eventGroup, eventDescription, effectiveAt, postedAt,
+          legDescription, legTicker, legUnitCount
         </code>
       </div>
     </div>
@@ -440,7 +440,7 @@ function Step3({
                     {ev.description}
                   </p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                    {ev.effectiveAt.toLocaleDateString('en-AU')} · {ev.eventType} · {ev.legs.length} leg{ev.legs.length !== 1 ? 's' : ''}
+                    {ev.effectiveAt.toLocaleDateString('en-AU')} · {ev.legs.length} leg{ev.legs.length !== 1 ? 's' : ''}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 ml-3">
@@ -507,9 +507,7 @@ function Step3({
                         type="text"
                         placeholder="category path (e.g. food:coffee)"
                         defaultValue={
-                          categoryAssignments[`${ev.eventGroup}_${legIdx}`] ??
-                          leg.categoryPath ??
-                          ''
+                          categoryAssignments[`${ev.eventGroup}_${legIdx}`] ?? ''
                         }
                         onBlur={(e) =>
                           onCategoryAssign(`${ev.eventGroup}_${legIdx}`, e.target.value || null)

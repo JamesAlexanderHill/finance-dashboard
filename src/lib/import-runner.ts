@@ -170,9 +170,9 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
           const instrumentId = instrumentMap.get(leg.instrumentCode.toUpperCase())
           if (!instrumentId) throw new Error(`Unknown instrument: ${leg.instrumentCode}`)
 
-          // Category: prefer user-assigned override, fall back to CSV categoryPath
+          // Category from user assignments
           const catKey = `${parsed.eventGroup}_${legIdx}`
-          const catPath = params.categoryAssignments[catKey] ?? leg.categoryPath
+          const catPath = params.categoryAssignments[catKey] ?? null
           const categoryId = catPath
             ? await resolveCategoryPath(userId, catPath, userCategories)
             : null
