@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and, desc, isNull, sql } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, accounts, events } from '~/db/schema'
-import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
+import { getEvents } from '~/db/queries'
+import EventTable from '~/components/event/event-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -27,19 +28,11 @@ const getEventsData = createServerFn({ method: 'GET' })
     const offset = (page - 1) * pageSize
 
     const [accountEvents, countResult] = await Promise.all([
-      db.query.events.findMany({
-        where: and(eq(events.accountId, data.accountId), isNull(events.deletedAt)),
-        orderBy: [desc(events.effectiveAt)],
-        limit: pageSize,
-        offset,
-        with: {
-          legs: { with: { instrument: true } },
-        },
-      }),
+      getEvents(user.id, { accountId: data.accountId, limit: pageSize, offset }),
       db
         .select({ count: sql<number>`count(*)` })
         .from(events)
-        .where(and(eq(events.accountId, data.accountId), isNull(events.deletedAt))),
+        .where(eq(events.accountId, data.accountId)),
     ])
 
     return {
@@ -69,16 +62,6 @@ export const Route = createFileRoute('/accounts/$accountId/events/')({
     getEventsData({ data: { accountId: params.accountId, page: deps.page, pageSize: deps.pageSize } }),
   component: EventsPage,
 })
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDate(d: Date | string) {
-  return new Date(d).toLocaleDateString('en-AU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -110,30 +93,6 @@ function EventsPage() {
     )
   }
 
-  // Define columns for the table
-  const columns: ColumnDef<typeof accountEvents[number]>[] = [
-    {
-      id: 'date',
-      header: 'Date',
-      accessorKey: 'effectiveAt',
-      cell: ({ getValue }) => (
-        <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
-          {formatDate(getValue() as Date)}
-        </span>
-      ),
-    },
-    {
-      id: 'description',
-      header: 'Description',
-      accessorKey: 'description',
-      cell: ({ row }) => (
-        <span className="text-gray-900 dark:text-gray-100 font-medium">
-          {row.original.description}
-        </span>
-      ),
-    },
-  ]
-
   return (
     <div className="max-w-5xl">
       {/* Breadcrumb */}
@@ -162,17 +121,13 @@ function EventsPage() {
       </div>
 
       {/* Table */}
-      <PaginatedTable
-        data={accountEvents}
-        columns={columns}
+      <EventTable
+        events={accountEvents}
         pagination={{ page, pageSize, totalCount }}
         onPaginationChange={(p) => navigate({ search: p })}
         onRowClick={(event) => navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })}
-        getRowId={(row) => row.id}
-        showColumnVisibilityToggle
-      >
-        <p>No events yet.</p>
-      </PaginatedTable>
+        hideColumns={['account']}
+      />
     </div>
   )
 }

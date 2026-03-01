@@ -1,55 +1,66 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, desc, and, inArray } from 'drizzle-orm'
-import Badge from '~/components/atom/badge'
-import PaginatedTable, { ColumnDef } from '~/components/paginated-table'
+import { eq, and, sql } from 'drizzle-orm'
+import EventTable from '~/components/event/event-table'
 import { db } from '~/db'
-import { getUserAccounts, getUserInstruments } from '~/db/queries'
-import { users, events, legs } from '~/db/schema'
-import scaleUnit from '~/lib/scale-unit'
+import { getEvents, getAccounts} from '~/db/queries'
+import { users, events } from '~/db/schema'
+
+const DEFAULT_PAGE_SIZE = 20
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
-const getEventsData = createServerFn({ method: 'GET' })
-  .inputValidator((data: unknown) => data as { accountId?: string })
+const getData = createServerFn({ method: 'GET' })
+  .inputValidator((data: unknown) => data as { page?: number, pageSize?: number, accountId?: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) return { user: null, events: [], accounts: [] }
 
-    const userAccounts = await getUserAccounts(user.id);
-    const userInstruments = await getUserInstruments(user.id);
+    // paginated events
+    const page = data.page ?? 1
+    const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
+    const offset = (page - 1) * pageSize
 
-    const userEvents = await db.query.events.findMany({
-      where: and(
-        eq(events.userId, user.id),
-        data.accountId ? eq(events.accountId, data.accountId) : undefined,
-      ),
-      orderBy: [desc(events.effectiveAt)],
-      limit: 100,
-    });
+    // need the account list so that we can filter events by accounts id that have not been returned in the current event query
+    const [userAccounts, userEvents, countResult] = await Promise.all([
+      getAccounts(user.id, {limit: 200}), // surely someone does not have more that 200 accounts
+      getEvents(user.id, { accountId: data.accountId, limit: pageSize, offset }),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(events)
+        .where(and(
+          eq(events.userId, user.id),
+          data.accountId ? eq(events.accountId, data.accountId) : undefined,
+        )),
+    ]);
 
-    const eventIds = userEvents.map(e => e.id);
-
-    const eventLegs = await db
-      .select()
-      .from(legs)
-      .where(inArray(legs.eventId, eventIds));
-
-    return { user, events: userEvents, legs: eventLegs, accounts: userAccounts, instruments: userInstruments }
+    return {
+      user,
+      events: userEvents,
+      accounts: userAccounts,
+      // pagination meta
+      totalCount: Number(countResult[0]?.count ?? 0),
+      page,
+      pageSize, }
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 interface EventsSearch {
   accountId?: string
+  page?: number
+  pageSize?: number
 }
 
 export const Route = createFileRoute('/events/')({
   validateSearch: (search: Record<string, unknown>): EventsSearch => ({
     accountId: typeof search.accountId === 'string' ? search.accountId : undefined,
+    page: typeof search.page === 'number' ? search.page : 1,
+    pageSize: typeof search.pageSize === 'number' ? search.pageSize : DEFAULT_PAGE_SIZE,
   }),
-  loaderDeps: ({ search }) => ({ accountId: search.accountId }),
-  loader: ({ deps }) => getEventsData({ data: deps }),
+  loaderDeps: ({ search }) => ({ page: search.page, pageSize: search.pageSize, accountId: search.accountId }),
+  loader: ({ deps }) =>
+    getData({ data: { accountId: deps.accountId, page: deps.page, pageSize: deps.pageSize } }),
   component: EventsPage,
 })
 
@@ -66,7 +77,7 @@ function formatDate(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function EventsPage() {
-  const { user, accounts, events, legs, instruments } = Route.useLoaderData()
+  const { user, accounts, events, totalCount, page, pageSize } = Route.useLoaderData()
   const { accountId } = Route.useSearch()
   const navigate = Route.useNavigate()
 
@@ -122,82 +133,12 @@ function EventsPage() {
       {/* Recent Events */}
       <section>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Recent Events</h2>
-
-        <PaginatedTable
-          data={events}
-          columns={[
-            {
-              id: 'date',
-              header: 'Date',
-              cell: ({ row }) => (
-                <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                  {formatDate(row.original.effectiveAt)}
-                </span>
-              ),
-            },
-            {
-              id: 'account',
-              header: 'Account',
-              cell: ({ row }) => {
-                const account = accounts.find((a) => a.id === row.original.accountId)
-                return (
-                  <span className="text-gray-500 dark:text-gray-400 text-xs truncate max-w-[8rem]">
-                    {account?.name ?? '—'}
-                  </span>
-                )
-              }
-            },
-            {
-              id: 'description',
-              header: 'Description',
-              cell: ({ row }) => (
-                <span className="text-gray-900 dark:text-gray-100 font-medium">
-                  {row.original.description}
-                </span>
-              ),
-            },
-            {
-              id: 'change',
-              header: 'Change',
-              cell: ({ row }) => {
-                // show a ticker badge with with the net change (reg/green)
-                const eventId = row.original.id;
-                const legsForEvent = legs.filter(l => l.eventId === eventId);
-
-                const changesByInstrument: Record<string, bigint> = legsForEvent.reduce((acc, leg) => {
-                  const instrumentId = leg.instrumentId;
-                  acc[instrumentId] = (acc[instrumentId] || BigInt(0)) + leg.unitCount;
-                  return acc;
-                }, {} as Record<string, bigint>);
-
-                return (
-                  <div>
-                    {Object.entries(changesByInstrument).map(([instrumentId, totalUnitCount]) => {
-                      const instrument = instruments.find(i => i.id === instrumentId);
-                      if (!instrument) return null;
-
-                      const neg = totalUnitCount < 0;
-                      const totalAmount = scaleUnit(totalUnitCount, instrument.exponent);
-
-                      return (
-                        <Badge key={instrumentId} color={neg ? 'red' : 'green'}>{neg ? '' : '+'}{totalAmount} {instrument.ticker}</Badge>
-                      );
-                    })}
-                  </div>
-                )
-              },
-            },
-          ] satisfies ColumnDef<typeof events[number]>[]}
-          pagination={{ page: 1, pageSize: 10, totalCount: events.length }}
-          onPaginationChange={() => {}}
-          hidePagination
-          onRowClick={(row) =>
-            navigate({ search: (prev) => ({ ...prev, viewEvent: row.id }) })
-          }
-          getRowId={(row) => row.id}
-        >
-          <p>No events yet.</p>
-        </PaginatedTable>
+        <EventTable
+          events={events}
+          pagination={{ page, pageSize, totalCount }}
+          onPaginationChange={(p) => navigate({ search: p })}
+          onRowClick={(event) => navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })}
+        />
       </section>
     </div>
   )

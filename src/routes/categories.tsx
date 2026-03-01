@@ -7,7 +7,8 @@ import type { Category } from '~/db/schema'
 
 // ─── Server function ──────────────────────────────────────────────────────────
 
-const getCategoriesData = createServerFn({ method: 'GET' }).handler(async () => {
+const getData = createServerFn({ method: 'GET' })
+.handler(async () => {
   const [user] = await db.select().from(users).limit(1)
   if (!user) return { user: null, categories: [] }
   const cats = await db
@@ -20,7 +21,7 @@ const getCategoriesData = createServerFn({ method: 'GET' }).handler(async () => 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute('/categories')({
-  loader: () => getCategoriesData(),
+  loader: () => getData(),
   component: CategoriesPage,
 })
 

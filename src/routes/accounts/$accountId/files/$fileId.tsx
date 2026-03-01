@@ -5,7 +5,7 @@ import { eq, and, desc, sql } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, accounts, files, events } from '~/db/schema'
 import { formatCurrency } from '~/lib/format-currency'
-import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
+import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 

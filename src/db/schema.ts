@@ -161,9 +161,38 @@ export const eventRelations = pgTable(
 )
 
 // ─── Relations ────────────────────────────────────────────────────────────────
+export const accountsRelations = relations(accounts, ({ one, many }) => ({// account -> instruments (via instruments.accountId)
+  instruments: many(instruments, { relationName: 'accountInstruments' }),
 
-export const eventsRelations = relations(events, ({ many }) => ({
+  defaultInstrument: one(instruments, {
+    fields: [accounts.defaultInstrumentId],
+    references: [instruments.id],
+    relationName: 'defaultInstrument',
+  }),
+
+  user: one(users, { fields: [accounts.userId], references: [users.id] }),
+}))
+
+export const instrumentsRelations = relations(instruments, ({ one, many }) => ({
+  // instruments.accountId -> accounts.id
+  account: one(accounts, {
+    fields: [instruments.accountId],
+    references: [accounts.id],
+    relationName: 'accountInstruments',
+  }),
+
+  // accounts.defaultInstrumentId -> instruments.id
+  defaultForAccounts: many(accounts, {
+    relationName: 'defaultInstrument',
+  }),
+
+  // optional but usually useful
+  user: one(users, { fields: [instruments.userId], references: [users.id] }),
+}))
+
+export const eventsRelations = relations(events, ({ one, many }) => ({
   legs: many(legs),
+  account: one(accounts, { fields: [events.accountId], references: [accounts.id] }),
   // eventRelations where this event is the parent
   parentRelations: many(eventRelations, { relationName: 'parentEvent' }),
   // eventRelations where this event is the child

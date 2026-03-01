@@ -1,9 +1,9 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and, desc, isNull, sql } from 'drizzle-orm'
+import { eq, and, desc, sql } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, accounts, files } from '~/db/schema'
-import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
+import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 

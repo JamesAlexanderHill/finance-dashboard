@@ -6,7 +6,7 @@ import { db } from '~/db'
 import { users, accounts, instruments } from '~/db/schema'
 import { getUserBalances } from '~/lib/balance'
 import { formatCurrency } from '~/lib/format-currency'
-import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
+import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 

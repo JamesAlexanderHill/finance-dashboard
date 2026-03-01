@@ -5,8 +5,8 @@ import { eq, and, desc, isNull, sql } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, accounts, instruments, events, legs, categories } from '~/db/schema'
 import { formatCurrency } from '~/lib/format-currency'
-import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
-import Badge from '~/components/atom/badge'
+import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
+import Badge from '~/components/ui/badge'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 

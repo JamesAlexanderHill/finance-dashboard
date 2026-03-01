@@ -1,5 +1,8 @@
+import classmerge from "~/lib/class-merge";
+
 type BadgeProps = {
-    color?: 'blue' | 'green' | 'red' | 'yellow' | 'gray'
+    color?: 'blue' | 'green' | 'red' | 'yellow' | 'gray';
+    className?: string;
     children: React.ReactNode
 }
 
@@ -11,9 +14,9 @@ const classLookup = {
     gray: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
 }
 
-export default function Badge({ color = 'blue', children }: BadgeProps) {
+export default function Badge({ color = 'blue', children, className }: BadgeProps) {
     return (
-        <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${classLookup[color]}`}>
+        <span className={classmerge('text-xs px-1.5 py-0.5 rounded whitespace-nowrap', classLookup[color])}>
             {children}
         </span>
     )

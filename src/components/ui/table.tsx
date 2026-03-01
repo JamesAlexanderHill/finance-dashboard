@@ -24,7 +24,7 @@ export interface PaginatedTableProps<TData extends RowData> {
   /** Pagination info from route loader */
   pagination: PaginationInfo
   /** Called when pagination changes - typically calls navigate({ search: { page, pageSize } }) */
-  onPaginationChange: (pagination: { page: number; pageSize: number }) => void
+  onPaginationChange?: (pagination: { page: number; pageSize: number }) => void
   /** Available page size options */
   pageSizeOptions?: number[]
   /** Hide pagination controls (for simple tables) */
@@ -35,6 +35,8 @@ export interface PaginatedTableProps<TData extends RowData> {
   getRowId?: (row: TData) => string
   /** Show column visibility toggle dropdown */
   showColumnVisibilityToggle?: boolean
+  /** Columns to initially show/hide */
+  initialColumnVisibility?: VisibilityState
   /** Custom empty state content */
   children?: React.ReactNode
 }
@@ -120,9 +122,10 @@ export default function PaginatedTable<TData extends RowData>({
   onRowClick,
   getRowId,
   showColumnVisibilityToggle = false,
+  initialColumnVisibility = {},
   children,
 }: PaginatedTableProps<TData>) {
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(initialColumnVisibility)
 
   const table = useReactTable({
     data,
@@ -214,7 +217,7 @@ export default function PaginatedTable<TData extends RowData>({
                   id="page-size"
                   value={pagination.pageSize}
                   onChange={(e) =>
-                    onPaginationChange({ page: 1, pageSize: Number(e.target.value) })
+                    onPaginationChange?.({ page: 1, pageSize: Number(e.target.value) })
                   }
                   className="px-2 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                 >
@@ -236,7 +239,7 @@ export default function PaginatedTable<TData extends RowData>({
             <div className="flex gap-2">
               <button
                 onClick={() =>
-                  onPaginationChange({ page: pagination.page - 1, pageSize: pagination.pageSize })
+                  onPaginationChange?.({ page: pagination.page - 1, pageSize: pagination.pageSize })
                 }
                 disabled={pagination.page <= 1}
                 className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800"
@@ -245,7 +248,7 @@ export default function PaginatedTable<TData extends RowData>({
               </button>
               <button
                 onClick={() =>
-                  onPaginationChange({ page: pagination.page + 1, pageSize: pagination.pageSize })
+                  onPaginationChange?.({ page: pagination.page + 1, pageSize: pagination.pageSize })
                 }
                 disabled={pagination.page >= totalPages}
                 className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800"

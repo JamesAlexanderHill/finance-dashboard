@@ -7,11 +7,13 @@ import { users, accounts, instruments, events, files } from '~/db/schema'
 import { getUserBalances } from '~/lib/balance'
 import { ImportWizard } from '~/components/ImportWizard'
 import InstrumentCard from '~/components/instrument-card'
-import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
+import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
+import EventPreviewTable from '~/components/event/event-preview-table'
+import { getEvents, getFiles, getInstruments } from '~/db/queries'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
-const getAccountDetailData = createServerFn({ method: 'GET' })
+const getData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
@@ -22,34 +24,19 @@ const getAccountDetailData = createServerFn({ method: 'GET' })
       .from(accounts)
       .where(and(eq(accounts.id, data.accountId), eq(accounts.userId, user.id)))
 
-    if (!account) return { user, account: null, instruments: [], balances: [], files: [], recentEvents: [] }
+    if (!account) return { user, account: null, instruments: [], balances: [], files: [], recentEvents: [], legs: [] }
 
-    const [accountInstruments, allBalances, accountFiles, recentEvents] = await Promise.all([
-      db.select().from(instruments).where(eq(instruments.accountId, data.accountId)),
+    const [allBalances, accountInstruments, recentAccountfiles, recentAccountEvents] = await Promise.all([
       getUserBalances(user.id),
-      db
-        .select()
-        .from(files)
-        .where(eq(files.accountId, data.accountId))
-        .orderBy(desc(files.createdAt))
-        .limit(5),
-      db.query.events.findMany({
-        where: and(
-          eq(events.accountId, data.accountId),
-          isNull(events.deletedAt),
-        ),
-        orderBy: [desc(events.effectiveAt)],
-        limit: 10,
-        with: {
-          legs: { with: { instrument: true } },
-        },
-      }),
-    ])
-
+      getInstruments(user.id, { accountIds: [data.accountId] }),
+      getFiles(user.id, { accountId: data.accountId, limit: 5 }),
+      getEvents(user.id, { accountId: data.accountId, limit: 10 }),
+    ]);
+    
     // Filter balances to only this account
     const balances = allBalances.filter((b) => b.accountId === data.accountId)
 
-    return { user, account, instruments: accountInstruments, balances, files: accountFiles, recentEvents }
+    return { user, account, accountInstruments, recentAccountfiles, recentAccountEvents, balances }
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
@@ -69,7 +56,7 @@ const updateAccount = createServerFn({ method: 'POST' })
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute('/accounts/$accountId/')({
-  loader: ({ params }) => getAccountDetailData({ data: { accountId: params.accountId } }),
+  loader: ({ params }) => getData({ data: { accountId: params.accountId } }),
   component: AccountDetailPage,
 })
 
@@ -96,7 +83,7 @@ function formatDateTime(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function AccountDetailPage() {
-  const { user, account, instruments, balances, files, recentEvents } = Route.useLoaderData()
+  const { user, account, balances, accountInstruments, recentAccountfiles, recentAccountEvents } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const router = useRouter()
   const [editing, setEditing] = React.useState(false)
@@ -143,7 +130,7 @@ function AccountDetailPage() {
 
   // Sort instruments: default first, then by balance (descending)
   const balanceMap = new Map(balances.map((b) => [b.instrumentId, b.unitCount]))
-  const sortedInstruments = [...instruments].sort((a, b) => {
+  const sortedInstruments = [...accountInstruments].sort((a, b) => {
     // Default instrument first
     if (a.id === account.defaultInstrumentId) return -1
     if (b.id === account.defaultInstrumentId) return 1
@@ -155,7 +142,49 @@ function AccountDetailPage() {
     return 0
   })
 
-  const defaultInstrument = instruments.find((i) => i.id === account.defaultInstrumentId)
+  const defaultInstrument = accountInstruments.find((i) => i.id === account.defaultInstrumentId)
+
+  const filesColumns: ColumnDef<typeof recentAccountfiles[number]>[] = [
+    {
+      id: 'date',
+      header: 'Date',
+      accessorKey: 'createdAt',
+      cell: ({ getValue }) => (
+        <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
+          {formatDateTime(getValue() as Date)}
+        </span>
+      ),
+    },
+    {
+      id: 'filename',
+      header: 'Filename',
+      accessorKey: 'filename',
+      cell: ({ row }) => (
+        <span className="text-gray-900 dark:text-gray-100 font-medium">
+          {row.original.filename}
+        </span>
+      ),
+    },
+    {
+      id: 'stats',
+      header: 'Results',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-green-700 dark:text-green-400 tabular-nums">
+            {row.original.importedCount} imported
+          </span>
+          <span className="text-gray-400 dark:text-gray-500 tabular-nums">
+            {row.original.skippedCount} skipped
+          </span>
+          {row.original.errorCount > 0 && (
+            <span className="text-red-600 dark:text-red-400 tabular-nums">
+              {row.original.errorCount} errors
+            </span>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="max-w-5xl space-y-8">
@@ -193,7 +222,7 @@ function AccountDetailPage() {
                 className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">None</option>
-                {instruments.map((i) => (
+                {accountInstruments.map((i) => (
                   <option key={i.id} value={i.id}>
                     {i.ticker} - {i.name}
                   </option>
@@ -318,49 +347,9 @@ function AccountDetailPage() {
         )}
 
         <PaginatedTable
-          data={files}
-          columns={[
-            {
-              id: 'date',
-              header: 'Date',
-              accessorKey: 'createdAt',
-              cell: ({ getValue }) => (
-                <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                  {formatDateTime(getValue() as Date)}
-                </span>
-              ),
-            },
-            {
-              id: 'filename',
-              header: 'Filename',
-              accessorKey: 'filename',
-              cell: ({ row }) => (
-                <span className="text-gray-900 dark:text-gray-100 font-medium">
-                  {row.original.filename}
-                </span>
-              ),
-            },
-            {
-              id: 'stats',
-              header: 'Results',
-              cell: ({ row }) => (
-                <div className="flex items-center gap-3 text-xs">
-                  <span className="text-green-700 dark:text-green-400 tabular-nums">
-                    {row.original.importedCount} imported
-                  </span>
-                  <span className="text-gray-400 dark:text-gray-500 tabular-nums">
-                    {row.original.skippedCount} skipped
-                  </span>
-                  {row.original.errorCount > 0 && (
-                    <span className="text-red-600 dark:text-red-400 tabular-nums">
-                      {row.original.errorCount} errors
-                    </span>
-                  )}
-                </div>
-              ),
-            },
-          ] satisfies ColumnDef<typeof files[number]>[]}
-          pagination={{ page: 1, pageSize: 5, totalCount: files.length }}
+          data={recentAccountfiles}
+          columns={filesColumns}
+          pagination={{ page: 1, pageSize: 5, totalCount: recentAccountfiles.length }}
           onPaginationChange={() => {}}
           hidePagination
           onRowClick={(row) =>
@@ -388,40 +377,10 @@ function AccountDetailPage() {
           </Link>
         </div>
 
-        <PaginatedTable
-          data={recentEvents}
-          columns={[
-            {
-              id: 'date',
-              header: 'Date',
-              accessorKey: 'effectiveAt',
-              cell: ({ getValue }) => (
-                <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                  {formatDate(getValue() as Date)}
-                </span>
-              ),
-            },
-            {
-              id: 'description',
-              header: 'Description',
-              accessorKey: 'description',
-              cell: ({ row }) => (
-                <span className="text-gray-900 dark:text-gray-100 font-medium">
-                  {row.original.description}
-                </span>
-              ),
-            },
-          ] satisfies ColumnDef<typeof recentEvents[number]>[]}
-          pagination={{ page: 1, pageSize: 10, totalCount: recentEvents.length }}
-          onPaginationChange={() => {}}
-          hidePagination
-          onRowClick={(event) =>
-            navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })
-          }
-          getRowId={(row) => row.id}
-        >
-          <p>No events yet.</p>
-        </PaginatedTable>
+        <EventPreviewTable
+          hideColumns={["account"]} // hide account filter since we are already scoped to an account
+          events={recentAccountEvents}
+        />
       </section>
     </div>
   )

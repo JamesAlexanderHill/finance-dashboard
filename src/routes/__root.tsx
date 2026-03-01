@@ -14,7 +14,7 @@ import * as React from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
 import { NotFound } from '~/components/NotFound'
-import { EventDrawer } from '~/components/event-drawer'
+import { EventDrawer } from '~/components/event/event-drawer'
 import appCss from '~/styles/app.css?url'
 
 type RootSearch = {

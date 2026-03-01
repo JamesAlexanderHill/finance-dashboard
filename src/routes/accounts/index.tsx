@@ -1,32 +1,45 @@
 import * as React from 'react'
-import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
+import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, sql } from 'drizzle-orm'
+import { eq, inArray, sql, and } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, accounts, instruments, files } from '~/db/schema'
-import { getUserBalances } from '~/lib/balance'
-import { formatCurrency } from '~/lib/format-currency'
-import PaginatedTable, { type ColumnDef } from '~/components/paginated-table'
+import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
+import { getAccounts, getInstruments } from '~/db/queries'
+import Badge from '~/components/ui/badge'
+import { formatBalance } from '~/lib/format'
+
+const DEFAULT_PAGE_SIZE = 20
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
-const getAccountsData = createServerFn({ method: 'GET' }).handler(async () => {
+const getData = createServerFn({ method: 'GET' })
+  .inputValidator((data: unknown) => data as { page?: number, pageSize?: number })
+  .handler(async ({data}) => {
   const [user] = await db.select().from(users).limit(1)
   if (!user) return { user: null, accounts: [] }
 
-  // Get accounts with counts
-  const userAccounts = await db.select().from(accounts).where(eq(accounts.userId, user.id))
+  // paginated events
+  const page = data.page ?? 1
+  const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
+  const offset = (page - 1) * pageSize
 
-  // Get balances, instrument counts, and import counts
-  const [balances, instrumentCounts, importCounts, allInstruments] = await Promise.all([
-    getUserBalances(user.id),
+  // Get accounts with counts
+  const userAccounts = await getAccounts(user.id, { limit: pageSize, offset });
+
+  // Get instruent + their balances, account instrument counts, and account import counts
+  const [accountInstruments, accountInstrumentCounts, accountImportCounts] = await Promise.all([
+    getInstruments(user.id, { accountIds: userAccounts.map((a) => a.id) }),
     db
       .select({
         accountId: instruments.accountId,
         count: sql<number>`count(*)`.as('count'),
       })
       .from(instruments)
-      .where(eq(instruments.userId, user.id))
+      .where(and(
+        eq(instruments.userId, user.id),
+        inArray(instruments.accountId, userAccounts.map((a) => a.id))
+      ))
       .groupBy(instruments.accountId),
     db
       .select({
@@ -34,30 +47,25 @@ const getAccountsData = createServerFn({ method: 'GET' }).handler(async () => {
         count: sql<number>`count(*)`.as('count'),
       })
       .from(files)
-      .where(eq(files.userId, user.id))
+      .where(and(
+        eq(files.userId, user.id),
+        inArray(files.accountId, userAccounts.map((a) => a.id))
+      ))
       .groupBy(files.accountId),
-    db.select().from(instruments).where(eq(instruments.userId, user.id)),
   ])
 
-  // Build account data with all info
-  const accountsWithData = userAccounts.map((account) => {
-    const acctBalances = balances.filter((b) => b.accountId === account.id)
-    const instrumentCount = instrumentCounts.find((c) => c.accountId === account.id)?.count ?? 0
-    const importCount = importCounts.find((c) => c.accountId === account.id)?.count ?? 0
-    const defaultInstrument = account.defaultInstrumentId
-      ? allInstruments.find((i) => i.id === account.defaultInstrumentId)
-      : null
+  const accountMetaMap = new Map(userAccounts.map((account) => {
+    const instrumentCount = accountInstrumentCounts.find((c) => c.accountId === account.id)?.count ?? 0
+    const importCount = accountImportCounts.find((c) => c.accountId === account.id)?.count ?? 0
 
-    return {
-      ...account,
-      balances: acctBalances,
+    return [account.id, {
       instrumentCount: Number(instrumentCount),
-      importCount: Number(importCount),
-      defaultInstrument,
-    }
-  })
+      importCount: Number(importCount)
+    }];
+  }));
+  const accountInstrumentsMap = new Map(accountInstruments.map((i) => [i.id, i]));
 
-  return { user, accounts: accountsWithData }
+  return { user, accounts: userAccounts, accountMetaMap, accountInstrumentsMap }
 })
 
 const createAccount = createServerFn({ method: 'POST' })
@@ -72,16 +80,25 @@ const createAccount = createServerFn({ method: 'POST' })
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
-
+interface AccountsSearch {
+  page?: number
+  pageSize?: number
+}
 export const Route = createFileRoute('/accounts/')({
-  loader: () => getAccountsData(),
+  validateSearch: (search: Record<string, unknown>): AccountsSearch => ({
+    page: typeof search.page === 'number' ? search.page : 1,
+    pageSize: typeof search.pageSize === 'number' ? search.pageSize : DEFAULT_PAGE_SIZE,
+  }),
+  loaderDeps: ({ search }) => ({ page: search.page, pageSize: search.pageSize }),
+  loader: ({ deps }) =>
+    getData({ data: { page: deps.page, pageSize: deps.pageSize } }),
   component: AccountsPage,
 })
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function AccountsPage() {
-  const { user, accounts } = Route.useLoaderData()
+  const { user, accounts, accountMetaMap, accountInstrumentsMap } = Route.useLoaderData()
   const router = useRouter()
   const [showCreate, setShowCreate] = React.useState(false)
 
@@ -104,6 +121,85 @@ function AccountsPage() {
     setShowCreate(false)
     router.invalidate()
   }
+
+  const columns: ColumnDef<typeof accounts[0]>[] = [
+    {
+      id: 'name',
+      header: 'Account Name',
+      accessorKey: 'name',
+      cell: ({ row }) => (
+        <span className="text-gray-900 dark:text-gray-100 font-medium">
+          {row.original.name}
+        </span>
+      ),
+    },
+    {
+      id: 'balances',
+      header: 'Balances',
+      cell: ({ row }) => {
+        if (row.original.instruments.length === 0) {
+          return (<span className="text-gray-400 dark:text-gray-500 text-xs">—</span>)
+        }
+
+        return (
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {row.original.instruments.map((instrument) => {
+              const balance = BigInt(accountInstrumentsMap.get(instrument.id)?.balance ?? '0');
+              const colorMap = {
+                [1]: 'green',
+                [0]: 'gray',
+                [-1]: 'red',
+              } as Record<number, 'green' | 'red' | 'gray'>;
+              const color = colorMap[Math.sign(Number(balance))];
+
+              return (
+                <Badge key={instrument.id} color={color}>{formatBalance(balance, instrument)}</Badge>
+              )
+            })}
+          </div>
+        )
+      }
+    },
+    {
+      id: 'imports',
+      header: 'Imports',
+      accessorKey: 'importCount',
+      cell: ({ row }) => (
+        <span className="text-gray-600 dark:text-gray-400 tabular-nums">
+          {accountMetaMap.get(row.original.id)?.importCount ?? 0}
+        </span>
+      ),
+    },
+    {
+      id: 'instruments',
+      header: 'Instruments',
+      accessorKey: 'instrumentCount',
+      cell: ({ row }) => (
+        <span className="text-gray-600 dark:text-gray-400 tabular-nums">
+          {accountMetaMap.get(row.original.id)?.instrumentCount ?? 0}
+        </span>
+      ),
+    },
+    {
+      id: 'defaultInstrument',
+      header: 'Default Instrument',
+      cell: ({ row }) => {
+        const defaultInstrument = row.original.defaultInstrumentId
+          ? accountInstrumentsMap.get(row.original.defaultInstrumentId)
+          : null
+        
+        if (!defaultInstrument) {
+          return (<span className="text-gray-400 dark:text-gray-500 text-xs">—</span>)
+        }
+
+        return (
+          <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+            {defaultInstrument?.ticker}
+          </span>
+        )
+      }
+    },
+  ];
 
   return (
     <div className="max-w-5xl">
@@ -128,76 +224,7 @@ function AccountsPage() {
 
       <PaginatedTable
         data={accounts}
-        columns={[
-          {
-            id: 'name',
-            header: 'Account Name',
-            accessorKey: 'name',
-            cell: ({ row }) => (
-              <span className="text-gray-900 dark:text-gray-100 font-medium">
-                {row.original.name}
-              </span>
-            ),
-          },
-          {
-            id: 'balances',
-            header: 'Balances',
-            cell: ({ row }) =>
-              row.original.balances.length === 0 ? (
-                <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
-              ) : (
-                <div className="flex flex-wrap gap-x-3 gap-y-1">
-                  {row.original.balances.map((b) => (
-                    <span
-                      key={b.instrumentId}
-                      className={[
-                        'text-xs tabular-nums',
-                        b.unitCount < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300',
-                      ].join(' ')}
-                    >
-                      {formatCurrency(b.unitCount, {
-                        exponent: b.instrumentExponent,
-                        ticker: b.instrumentTicker,
-                      })}
-                      <span className="text-gray-400 dark:text-gray-500">{b.instrumentTicker}</span>
-                    </span>
-                  ))}
-                </div>
-              ),
-          },
-          {
-            id: 'imports',
-            header: 'Imports',
-            accessorKey: 'importCount',
-            cell: ({ getValue }) => (
-              <span className="text-gray-600 dark:text-gray-400 tabular-nums">
-                {getValue() as number}
-              </span>
-            ),
-          },
-          {
-            id: 'instruments',
-            header: 'Instruments',
-            accessorKey: 'instrumentCount',
-            cell: ({ getValue }) => (
-              <span className="text-gray-600 dark:text-gray-400 tabular-nums">
-                {getValue() as number}
-              </span>
-            ),
-          },
-          {
-            id: 'defaultInstrument',
-            header: 'Default Instrument',
-            cell: ({ row }) =>
-              row.original.defaultInstrument ? (
-                <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-                  {row.original.defaultInstrument.ticker}
-                </span>
-              ) : (
-                <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
-              ),
-          },
-        ] satisfies ColumnDef<typeof accounts[number]>[]}
+        columns={columns}
         pagination={{ page: 1, pageSize: accounts.length, totalCount: accounts.length }}
         onPaginationChange={() => {}}
         hidePagination

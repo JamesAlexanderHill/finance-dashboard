@@ -1,19 +1,18 @@
 import * as React from 'react'
-import { useRouter } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
 import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, events, legs, lineItems, categories } from '~/db/schema'
 import { formatCurrency } from '~/lib/format-currency'
-import Badge from '~/components/atom/badge'
+import Badge from '~/components/ui/badge'
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
   SheetDescription,
-} from '~/components/drawer'
+} from '~/components/ui/drawer'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -212,7 +211,7 @@ export function EventDrawer({ eventId, onClose }: EventDrawerProps) {
                       >
                         {/* Leg row */}
                         <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-900">
-                          <Badge variant="secondary" className="shrink-0">
+                          <Badge color='yellow' className="shrink-0">
                             {leg.instrument.ticker}
                           </Badge>
                           <span
