@@ -4,12 +4,11 @@ import { createServerFn } from '@tanstack/react-start'
 import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, accounts } from '~/db/schema'
-import { getUserBalances } from '~/lib/balance'
 import { ImportWizard } from '~/components/ImportWizard'
 import InstrumentCard from '~/components/instrument-card'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 import EventPreviewTable from '~/components/event/event-preview-table'
-import { getAccounts, getEvents, getFiles, getInstruments } from '~/db/queries'
+import { accountService, eventService, fileService, instrumentService, createContext } from '~/db/services'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -19,17 +18,18 @@ const getData = createServerFn({ method: 'GET' })
     const [user] = await db.select().from(users).limit(1)
     if (!user) return { user: null, account: null, instruments: [], balances: [], files: [], recentEvents: [] }
 
-    const [account] = await getAccounts(user.id, { accountIds: [data.accountId] });
+    const ctx = createContext(user.id)
+    const { data: [account] } = await accountService.list(ctx, { accountIds: [data.accountId] });
 
     if (!account) return { user, account: null, instruments: [], balances: [], files: [], recentEvents: [], legs: [] }
 
     const [accountInstruments, recentAccountfiles, recentAccountEvents] = await Promise.all([
-      getInstruments(user.id, { accountIds: [data.accountId] }),
-      getFiles(user.id, { accountId: data.accountId, limit: 5 }),
-      getEvents(user.id, { accountId: data.accountId, limit: 10 }),
+      instrumentService.list(ctx, { accountIds: [data.accountId] }),
+      fileService.list(ctx, { accountId: data.accountId, limit: 5 }),
+      eventService.list(ctx, { accountId: data.accountId, limit: 10 }),
     ]);
 
-    return { user, account, accountInstruments, recentAccountfiles, recentAccountEvents }
+    return { user, account, accountInstruments: accountInstruments.data, recentAccountfiles: recentAccountfiles.data, recentAccountEvents: recentAccountEvents.data }
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
