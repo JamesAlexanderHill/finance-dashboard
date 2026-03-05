@@ -1,15 +1,15 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and, desc, isNull } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts, instruments, events, files } from '~/db/schema'
+import { users, accounts } from '~/db/schema'
 import { getUserBalances } from '~/lib/balance'
 import { ImportWizard } from '~/components/ImportWizard'
 import InstrumentCard from '~/components/instrument-card'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 import EventPreviewTable from '~/components/event/event-preview-table'
-import { getEvents, getFiles, getInstruments } from '~/db/queries'
+import { getAccounts, getEvents, getFiles, getInstruments } from '~/db/queries'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -19,24 +19,17 @@ const getData = createServerFn({ method: 'GET' })
     const [user] = await db.select().from(users).limit(1)
     if (!user) return { user: null, account: null, instruments: [], balances: [], files: [], recentEvents: [] }
 
-    const [account] = await db
-      .select()
-      .from(accounts)
-      .where(and(eq(accounts.id, data.accountId), eq(accounts.userId, user.id)))
+    const [account] = await getAccounts(user.id, { accountIds: [data.accountId] });
 
     if (!account) return { user, account: null, instruments: [], balances: [], files: [], recentEvents: [], legs: [] }
 
-    const [allBalances, accountInstruments, recentAccountfiles, recentAccountEvents] = await Promise.all([
-      getUserBalances(user.id),
+    const [accountInstruments, recentAccountfiles, recentAccountEvents] = await Promise.all([
       getInstruments(user.id, { accountIds: [data.accountId] }),
       getFiles(user.id, { accountId: data.accountId, limit: 5 }),
       getEvents(user.id, { accountId: data.accountId, limit: 10 }),
     ]);
-    
-    // Filter balances to only this account
-    const balances = allBalances.filter((b) => b.accountId === data.accountId)
 
-    return { user, account, accountInstruments, recentAccountfiles, recentAccountEvents, balances }
+    return { user, account, accountInstruments, recentAccountfiles, recentAccountEvents }
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
@@ -62,14 +55,6 @@ export const Route = createFileRoute('/accounts/$accountId/')({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatDate(d: Date | string) {
-  return new Date(d).toLocaleDateString('en-AU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
-
 function formatDateTime(d: Date | string) {
   return new Date(d).toLocaleDateString('en-AU', {
     day: 'numeric',
@@ -83,7 +68,7 @@ function formatDateTime(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function AccountDetailPage() {
-  const { user, account, balances, accountInstruments, recentAccountfiles, recentAccountEvents } = Route.useLoaderData()
+  const { user, account, accountInstruments, recentAccountfiles, recentAccountEvents } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const router = useRouter()
   const [editing, setEditing] = React.useState(false)
@@ -129,14 +114,13 @@ function AccountDetailPage() {
   }
 
   // Sort instruments: default first, then by balance (descending)
-  const balanceMap = new Map(balances.map((b) => [b.instrumentId, b.unitCount]))
   const sortedInstruments = [...accountInstruments].sort((a, b) => {
     // Default instrument first
     if (a.id === account.defaultInstrumentId) return -1
     if (b.id === account.defaultInstrumentId) return 1
     // Then by balance (higher first)
-    const balA = balanceMap.get(a.id) ?? BigInt(0)
-    const balB = balanceMap.get(b.id) ?? BigInt(0)
+    const balA = BigInt(a.balance);
+    const balB = BigInt(b.balance);
     if (balB > balA) return 1
     if (balB < balA) return -1
     return 0
@@ -288,8 +272,8 @@ function AccountDetailPage() {
         ) : (
           <div className="flex gap-4 overflow-x-auto pb-2 -mx-2 px-2">
             {sortedInstruments.map((instrument) => {
-              const balance = balances.find((b) => b.instrumentId === instrument.id)
-              const amountMinor = balance?.unitCount ?? BigInt(0)
+              const balance = instrument.balance;
+              const amountMinor = BigInt(balance ?? '0');
               const neg = amountMinor < 0
               const abs = neg ? -amountMinor : amountMinor
               const isDefault = instrument.id === account.defaultInstrumentId
@@ -299,7 +283,7 @@ function AccountDetailPage() {
                   key={instrument.id}
                   instrument={instrument}
                   account={account}
-                  unitCount={amountMinor}
+                  balance={amountMinor}
                   isDefault={isDefault}
                 />
               )

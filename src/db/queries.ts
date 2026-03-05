@@ -1,6 +1,6 @@
 import { eq, and, desc, inArray, sql } from "drizzle-orm"
 import { db } from "."
-import { Account, accounts, events, files, instruments, legs } from "./schema"
+import { Account, accounts, events, files, Instrument, instruments, legs } from "./schema"
 
 const parseAccessToken = (accessToken: string) => {
   // TODO: verify access token and return the current user
@@ -8,15 +8,29 @@ const parseAccessToken = (accessToken: string) => {
   return { id: accessToken };
 }
 
-type GetInstrumentOptions = {
+type GetInstrumentsOptions = {
   accountIds?: string[],
   limit?: number,
   offset?: number,
 }
+/**
+ * Fetches instruments for the current user, optionally filtered by account IDs. Each instrument includes a balance which is the sum of all legs associated with that instrument
+ * 
+ * Extra:
+ * - balance: the sum of all leg minor units for that instrument
+ * 
+ * @param accessToken - A users access token
+ * @param options - Options for fetching instruments
+ * @param options.accountIds Optional filter to only return instruments for specific accounts. If not provided, returns instruments for all accounts the user has access to.
+ * @param options.limit Optional pagination limit
+ * @param options.offset Optional pagination offset 
+ * 
+ * @returns A list of instruments with their balances
+ */
 export const getInstruments = async (
   accessToken: string,
-  { accountIds, limit, offset }: GetInstrumentOptions
-) => {
+  { accountIds, limit, offset }: GetInstrumentsOptions
+): Promise<(Instrument & {balance: string})[]> => {
   const currentUser = parseAccessToken(accessToken);
 
   const where = and(
@@ -28,6 +42,7 @@ export const getInstruments = async (
 
   return db
     .select({
+      // Instrument fields
       id: instruments.id,
       userId: instruments.userId,
       accountId: instruments.accountId,
@@ -59,6 +74,16 @@ type GetFilesOptions = {
   limit?: number,
   offset?: number,
 }
+/**
+ * Fetches files for the current user, optionally filtered by account ID.
+ * 
+ * @param accessToken - A users access token
+ * @param options - Options for fetching files
+ * @param options.accountId Optional filter to only return files for a specific account. If not provided, returns files for all accounts the user has access to.
+ * @param options.limit Optional pagination limit
+ * @param options.offset Optional pagination offset
+ * @returns A list of files
+ */
 export const getFiles = async (accessToken: string, {accountId, limit, offset}: GetFilesOptions) => {
   const currentUser = parseAccessToken(accessToken);
   
@@ -78,6 +103,20 @@ type GetEventOptions = {
   limit?: number,
   offset?: number,
 }
+/**
+ * Fetches events for the current user, optionally filtered by account ID. Events are ordered by effective date descending.
+ * 
+ * With:
+ * - account: the account associated with the event
+ * - legs: the legs associated with the event, each leg includes its instrument data
+ * 
+ * @param accessToken - A users access token
+ * @param options - Options for fetching events
+ * @param options.accountId Optional filter to only return events for a specific account. If not provided, returns events for all accounts the user has access to.
+ * @param options.limit Optional pagination limit
+ * @param options.offset Optional pagination offset
+ * @returns A list of events
+ */
 export const getEvents = async (accessToken: string, {accountId, limit, offset}: GetEventOptions) => {
   const currentUser = parseAccessToken(accessToken);
 
@@ -99,12 +138,30 @@ export const getEvents = async (accessToken: string, {accountId, limit, offset}:
 type GetAccountOptions = {
   limit?: number,
   offset?: number,
+  accountIds?: string[],
 }
-export const getAccounts = async (accessToken: string, { limit, offset }: GetAccountOptions) => {
+/**
+ * Fetches accounts for the current user
+ * 
+ * with:
+ * - instruments: the instruments associated with each account
+ * 
+ * @param accessToken - A users access token
+ * @param options - Options for fetching accounts
+ * @param options.limit Optional pagination limit
+ * @param options.offset Optional pagination offset
+ * @param options.accountIds Optional filter to only return accounts with specific IDs. If not provided, returns all accounts the user has access to.
+ * 
+ * @returns A list of Accounts and their Instruments
+ */
+export const getAccounts = async (accessToken: string, { limit, offset, accountIds }: GetAccountOptions) => {
   const currentUser = parseAccessToken(accessToken);
 
   return await db.query.accounts.findMany({
-    where: eq(accounts.userId, currentUser.id),
+    where: and(
+      eq(accounts.userId, currentUser.id),
+      accountIds?.length ? inArray(accounts.id, accountIds) : undefined
+    ),
     limit,
     offset,
     with: { instruments: true },

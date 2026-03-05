@@ -1,12 +1,12 @@
 import { Link } from "@tanstack/react-router";
 import type { Instrument, Account } from "~/db/schema";
-import { formatCurrency } from "~/lib/format-currency";
 import Badge from "~/components/ui/badge";
+import { formatBalance } from "~/lib/format";
 
 type InstrumentCardProps = {
     instrument: Instrument;
     account: Account;
-    unitCount: bigint;
+    balance: bigint;
     isDefault?: boolean;
 }
 
@@ -14,9 +14,10 @@ export default function InstrumentCard({
     instrument,
     account,
     isDefault = false,
-    unitCount,
+    balance,
+    // TODO: pass in a globalCurrency object (ticker, exponent, conversionRate) and show converted balance instead of just AUD
 }: InstrumentCardProps) {
-    const isNegative = unitCount < 0;
+    const isNegative = balance < 0;
 
     return (
         <Link
@@ -30,7 +31,7 @@ export default function InstrumentCard({
                     <p className="font-medium text-gray-900 dark:text-gray-100">
                     {instrument.ticker}
                     {isDefault && (
-                        <Badge>Default</Badge>
+                        <Badge className="ml-2">Default</Badge>
                     )}
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{instrument.name}</p>
@@ -42,11 +43,13 @@ export default function InstrumentCard({
                     isNegative ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
                 ].join(' ')}
             >
-                {formatCurrency(unitCount, {
-                    exponent: instrument.exponent,
-                    ticker: instrument.ticker
-                })}
+                {formatBalance(balance, instrument)}
             </p>
+            {instrument.ticker !== "AUD" && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {formatBalance(balance, instrument, { convertTo: { ticker: "AUD", exponent: instrument.exponent, conversionRate: 1 } })}
+                </p>
+            )}
         </Link>
     )
 }

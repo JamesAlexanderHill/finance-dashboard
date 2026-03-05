@@ -16,7 +16,7 @@ const classLookup = {
 
 export default function Badge({ color = 'blue', children, className }: BadgeProps) {
     return (
-        <span className={classmerge('text-xs px-1.5 py-0.5 rounded whitespace-nowrap', classLookup[color])}>
+        <span className={classmerge('text-xs px-1.5 py-0.5 rounded whitespace-nowrap', classLookup[color], className)}>
             {children}
         </span>
     )

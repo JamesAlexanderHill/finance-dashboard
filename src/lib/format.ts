@@ -22,6 +22,15 @@ function formatBigIntToNumber(value: bigint, exponent: number): number {
   return Number(`${intPart}.${fracPart}`);
 }
 
+type FormatBalanceOptions = {
+    convertTo?: {
+        ticker: string;
+        exponent: number;
+        conversionRate: number;
+    },
+    numberFormatOptions?: Intl.NumberFormatOptions
+};
+
 /**
  * Returns a formatted string representing a balance for a given instrument,
  * including the currency symbol (if applicable), and ticker.
@@ -39,25 +48,30 @@ function formatBigIntToNumber(value: bigint, exponent: number): number {
  * formatBalance(1000n, vhy) => "VHY 1000"
  * formatBalance(-500n, vhy) => "-VHY 500"
  */
-export function formatBalance(balance: bigint, instrument: Instrument, options?: Intl.NumberFormatOptions): string {
+export function formatBalance(balance: bigint, instrument: Instrument, options?: FormatBalanceOptions): string {
+    // split options
+    const {convertTo, ...numberFormatOptions} = options || {}
+
     // UI-only: convert to Number for toFixed/adaptive rules
     const major = formatBigIntToNumber(balance, instrument.exponent);
+    // if needed, convert to another currency for display purposes (e.g. show VHY balance in AUD)
+    const convertedMajor = major * (convertTo?.conversionRate || 1);
 
     try {
         const formatter = new Intl.NumberFormat('en-AU', {
             style: 'currency',
-            currency: instrument.ticker,
+            currency: convertTo?.ticker ?? instrument.ticker,
             currencyDisplay: "code",
-            minimumFractionDigits: instrument.exponent,
-            maximumFractionDigits: instrument.exponent,
-            ...options,
+            minimumFractionDigits: convertTo?.exponent ?? instrument.exponent,
+            maximumFractionDigits: convertTo?.exponent ?? instrument.exponent,
+            ...numberFormatOptions,
         });
-        return formatter.format(major);
+        return formatter.format(convertedMajor);
     } catch (err) {
         console.error('Error formatting currency for UI:', err);
 
         // Fallback to a simple format if Intl fails (e.g., due to unsupported currency code)
-        return `${instrument.ticker} ${major.toFixed(instrument.exponent)}`;
+        return `${convertTo?.ticker ?? instrument.ticker} ${convertedMajor.toFixed(convertTo?.exponent ?? instrument.exponent)}`;
     };
 }
 
@@ -78,5 +92,5 @@ export function formatBalance(balance: bigint, instrument: Instrument, options?:
  * formatChange(-500n, vhy) => "-VHY 500"
  */
 export function formatChange(unitCount: bigint, instrument: Instrument): string {
-  return formatBalance(unitCount, instrument, { signDisplay: "exceptZero" });
+  return formatBalance(unitCount, instrument, {numberFormatOptions: { signDisplay: "exceptZero" }});
 }
