@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and, desc, sql } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts, files } from '~/db/schema'
+import { users, accounts } from '~/db/schema'
+import { fileService, createContext } from '~/db/services'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -11,41 +12,27 @@ const getFilesData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string; page?: number; pageSize?: number })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, files: [], totalCount: 0, page: 1, pageSize: 20 }
+    if (!user) return { user: null, account: null, accountFiles: null }
 
     const [account] = await db
       .select()
       .from(accounts)
       .where(and(eq(accounts.id, data.accountId), eq(accounts.userId, user.id)))
 
-    if (!account) return { user, account: null, files: [], totalCount: 0, page: 1, pageSize: 20 }
+    if (!account) return { user, account: null, accountFiles: null }
 
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? 20
     const offset = (page - 1) * pageSize
 
-    const [fileData, countResult] = await Promise.all([
-      db
-        .select()
-        .from(files)
-        .where(and(eq(files.accountId, data.accountId)))
-        .orderBy(desc(files.createdAt))
-        .limit(pageSize)
-        .offset(offset),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(files)
-        .where(and(eq(files.accountId, data.accountId))),
-    ])
+    const ctx = createContext(user.id)
+    const accountFiles = await fileService.list(ctx, {
+      accountId: data.accountId,
+      limit: pageSize,
+      offset,
+    })
 
-    return {
-      user,
-      account,
-      files: fileData,
-      totalCount: Number(countResult[0]?.count ?? 0),
-      page,
-      pageSize,
-    }
+    return { user, account, accountFiles }
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -83,7 +70,7 @@ function formatDateTime(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function FilesPage() {
-  const { user, account, files, totalCount, page, pageSize } = Route.useLoaderData()
+  const { user, account, accountFiles } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const navigate = Route.useNavigate()
 
@@ -99,7 +86,7 @@ function FilesPage() {
     )
   }
 
-  if (!account) {
+  if (!account || !accountFiles) {
     return (
       <div className="text-gray-500 dark:text-gray-400 text-sm">
         Account not found.{' '}
@@ -109,6 +96,68 @@ function FilesPage() {
       </div>
     )
   }
+
+  const columns: ColumnDef<typeof accountFiles.data[0]>[] = [
+    {
+      id: 'date',
+      header: 'File Date/Time',
+      accessorKey: 'createdAt',
+      cell: ({ getValue }) => (
+        <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
+          {formatDateTime(getValue() as Date)}
+        </span>
+      ),
+    },
+    {
+      id: 'filename',
+      header: 'File Name',
+      accessorKey: 'filename',
+      cell: ({ row }) => (
+        <span className="text-gray-900 dark:text-gray-100 font-medium">
+          {row.original.filename}
+        </span>
+      ),
+    },
+    {
+      id: 'imported',
+      header: 'Imported',
+      accessorKey: 'importedCount',
+      cell: ({ getValue }) => (
+        <span className="text-green-700 dark:text-green-400 tabular-nums">
+          {getValue() as number}
+        </span>
+      ),
+    },
+    {
+      id: 'skipped',
+      header: 'Skipped',
+      accessorKey: 'skippedCount',
+      cell: ({ getValue }) => (
+        <span className="text-gray-500 dark:text-gray-400 tabular-nums">
+          {getValue() as number}
+        </span>
+      ),
+    },
+    {
+      id: 'errors',
+      header: 'Errors',
+      accessorKey: 'errorCount',
+      cell: ({ getValue }) => {
+        const count = getValue() as number
+        return (
+          <span
+            className={
+              count > 0
+                ? 'text-red-600 dark:text-red-400 tabular-nums'
+                : 'text-gray-400 dark:text-gray-500 tabular-nums'
+            }
+          >
+            {count}
+          </span>
+        )
+      },
+    },
+  ]
 
   return (
     <div className="max-w-5xl">
@@ -133,75 +182,16 @@ function FilesPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Files</h1>
         <span className="text-sm text-gray-500 dark:text-gray-400">
-          {totalCount} file{totalCount !== 1 ? 's' : ''}
+          {accountFiles.pagination.total} file{accountFiles.pagination.total !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* Table */}
       <PaginatedTable
-        data={files}
-        columns={[
-          {
-            id: 'date',
-            header: 'File Date/Time',
-            accessorKey: 'createdAt',
-            cell: ({ getValue }) => (
-              <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                {formatDateTime(getValue() as Date)}
-              </span>
-            ),
-          },
-          {
-            id: 'filename',
-            header: 'File Name',
-            accessorKey: 'filename',
-            cell: ({ row }) => (
-              <span className="text-gray-900 dark:text-gray-100 font-medium">
-                {row.original.filename}
-              </span>
-            ),
-          },
-          {
-            id: 'imported',
-            header: 'Imported',
-            accessorKey: 'importedCount',
-            cell: ({ getValue }) => (
-              <span className="text-green-700 dark:text-green-400 tabular-nums">
-                {getValue() as number}
-              </span>
-            ),
-          },
-          {
-            id: 'skipped',
-            header: 'Skipped',
-            accessorKey: 'skippedCount',
-            cell: ({ getValue }) => (
-              <span className="text-gray-500 dark:text-gray-400 tabular-nums">
-                {getValue() as number}
-              </span>
-            ),
-          },
-          {
-            id: 'errors',
-            header: 'Errors',
-            accessorKey: 'errorCount',
-            cell: ({ getValue }) => {
-              const count = getValue() as number
-              return (
-                <span
-                  className={
-                    count > 0
-                      ? 'text-red-600 dark:text-red-400 tabular-nums'
-                      : 'text-gray-400 dark:text-gray-500 tabular-nums'
-                  }
-                >
-                  {count}
-                </span>
-              )
-            },
-          },
-        ] satisfies ColumnDef<typeof files[number]>[]}
-        pagination={{ page, pageSize, totalCount }}
+        data={accountFiles.data}
+        columns={columns}
+        pagination={accountFiles.pagination}
+        hidePagination={accountFiles.pagination.total < accountFiles.pagination.limit}
         onPaginationChange={(p) => navigate({ search: p })}
         onRowClick={(file) =>
           navigate({
