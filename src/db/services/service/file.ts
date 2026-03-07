@@ -1,8 +1,8 @@
 import { eq, and, desc, count } from 'drizzle-orm'
 import { db } from '~/db'
 import { files } from '~/db/schema'
-import type { RequestContext } from './context'
-import { buildPaginatedResult, type PaginationOptions } from './pagination'
+import type { RequestContext } from '../utils/context'
+import { buildPaginatedResult, type PaginationOptions } from '../utils/pagination'
 
 type ListFilesOptions = PaginationOptions & {
   accountId?: string

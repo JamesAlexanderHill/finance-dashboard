@@ -1,8 +1,8 @@
 import { eq, and, inArray, count } from 'drizzle-orm'
 import { db } from '~/db'
 import { accounts } from '~/db/schema'
-import type { RequestContext } from './context'
-import { buildPaginatedResult, type PaginationOptions } from './pagination'
+import type { RequestContext } from '../utils/context'
+import { buildPaginatedResult, type PaginationOptions } from '../utils/pagination'
 
 type ListAccountsOptions = PaginationOptions & {
   accountIds?: string[]
