@@ -284,6 +284,7 @@ function InstrumentsPage() {
         data={accountInstruments.data}
         columns={columns}
         pagination={accountInstruments.pagination}
+        hidePagination={accountInstruments.pagination.total < accountInstruments.pagination.limit}
         onPaginationChange={(p) => navigate({ search: p })}
         onRowClick={(instrument) =>
           navigate({

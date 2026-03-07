@@ -301,8 +301,13 @@ function InstrumentDetailPage() {
       </div>
 
       {/* Recent Events */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Events</h2>
+      <section>       
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Events</h2>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            {instrumentEvents.pagination.total} event{instrumentEvents.pagination.total !== 1 ? 's' : ''}
+          </span>
+        </div>
         <EventTable
           events={instrumentEvents.data}
           pagination={instrumentEvents.pagination}

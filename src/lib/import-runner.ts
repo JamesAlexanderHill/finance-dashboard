@@ -104,7 +104,24 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
     .from(categories)
     .where(eq(categories.userId, userId))
 
-  // ── 4. Process events ─────────────────────────────────────────────────────
+  // ── 4. Create File record upfront to get fileId ───────────────────────────
+  const [file] = await db
+    .insert(files)
+    .values({
+      userId,
+      accountId,
+      filename,
+      importedCount: 0,
+      skippedCount: 0,
+      restoredCount: 0,
+      errorCount: 0,
+      skippedKeys: [],
+      errors: [],
+    })
+    .returning({ id: files.id })
+  const fileId = file.id
+
+  // ── 5. Process events ─────────────────────────────────────────────────────
   let importedCount = 0
   let skippedCount = 0
   let restoredCount = 0
@@ -158,6 +175,7 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
           .values({
             userId,
             accountId,
+            fileId,
             effectiveAt: parsed.effectiveAt,
             postedAt: parsed.postedAt,
             description: parsed.description,
@@ -194,21 +212,11 @@ export async function commitImport(params: CommitImportParams): Promise<string> 
     }
   }
 
-  // ── 5. Create File record ─────────────────────────────────────────────────
-  const [file] = await db
-    .insert(files)
-    .values({
-      userId,
-      accountId,
-      filename,
-      importedCount,
-      skippedCount,
-      restoredCount,
-      errorCount,
-      skippedKeys,
-      errors: importErrors,
-    })
-    .returning({ id: files.id })
+  // ── 6. Update File record with final counts ───────────────────────────────
+  await db
+    .update(files)
+    .set({ importedCount, skippedCount, restoredCount, errorCount, skippedKeys, errors: importErrors })
+    .where(eq(files.id, fileId))
 
-  return file.id
+  return fileId
 }

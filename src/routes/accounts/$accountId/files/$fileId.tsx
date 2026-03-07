@@ -246,9 +246,12 @@ function FileDetailPage() {
 
       {/* Events */}
       <section>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-          Associated Events ({fileEvents.pagination.total})
-        </h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Imported Events</h2>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            {fileEvents.pagination.total} event{fileEvents.pagination.total !== 1 ? 's' : ''}
+          </span>
+        </div>
         <EventTable
           events={fileEvents.data}
           pagination={fileEvents.pagination}
