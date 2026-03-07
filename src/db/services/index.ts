@@ -1,6 +1,7 @@
 export { accountService } from './account.service'
 export { eventService } from './event.service'
 export { instrumentService } from './instrument.service'
+export type { AccountBalance } from './instrument.service'
 export { fileService } from './file.service'
 export { createContext } from './context'
 export type { RequestContext } from './context'

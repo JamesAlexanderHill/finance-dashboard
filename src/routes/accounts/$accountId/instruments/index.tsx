@@ -1,10 +1,10 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, accounts, instruments } from '~/db/schema'
-import { getUserBalances } from '~/lib/balance'
+import { instrumentService, createContext } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 
@@ -14,41 +14,31 @@ const getInstrumentsData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string; page?: number; pageSize?: number })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, instruments: [], balances: [], totalCount: 0, page: 1, pageSize: 20 }
+    if (!user) return { user: null, account: null, instruments: [], totalCount: 0, page: 1, pageSize: 20 }
 
     const [account] = await db
       .select()
       .from(accounts)
       .where(and(eq(accounts.id, data.accountId), eq(accounts.userId, user.id)))
 
-    if (!account) return { user, account: null, instruments: [], balances: [], totalCount: 0, page: 1, pageSize: 20 }
+    if (!account) return { user, account: null, instruments: [], totalCount: 0, page: 1, pageSize: 20 }
 
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? 20
     const offset = (page - 1) * pageSize
 
-    const [accountInstruments, allBalances, countResult] = await Promise.all([
-      db
-        .select()
-        .from(instruments)
-        .where(eq(instruments.accountId, data.accountId))
-        .limit(pageSize)
-        .offset(offset),
-      getUserBalances(user.id),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(instruments)
-        .where(eq(instruments.accountId, data.accountId)),
-    ])
-
-    const balances = allBalances.filter((b) => b.accountId === data.accountId)
+    const ctx = createContext(user.id)
+    const result = await instrumentService.list(ctx, {
+      accountIds: [data.accountId],
+      limit: pageSize,
+      offset,
+    })
 
     return {
       user,
       account,
-      instruments: accountInstruments,
-      balances,
-      totalCount: Number(countResult[0]?.count ?? 0),
+      instruments: result.data,
+      totalCount: result.pagination.total,
       page,
       pageSize,
     }
@@ -104,7 +94,7 @@ export const Route = createFileRoute('/accounts/$accountId/instruments/')({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function InstrumentsPage() {
-  const { user, account, instruments, balances, totalCount, page, pageSize } = Route.useLoaderData()
+  const { user, account, instruments, totalCount, page, pageSize } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const router = useRouter()
   const navigate = Route.useNavigate()
@@ -276,8 +266,7 @@ function InstrumentsPage() {
             id: 'balance',
             header: 'Balance',
             cell: ({ row }) => {
-              const balance = balances.find((b) => b.instrumentId === row.original.id)
-              const unitCount = balance?.unitCount ?? BigInt(0)
+              const unitCount = BigInt(row.original.balance)
               const neg = unitCount < 0
               return (
                 <span

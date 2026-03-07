@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { db } from '~/db'
 import { users } from '~/db/schema'
-import { getUserBalances } from '~/lib/balance'
+import { instrumentService, createContext } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -12,7 +12,7 @@ const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
   const [user] = await db.select().from(users).limit(1)
   if (!user) return { user: null, balances: [] }
 
-  const balances = await getUserBalances(user.id)
+  const balances = await instrumentService.getAccountBalances(createContext(user.id))
 
   return { user, balances }
 })

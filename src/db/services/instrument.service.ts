@@ -1,6 +1,6 @@
-import { eq, and, inArray, count, sql } from 'drizzle-orm'
+import { eq, and, inArray, isNull, count, sql } from 'drizzle-orm'
 import { db } from '~/db'
-import { instruments, legs, events } from '~/db/schema'
+import { instruments, legs, events, accounts } from '~/db/schema'
 import type { RequestContext } from './context'
 import { buildPaginatedResult, type PaginationOptions } from './pagination'
 
@@ -100,4 +100,41 @@ async function getBalances(ctx: RequestContext, accountIds?: string[]) {
   return preparedGetInstrumentBalances.execute({ userId: ctx.userId })
 }
 
-export const instrumentService = { list, getBalances }
+// ─── getAccountBalances ───────────────────────────────────────────────────────
+
+export interface AccountBalance {
+  accountId: string
+  accountName: string
+  instrumentId: string
+  instrumentTicker: string
+  instrumentExponent: number
+  unitCount: bigint
+}
+
+async function getAccountBalances(ctx: RequestContext): Promise<AccountBalance[]> {
+  const rows = await db
+    .select({
+      accountId: events.accountId,
+      accountName: accounts.name,
+      instrumentId: legs.instrumentId,
+      instrumentTicker: instruments.ticker,
+      instrumentExponent: instruments.exponent,
+      unitCount: sql<string>`SUM(${legs.unitCount})`,
+    })
+    .from(legs)
+    .innerJoin(events, eq(legs.eventId, events.id))
+    .innerJoin(accounts, eq(events.accountId, accounts.id))
+    .innerJoin(instruments, eq(legs.instrumentId, instruments.id))
+    .where(and(eq(events.userId, ctx.userId), isNull(events.deletedAt)))
+    .groupBy(
+      events.accountId,
+      accounts.name,
+      legs.instrumentId,
+      instruments.ticker,
+      instruments.exponent,
+    )
+
+  return rows.map((r) => ({ ...r, unitCount: BigInt(r.unitCount) }))
+}
+
+export const instrumentService = { list, getBalances, getAccountBalances }
