@@ -1,19 +1,22 @@
 import { eq, and, desc, count } from 'drizzle-orm'
 import { db } from '~/db'
-import { events } from '~/db/schema'
+import { events, legs } from '~/db/schema'
 import type { RequestContext } from '../utils/context'
 import { buildPaginatedResult, type PaginationOptions } from '../utils/pagination'
 
 type ListEventsOptions = PaginationOptions & {
-  accountId?: string
+  accountId?: string,
+  instrumentId?: string,
+  fileId?: string,  
 }
 
 async function list(ctx: RequestContext, opts: ListEventsOptions = {}) {
-  const { limit = 20, offset = 0, accountId } = opts
+  const { limit = 20, offset = 0, accountId, instrumentId, fileId } = opts
 
   const where = and(
     eq(events.userId, ctx.userId),
     accountId ? eq(events.accountId, accountId) : undefined,
+    fileId ? eq(events.fileId, fileId) : undefined,
   )
 
   const [data, [{ total }]] = await Promise.all([
@@ -24,7 +27,12 @@ async function list(ctx: RequestContext, opts: ListEventsOptions = {}) {
       offset,
       with: {
         account: true,
-        legs: { with: { instrument: true } },
+        legs: {
+          where: instrumentId ? eq(legs.instrumentId, instrumentId) : undefined,
+          with: {
+            instrument: true
+          }
+        },
       },
     }),
     db.select({ total: count() }).from(events).where(where),

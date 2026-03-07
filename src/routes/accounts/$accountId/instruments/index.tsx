@@ -28,7 +28,7 @@ const getInstrumentsData = createServerFn({ method: 'GET' })
     const offset = (page - 1) * pageSize
 
     const ctx = createContext(user.id)
-    const result = await instrumentService.list(ctx, {
+    const accountInstruments = await instrumentService.list(ctx, {
       accountIds: [data.accountId],
       limit: pageSize,
       offset,
@@ -37,10 +37,7 @@ const getInstrumentsData = createServerFn({ method: 'GET' })
     return {
       user,
       account,
-      instruments: result.data,
-      totalCount: result.pagination.total,
-      page,
-      pageSize,
+      accountInstruments,
     }
   })
 
@@ -73,7 +70,7 @@ const createInstrument = createServerFn({ method: 'POST' })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 
 interface InstrumentsSearch {
   page?: number
@@ -94,7 +91,7 @@ export const Route = createFileRoute('/accounts/$accountId/instruments/')({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function InstrumentsPage() {
-  const { user, account, instruments, totalCount, page, pageSize } = Route.useLoaderData()
+  const { user, account, accountInstruments } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const router = useRouter()
   const navigate = Route.useNavigate()
@@ -139,11 +136,55 @@ function InstrumentsPage() {
   }
 
   // Sort instruments with default first
-  const sortedInstruments = [...instruments].sort((a, b) => {
+  const sortedInstruments = [...accountInstruments.data].sort((a, b) => {
     if (a.id === account.defaultInstrumentId) return -1
     if (b.id === account.defaultInstrumentId) return 1
     return 0
   })
+
+  const columns: ColumnDef<typeof accountInstruments.data[0]>[] = [
+    {
+      id: 'instrument',
+      header: 'Instrument',
+      cell: ({ row }) => {
+        const isDefault = row.original.id === account.defaultInstrumentId
+        return (
+          <div>
+            <span className="text-gray-900 dark:text-gray-100 font-medium">
+              {row.original.ticker}
+              {isDefault && (
+                <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                  Default
+                </span>
+              )}
+            </span>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{row.original.name}</p>
+          </div>
+        )
+      },
+    },
+    {
+      id: 'balance',
+      header: 'Balance',
+      cell: ({ row }) => {
+        const unitCount = BigInt(row.original.balance)
+        const neg = unitCount < 0
+        return (
+          <span
+            className={[
+              'font-medium tabular-nums',
+              neg ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
+            ].join(' ')}
+          >
+            {formatCurrency(unitCount, {
+              exponent: row.original.exponent,
+              ticker: row.original.ticker,
+            })}
+          </span>
+        )
+      },
+    },
+  ];
 
   return (
     <div className="max-w-5xl">
@@ -169,7 +210,7 @@ function InstrumentsPage() {
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Instruments</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500 dark:text-gray-400">
-            {totalCount} instrument{totalCount !== 1 ? 's' : ''}
+            {accountInstruments.pagination.total} instrument{accountInstruments.pagination.total !== 1 ? 's' : ''}
           </span>
           <button
             onClick={() => setShowCreate(true)}
@@ -240,51 +281,9 @@ function InstrumentsPage() {
 
       {/* Table */}
       <PaginatedTable
-        data={sortedInstruments}
-        columns={[
-          {
-            id: 'instrument',
-            header: 'Instrument',
-            cell: ({ row }) => {
-              const isDefault = row.original.id === account.defaultInstrumentId
-              return (
-                <div>
-                  <span className="text-gray-900 dark:text-gray-100 font-medium">
-                    {row.original.ticker}
-                    {isDefault && (
-                      <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-                        Default
-                      </span>
-                    )}
-                  </span>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{row.original.name}</p>
-                </div>
-              )
-            },
-          },
-          {
-            id: 'balance',
-            header: 'Balance',
-            cell: ({ row }) => {
-              const unitCount = BigInt(row.original.balance)
-              const neg = unitCount < 0
-              return (
-                <span
-                  className={[
-                    'font-medium tabular-nums',
-                    neg ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
-                  ].join(' ')}
-                >
-                  {formatCurrency(unitCount, {
-                    exponent: row.original.exponent,
-                    ticker: row.original.ticker,
-                  })}
-                </span>
-              )
-            },
-          },
-        ] satisfies ColumnDef<typeof sortedInstruments[number]>[]}
-        pagination={{ page, pageSize, totalCount }}
+        data={accountInstruments.data}
+        columns={columns}
+        pagination={accountInstruments.pagination}
         onPaginationChange={(p) => navigate({ search: p })}
         onRowClick={(instrument) =>
           navigate({

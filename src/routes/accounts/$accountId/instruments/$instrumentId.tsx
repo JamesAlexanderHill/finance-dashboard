@@ -7,11 +7,14 @@ import { users, accounts, instruments, events, legs, categories } from '~/db/sch
 import { formatCurrency } from '~/lib/format-currency'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 import Badge from '~/components/ui/badge'
+import EventPreviewTable from '~/components/event/event-preview-table'
+import { createContext, eventService } from '~/db/services'
+import EventTable from '~/components/event/event-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getInstrumentDetailData = createServerFn({ method: 'GET' })
-  .inputValidator((data: unknown) => data as { accountId: string; instrumentId: string })
+  .inputValidator((data: unknown) => data as { page?: number, pageSize?: number, accountId: string; instrumentId: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) return { user: null, account: null, instrument: null, balance: BigInt(0), recentEvents: [] }
@@ -30,6 +33,11 @@ const getInstrumentDetailData = createServerFn({ method: 'GET' })
 
     if (!instrument) return { user, account, instrument: null, balance: BigInt(0), recentEvents: [] }
 
+    // paginated events
+    const page = data.page ?? 1
+    const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
+    const offset = (page - 1) * pageSize
+
     // Calculate balance for this instrument
     const [balanceResult] = await db
       .select({ total: sql<string>`COALESCE(SUM(${legs.unitCount}), 0)` })
@@ -39,36 +47,14 @@ const getInstrumentDetailData = createServerFn({ method: 'GET' })
 
     const balance = BigInt(balanceResult?.total ?? '0')
 
-    // Get recent events that have legs with this instrument
-    const recentEventRows = await db
-      .select({
-        event: events,
-        leg: legs,
-        category: categories,
-      })
-      .from(legs)
-      .innerJoin(events, eq(legs.eventId, events.id))
-      .leftJoin(categories, eq(legs.categoryId, categories.id))
-      .where(and(eq(legs.instrumentId, data.instrumentId), isNull(events.deletedAt)))
-      .orderBy(desc(events.effectiveAt))
-      .limit(20)
+    // const recentEvents = Array.from(eventMap.values())
+    const instrumentEvents = await eventService.list(createContext(user.id), {
+      instrumentId: data.instrumentId,
+      limit: pageSize,
+      offset,
+    });
 
-    // Group by event
-    const eventMap = new Map<string, {
-      event: typeof events.$inferSelect
-      legs: Array<{ leg: typeof legs.$inferSelect; category: typeof categories.$inferSelect | null }>
-    }>()
-
-    for (const row of recentEventRows) {
-      if (!eventMap.has(row.event.id)) {
-        eventMap.set(row.event.id, { event: row.event, legs: [] })
-      }
-      eventMap.get(row.event.id)!.legs.push({ leg: row.leg, category: row.category })
-    }
-
-    const recentEvents = Array.from(eventMap.values())
-
-    return { user, account, instrument, balance, recentEvents }
+    return { user, account, instrument, balance, instrumentEvents }
   })
 
 const updateInstrument = createServerFn({ method: 'POST' })
@@ -91,10 +77,21 @@ const updateInstrument = createServerFn({ method: 'POST' })
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
+const DEFAULT_PAGE_SIZE = 10
+
+interface ImportSearch {
+  page?: number
+  pageSize?: number
+}
 
 export const Route = createFileRoute('/accounts/$accountId/instruments/$instrumentId')({
-  loader: ({ params }) =>
-    getInstrumentDetailData({ data: { accountId: params.accountId, instrumentId: params.instrumentId } }),
+  validateSearch: (search: Record<string, unknown>): ImportSearch => ({
+    page: typeof search.page === 'number' ? search.page : 1,
+    pageSize: typeof search.pageSize === 'number' ? search.pageSize : DEFAULT_PAGE_SIZE,
+  }),
+  loaderDeps: ({ search }) => ({ page: search.page, pageSize: search.pageSize }),
+  loader: ({ params, deps }) =>
+    getInstrumentDetailData({ data: { accountId: params.accountId, instrumentId: params.instrumentId, page: deps.page, pageSize: deps.pageSize } }),
   component: InstrumentDetailPage,
 })
 
@@ -111,7 +108,7 @@ function formatDate(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function InstrumentDetailPage() {
-  const { user, account, instrument, balance, recentEvents } = Route.useLoaderData()
+  const { user, account, instrument, balance, instrumentEvents } = Route.useLoaderData()
   const { accountId, instrumentId } = Route.useParams()
   const router = useRouter()
   const navigate = Route.useNavigate()
@@ -305,61 +302,13 @@ function InstrumentDetailPage() {
 
       {/* Recent Events */}
       <section>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Recent Events</h2>
-
-        <PaginatedTable
-          data={recentEvents}
-          columns={[
-            {
-              id: 'date',
-              header: 'Date',
-              cell: ({ row }) => (
-                <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                  {formatDate(row.original.event.effectiveAt)}
-                </span>
-              ),
-            },
-            {
-              id: 'description',
-              header: 'Description',
-              cell: ({ row }) => (
-                <span className="text-gray-900 dark:text-gray-100 font-medium">
-                  {row.original.event.description}
-                </span>
-              ),
-            },
-            {
-              id: 'amount',
-              header: 'Amount',
-              cell: ({ row }) => {
-                const totalAmount = row.original.legs.reduce(
-                  (sum, { leg }) => sum + leg.unitCount,
-                  BigInt(0)
-                )
-                const neg = totalAmount < BigInt(0)
-                return (
-                  <span
-                    className={[
-                      'font-medium tabular-nums',
-                      neg ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400',
-                    ].join(' ')}
-                  >
-                    {formatCurrency(totalAmount, { exponent: instrument.exponent })}
-                  </span>
-                )
-              },
-            },
-          ] satisfies ColumnDef<typeof recentEvents[number]>[]}
-          pagination={{ page: 1, pageSize: 10, totalCount: recentEvents.length }}
-          onPaginationChange={() => {}}
-          hidePagination
-          onRowClick={(row) =>
-            navigate({ search: (prev) => ({ ...prev, viewEvent: row.event.id }) })
-          }
-          getRowId={(row) => row.event.id}
-        >
-          <p>No events yet.</p>
-        </PaginatedTable>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Events</h2>
+        <EventTable
+          events={instrumentEvents.data}
+          pagination={instrumentEvents.pagination}
+          onPaginationChange={(p) => navigate({ search: p })}
+          onRowClick={(event) => navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })}
+        />
       </section>
     </div>
   )

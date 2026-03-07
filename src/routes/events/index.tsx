@@ -5,7 +5,7 @@ import { db } from '~/db'
 import { eventService, accountService, createContext } from '~/db/services'
 import { users } from '~/db/schema'
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -30,11 +30,8 @@ const getData = createServerFn({ method: 'GET' })
 
     return {
       user,
-      events: eventsResult.data,
-      accounts: accountsResult.data,
-      totalCount: eventsResult.pagination.total,
-      page,
-      pageSize,
+      events: eventsResult,
+      accounts: accountsResult,
     }
   })
 
@@ -71,7 +68,7 @@ function formatDate(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function EventsPage() {
-  const { user, accounts, events, totalCount, page, pageSize } = Route.useLoaderData()
+  const { user, accounts, events } = Route.useLoaderData()
   const { accountId } = Route.useSearch()
   const navigate = Route.useNavigate()
 
@@ -87,7 +84,7 @@ function EventsPage() {
     )
   }
 
-  const selectedAccount = accounts.find((a) => a.id === accountId)
+  const selectedAccount = accounts.data.find((a) => a.id === accountId)
 
   return (
     <div className="max-w-5xl">
@@ -115,7 +112,7 @@ function EventsPage() {
             className="text-sm border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All accounts</option>
-            {accounts.map((a) => (
+            {accounts.data.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
               </option>
@@ -128,8 +125,8 @@ function EventsPage() {
       <section>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Recent Events</h2>
         <EventTable
-          events={events}
-          pagination={{ page, pageSize, totalCount }}
+          events={events.data}
+          pagination={events.pagination}
           onPaginationChange={(p) => navigate({ search: p })}
           onRowClick={(event) => navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })}
         />

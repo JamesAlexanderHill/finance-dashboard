@@ -3,14 +3,16 @@ export type PaginationOptions = {
   offset?: number
 }
 
+export type PaginationData = {
+  total: number
+  limit: number
+  offset: number
+  hasNext: boolean
+}
+
 export type PaginatedResult<T> = {
   data: T[]
-  pagination: {
-    total: number
-    limit: number
-    offset: number
-    hasNext: boolean
-  }
+  pagination: PaginationData,
 }
 
 export function buildPaginatedResult<T>(

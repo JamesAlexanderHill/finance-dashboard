@@ -29,7 +29,7 @@ const getData = createServerFn({ method: 'GET' })
       eventService.list(ctx, { accountId: data.accountId, limit: 10 }),
     ]);
 
-    return { user, account, accountInstruments: accountInstruments.data, recentAccountfiles: recentAccountfiles.data, recentAccountEvents: recentAccountEvents.data }
+    return { user, account, accountInstruments, recentAccountfiles, recentAccountEvents }
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
@@ -114,7 +114,7 @@ function AccountDetailPage() {
   }
 
   // Sort instruments: default first, then by balance (descending)
-  const sortedInstruments = [...accountInstruments].sort((a, b) => {
+  const sortedInstruments = [...accountInstruments.data].sort((a, b) => {
     // Default instrument first
     if (a.id === account.defaultInstrumentId) return -1
     if (b.id === account.defaultInstrumentId) return 1
@@ -126,9 +126,9 @@ function AccountDetailPage() {
     return 0
   })
 
-  const defaultInstrument = accountInstruments.find((i) => i.id === account.defaultInstrumentId)
+  const defaultInstrument = accountInstruments.data.find((i) => i.id === account.defaultInstrumentId)
 
-  const filesColumns: ColumnDef<typeof recentAccountfiles[number]>[] = [
+  const filesColumns: ColumnDef<typeof recentAccountfiles.data[number]>[] = [
     {
       id: 'date',
       header: 'Date',
@@ -206,7 +206,7 @@ function AccountDetailPage() {
                 className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">None</option>
-                {accountInstruments.map((i) => (
+                {accountInstruments.data.map((i) => (
                   <option key={i.id} value={i.id}>
                     {i.ticker} - {i.name}
                   </option>
@@ -331,9 +331,9 @@ function AccountDetailPage() {
         )}
 
         <PaginatedTable
-          data={recentAccountfiles}
+          data={recentAccountfiles.data}
           columns={filesColumns}
-          pagination={{ page: 1, pageSize: 5, totalCount: recentAccountfiles.length }}
+          pagination={recentAccountfiles.pagination}
           onPaginationChange={() => {}}
           hidePagination
           onRowClick={(row) =>
@@ -363,7 +363,7 @@ function AccountDetailPage() {
 
         <EventPreviewTable
           hideColumns={["account"]} // hide account filter since we are already scoped to an account
-          events={recentAccountEvents}
+          events={recentAccountEvents.data}
           onRowClick={(event) => navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })}
         />
       </section>

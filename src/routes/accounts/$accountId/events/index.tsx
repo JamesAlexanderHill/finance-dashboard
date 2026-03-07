@@ -8,7 +8,7 @@ import EventTable from '~/components/event/event-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 
 const getEventsData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string; page?: number; pageSize?: number })
@@ -28,7 +28,7 @@ const getEventsData = createServerFn({ method: 'GET' })
     const offset = (page - 1) * pageSize
 
     const ctx = createContext(user.id)
-    const { data: accountEvents, pagination } = await eventService.list(ctx, {
+    const events = await eventService.list(ctx, {
       accountId: data.accountId,
       limit: pageSize,
       offset,
@@ -37,10 +37,7 @@ const getEventsData = createServerFn({ method: 'GET' })
     return {
       user,
       account,
-      events: accountEvents,
-      totalCount: pagination.total,
-      page,
-      pageSize,
+      events,
     }
   })
 
@@ -65,7 +62,7 @@ export const Route = createFileRoute('/accounts/$accountId/events/')({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function EventsPage() {
-  const { user, account, events: accountEvents, totalCount, page, pageSize } = Route.useLoaderData()
+  const { user, account, events } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const navigate = Route.useNavigate()
 
@@ -113,16 +110,16 @@ function EventsPage() {
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Events</h1>
+        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{account.name} Events</h1>
         <span className="text-sm text-gray-500 dark:text-gray-400">
-          {totalCount} event{totalCount !== 1 ? 's' : ''}
+          {events.pagination.total} event{events.pagination.total !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* Table */}
       <EventTable
-        events={accountEvents}
-        pagination={{ page, pageSize, totalCount }}
+        events={events.data}
+        pagination={events.pagination}
         onPaginationChange={(p) => navigate({ search: p })}
         onRowClick={(event) => navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })}
         hideColumns={['account']}

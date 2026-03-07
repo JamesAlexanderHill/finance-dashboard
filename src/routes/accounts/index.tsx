@@ -3,13 +3,13 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { eq, inArray, sql, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, instruments, files } from '~/db/schema'
+import { users, instruments, files, accounts } from '~/db/schema'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 import { accountService, instrumentService, createContext } from '~/db/services'
 import Badge from '~/components/ui/badge'
 import { formatBalance } from '~/lib/format'
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -27,11 +27,11 @@ const getData = createServerFn({ method: 'GET' })
   const ctx = createContext(user.id)
 
   // Get accounts with counts
-  const { data: userAccounts } = await accountService.list(ctx, { limit: pageSize, offset });
+  const userAccounts = await accountService.list(ctx, { limit: pageSize, offset });
 
   // Get instrument + their balances, account instrument counts, and account import counts
   const [accountInstruments, accountInstrumentCounts, accountImportCounts] = await Promise.all([
-    instrumentService.list(ctx, { accountIds: userAccounts.map((a) => a.id) }),
+    instrumentService.list(ctx, { accountIds: userAccounts.data.map((a) => a.id) }),
     db
       .select({
         accountId: instruments.accountId,
@@ -40,7 +40,7 @@ const getData = createServerFn({ method: 'GET' })
       .from(instruments)
       .where(and(
         eq(instruments.userId, user.id),
-        inArray(instruments.accountId, userAccounts.map((a) => a.id))
+        inArray(instruments.accountId, userAccounts.data.map((a) => a.id))
       ))
       .groupBy(instruments.accountId),
     db
@@ -51,12 +51,12 @@ const getData = createServerFn({ method: 'GET' })
       .from(files)
       .where(and(
         eq(files.userId, user.id),
-        inArray(files.accountId, userAccounts.map((a) => a.id))
+        inArray(files.accountId, userAccounts.data.map((a) => a.id))
       ))
       .groupBy(files.accountId),
   ])
 
-  const accountMetaMap = new Map(userAccounts.map((account) => {
+  const accountMetaMap = new Map(userAccounts.data.map((account) => {
     const instrumentCount = accountInstrumentCounts.find((c) => c.accountId === account.id)?.count ?? 0
     const importCount = accountImportCounts.find((c) => c.accountId === account.id)?.count ?? 0
 
@@ -124,7 +124,7 @@ function AccountsPage() {
     router.invalidate()
   }
 
-  const columns: ColumnDef<typeof accounts[0]>[] = [
+  const columns: ColumnDef<typeof accounts.data[0]>[] = [
     {
       id: 'name',
       header: 'Account Name',
@@ -225,11 +225,10 @@ function AccountsPage() {
       )}
 
       <PaginatedTable
-        data={accounts}
+        data={accounts.data}
         columns={columns}
-        pagination={{ page: 1, pageSize: accounts.length, totalCount: accounts.length }}
-        onPaginationChange={() => {}}
-        hidePagination
+        pagination={accounts.pagination}
+        hidePagination={accounts.pagination.total < accounts.pagination.limit}
         onRowClick={(account) => router.navigate({ to: '/accounts/$accountId', params: { accountId: account.id } })}
         getRowId={(row) => row.id}
       >

@@ -7,6 +7,7 @@ import {
   type VisibilityState,
   type RowData,
 } from '@tanstack/react-table'
+import { PaginationData } from '~/db/services/utils/pagination'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -22,7 +23,7 @@ export interface PaginatedTableProps<TData extends RowData> {
   /** TanStack Table column definitions */
   columns: ColumnDef<TData, any>[]
   /** Pagination info from route loader */
-  pagination: PaginationInfo
+  pagination: PaginationData
   /** Called when pagination changes - typically calls navigate({ search: { page, pageSize } }) */
   onPaginationChange?: (pagination: { page: number; pageSize: number }) => void
   /** Available page size options */
@@ -127,6 +128,9 @@ export default function PaginatedTable<TData extends RowData>({
 }: PaginatedTableProps<TData>) {
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(initialColumnVisibility)
 
+  const { total, limit: pageSize, offset, hasNext } = pagination;
+
+
   const table = useReactTable({
     data,
     columns,
@@ -139,7 +143,8 @@ export default function PaginatedTable<TData extends RowData>({
     manualPagination: true,
   })
 
-  const totalPages = Math.ceil(pagination.totalCount / pagination.pageSize)
+  const totalPages = Math.ceil(total / pageSize);
+  const currentPage = Math.floor(offset / pageSize) + 1;
 
   // Empty state
   if (data.length === 0) {
@@ -215,7 +220,7 @@ export default function PaginatedTable<TData extends RowData>({
                 </label>
                 <select
                   id="page-size"
-                  value={pagination.pageSize}
+                  value={pageSize}
                   onChange={(e) =>
                     onPaginationChange?.({ page: 1, pageSize: Number(e.target.value) })
                   }
@@ -231,7 +236,7 @@ export default function PaginatedTable<TData extends RowData>({
             )}
             {/* Page info */}
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Page {pagination.page} of {totalPages}
+              Page {currentPage} of {totalPages}
             </p>
           </div>
           {/* Page navigation */}
@@ -239,18 +244,18 @@ export default function PaginatedTable<TData extends RowData>({
             <div className="flex gap-2">
               <button
                 onClick={() =>
-                  onPaginationChange?.({ page: pagination.page - 1, pageSize: pagination.pageSize })
+                  onPaginationChange?.({ page: currentPage - 1, pageSize })
                 }
-                disabled={pagination.page <= 1}
+                disabled={currentPage <= 1}
                 className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800"
               >
                 Previous
               </button>
               <button
                 onClick={() =>
-                  onPaginationChange?.({ page: pagination.page + 1, pageSize: pagination.pageSize })
+                  onPaginationChange?.({ page: currentPage + 1, pageSize })
                 }
-                disabled={pagination.page >= totalPages}
+                disabled={currentPage >= totalPages}
                 className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-800"
               >
                 Next

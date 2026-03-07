@@ -6,6 +6,8 @@ import { db } from '~/db'
 import { users, accounts, files, events } from '~/db/schema'
 import { formatCurrency } from '~/lib/format-currency'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
+import EventTable from '~/components/event/event-table'
+import { createContext, eventService, fileService } from '~/db/services'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -33,30 +35,13 @@ const getFilesDetailData = createServerFn({ method: 'GET' })
     const pageSize = data.pageSize ?? 20
     const offset = (page - 1) * pageSize
 
-    const [fileEvents, countResult] = await Promise.all([
-      db.query.events.findMany({
-        where: eq(events.fileId, data.fileId),
-        orderBy: [desc(events.effectiveAt)],
-        limit: pageSize,
-        offset,
-        with: {
-          legs: { with: { instrument: true } },
-        },
-      }),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(events)
-        .where(eq(events.fileId, data.fileId)),
-    ])
+    const fileEvents = await eventService.list(createContext(user.id), { fileId: data.fileId, limit: pageSize, offset });
 
     return {
       user,
       account,
       file,
-      events: fileEvents,
-      totalCount: Number(countResult[0]?.count ?? 0),
-      page,
-      pageSize,
+      fileEvents,
     }
   })
 
@@ -76,7 +61,7 @@ const deleteFile = createServerFn({ method: 'POST' })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 
 interface ImportSearch {
   page?: number
@@ -117,7 +102,7 @@ function formatDate(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function FileDetailPage() {
-  const { user, account, file, events: fileEvents, totalCount, page, pageSize } = Route.useLoaderData()
+  const { user, account, file, fileEvents } = Route.useLoaderData()
   const { accountId, fileId } = Route.useParams()
   const router = useRouter()
   const navigate = Route.useNavigate()
@@ -262,69 +247,14 @@ function FileDetailPage() {
       {/* Events */}
       <section>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-          Associated Events ({totalCount})
+          Associated Events ({fileEvents.pagination.total})
         </h2>
-
-        <PaginatedTable
-          data={fileEvents}
-          columns={[
-            {
-              id: 'date',
-              header: 'Date',
-              accessorKey: 'effectiveAt',
-              cell: ({ getValue }) => (
-                <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                  {formatDate(getValue() as Date)}
-                </span>
-              ),
-            },
-            {
-              id: 'description',
-              header: 'Description',
-              accessorKey: 'description',
-              cell: ({ row }) => (
-                <span className="text-gray-900 dark:text-gray-100 font-medium">
-                  {row.original.description}
-                </span>
-              ),
-            },
-            {
-              id: 'legs',
-              header: 'Legs',
-              cell: ({ row }) => (
-                <div className="flex flex-wrap gap-1.5">
-                  {row.original.legs.map((leg: any) => {
-                    const neg = leg.unitCount < BigInt(0)
-                    return (
-                      <span
-                        key={leg.id}
-                        className={[
-                          'text-xs tabular-nums px-1.5 py-0.5 rounded',
-                          neg
-                            ? 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'
-                            : 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300',
-                        ].join(' ')}
-                      >
-                        {formatCurrency(leg.unitCount, {
-                          exponent: leg.instrument.exponent,
-                          ticker: leg.instrument.ticker,
-                        })}
-                      </span>
-                    )
-                  })}
-                </div>
-              ),
-            },
-          ] satisfies ColumnDef<typeof fileEvents[number]>[]}
-          pagination={{ page, pageSize, totalCount }}
+        <EventTable
+          events={fileEvents.data}
+          pagination={fileEvents.pagination}
           onPaginationChange={(p) => navigate({ search: p })}
-          onRowClick={(event) =>
-            navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })
-          }
-          getRowId={(row) => row.id}
-        >
-          <p>No events in this import.</p>
-        </PaginatedTable>
+          onRowClick={(event) => navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })}
+        />
       </section>
     </div>
   )

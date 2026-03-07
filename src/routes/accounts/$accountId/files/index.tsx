@@ -50,7 +50,7 @@ const getFilesData = createServerFn({ method: 'GET' })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 
 interface FilesSearch {
   page?: number

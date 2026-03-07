@@ -81,7 +81,7 @@ export default function EventPreviewTable({
             getRowId={(row) => row.id}
             showColumnVisibilityToggle={true} // show column toggle dropdown
             hidePagination={true} // disable pagination since we are only showing the first 10 events in this preview
-            pagination={{ page: 1, pageSize: 10, totalCount: 10 }}
+            pagination={{ total: events.length, limit: events.length, offset: 0, hasNext: false }}
             onPaginationChange={() => {}}
             initialColumnVisibility={hideColumns.reduce((acc, columnId) => {
                 acc[columnId] = false;

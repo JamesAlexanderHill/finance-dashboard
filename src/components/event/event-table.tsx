@@ -3,11 +3,12 @@ import Table, { ColumnDef, PaginationInfo } from "../ui/table";
 import formatDate from "~/lib/format-date";
 import Badge from "../ui/badge";
 import { formatChange } from "~/lib/format";
+import { PaginationData } from "~/db/services/utils/pagination";
 
 type EventTableProps = {
     events: DecoratedEvent[],
     hideColumns?: string[],
-    pagination: PaginationInfo,
+    pagination: PaginationData,
     onPaginationChange?: (pagination: { page: number; pageSize: number }) => void
     onRowClick?: (row: DecoratedEvent) => void,
 }
@@ -84,6 +85,7 @@ export default function EventTable({
             getRowId={(row) => row.id}
             showColumnVisibilityToggle={true} // show column toggle dropdown
             pagination={pagination}
+            hidePagination={pagination.total < pagination.limit}
             onPaginationChange={onPaginationChange}
             initialColumnVisibility={hideColumns.reduce((acc, columnId) => {
                 acc[columnId] = false;
