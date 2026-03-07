@@ -1,10 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and, sql } from 'drizzle-orm'
 import EventTable from '~/components/event/event-table'
 import { db } from '~/db'
-import { getEvents, getAccounts} from '~/db/queries'
-import { users, events } from '~/db/schema'
+import { eventService, accountService, createContext } from '~/db/services'
+import { users } from '~/db/schema'
 
 const DEFAULT_PAGE_SIZE = 20
 
@@ -21,27 +20,22 @@ const getData = createServerFn({ method: 'GET' })
     const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
     const offset = (page - 1) * pageSize
 
-    // need the account list so that we can filter events by accounts id that have not been returned in the current event query
-    const [userAccounts, userEvents, countResult] = await Promise.all([
-      getAccounts(user.id, {limit: 200}), // surely someone does not have more that 200 accounts
-      getEvents(user.id, { accountId: data.accountId, limit: pageSize, offset }),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(events)
-        .where(and(
-          eq(events.userId, user.id),
-          data.accountId ? eq(events.accountId, data.accountId) : undefined,
-        )),
+    const ctx = createContext(user.id)
+
+    // need the account list so that we can filter events by account id
+    const [accountsResult, eventsResult] = await Promise.all([
+      accountService.list(ctx, { limit: 200 }), // surely someone does not have more than 200 accounts
+      eventService.list(ctx, { accountId: data.accountId, limit: pageSize, offset }),
     ]);
 
     return {
       user,
-      events: userEvents,
-      accounts: userAccounts,
-      // pagination meta
-      totalCount: Number(countResult[0]?.count ?? 0),
+      events: eventsResult.data,
+      accounts: accountsResult.data,
+      totalCount: eventsResult.pagination.total,
       page,
-      pageSize, }
+      pageSize,
+    }
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────

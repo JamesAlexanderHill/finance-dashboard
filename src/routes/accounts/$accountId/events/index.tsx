@@ -1,9 +1,9 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts, events } from '~/db/schema'
-import { getEvents } from '~/db/queries'
+import { users, accounts } from '~/db/schema'
+import { eventService, createContext } from '~/db/services'
 import EventTable from '~/components/event/event-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -27,19 +27,18 @@ const getEventsData = createServerFn({ method: 'GET' })
     const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
     const offset = (page - 1) * pageSize
 
-    const [accountEvents, countResult] = await Promise.all([
-      getEvents(user.id, { accountId: data.accountId, limit: pageSize, offset }),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(events)
-        .where(eq(events.accountId, data.accountId)),
-    ])
+    const ctx = createContext(user.id)
+    const { data: accountEvents, pagination } = await eventService.list(ctx, {
+      accountId: data.accountId,
+      limit: pageSize,
+      offset,
+    })
 
     return {
       user,
       account,
       events: accountEvents,
-      totalCount: Number(countResult[0]?.count ?? 0),
+      totalCount: pagination.total,
       page,
       pageSize,
     }

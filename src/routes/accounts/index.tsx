@@ -3,9 +3,9 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { eq, inArray, sql, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts, instruments, files } from '~/db/schema'
+import { users, instruments, files } from '~/db/schema'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
-import { getAccounts, getInstruments } from '~/db/queries'
+import { accountService, instrumentService, createContext } from '~/db/services'
 import Badge from '~/components/ui/badge'
 import { formatBalance } from '~/lib/format'
 
@@ -24,12 +24,14 @@ const getData = createServerFn({ method: 'GET' })
   const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
   const offset = (page - 1) * pageSize
 
-  // Get accounts with counts
-  const userAccounts = await getAccounts(user.id, { limit: pageSize, offset });
+  const ctx = createContext(user.id)
 
-  // Get instruent + their balances, account instrument counts, and account import counts
+  // Get accounts with counts
+  const { data: userAccounts } = await accountService.list(ctx, { limit: pageSize, offset });
+
+  // Get instrument + their balances, account instrument counts, and account import counts
   const [accountInstruments, accountInstrumentCounts, accountImportCounts] = await Promise.all([
-    getInstruments(user.id, { accountIds: userAccounts.map((a) => a.id) }),
+    instrumentService.list(ctx, { accountIds: userAccounts.map((a) => a.id) }),
     db
       .select({
         accountId: instruments.accountId,
@@ -63,7 +65,7 @@ const getData = createServerFn({ method: 'GET' })
       importCount: Number(importCount)
     }];
   }));
-  const accountInstrumentsMap = new Map(accountInstruments.map((i) => [i.id, i]));
+  const accountInstrumentsMap = new Map(accountInstruments.data.map((i) => [i.id, i]));
 
   return { user, accounts: userAccounts, accountMetaMap, accountInstrumentsMap }
 })
