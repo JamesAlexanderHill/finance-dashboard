@@ -1,9 +1,8 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts } from '~/db/schema'
-import { eventService, createContext } from '~/db/services'
+import { users } from '~/db/schema'
+import { accountService, eventService, createContext } from '~/db/services'
 import EventTable from '~/components/event/event-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -14,31 +13,20 @@ const getEventsData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string; page?: number; pageSize?: number })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, events: [], totalCount: 0, page: 1, pageSize: DEFAULT_PAGE_SIZE }
+    if (!user) return { user: null, account: null, events: null }
 
-    const [account] = await db
-      .select()
-      .from(accounts)
-      .where(and(eq(accounts.id, data.accountId), eq(accounts.userId, user.id)))
+    const ctx = createContext(user.id)
+    const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, events: [], totalCount: 0, page: 1, pageSize: DEFAULT_PAGE_SIZE }
+    if (!account) return { user, account: null, events: null }
 
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
     const offset = (page - 1) * pageSize
 
-    const ctx = createContext(user.id)
-    const events = await eventService.list(ctx, {
-      accountId: data.accountId,
-      limit: pageSize,
-      offset,
-    })
+    const events = await eventService.listByAccount(ctx, data.accountId, { limit: pageSize, offset })
 
-    return {
-      user,
-      account,
-      events,
-    }
+    return { user, account, events }
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -78,7 +66,7 @@ function EventsPage() {
     )
   }
 
-  if (!account) {
+  if (!account || !events) {
     return (
       <div className="text-gray-500 dark:text-gray-400 text-sm">
         Account not found.{' '}

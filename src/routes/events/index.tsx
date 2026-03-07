@@ -24,9 +24,9 @@ const getData = createServerFn({ method: 'GET' })
 
     // need the account list so that we can filter events by account id
     const [accountsResult, eventsResult] = await Promise.all([
-      accountService.list(ctx, { limit: 200 }), // surely someone does not have more than 200 accounts
-      eventService.list(ctx, { accountId: data.accountId, limit: pageSize, offset }),
-    ]);
+      accountService.list(ctx, { limit: 200 }),
+      eventService.listAll(ctx, { accountId: data.accountId, limit: pageSize, offset }),
+    ])
 
     return {
       user,

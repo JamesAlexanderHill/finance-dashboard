@@ -1,9 +1,8 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts } from '~/db/schema'
-import { fileService, createContext } from '~/db/services'
+import { users } from '~/db/schema'
+import { accountService, fileService, createContext } from '~/db/services'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -14,10 +13,8 @@ const getFilesData = createServerFn({ method: 'GET' })
     const [user] = await db.select().from(users).limit(1)
     if (!user) return { user: null, account: null, accountFiles: null }
 
-    const [account] = await db
-      .select()
-      .from(accounts)
-      .where(and(eq(accounts.id, data.accountId), eq(accounts.userId, user.id)))
+    const ctx = createContext(user.id)
+    const account = await accountService.getById(ctx, data.accountId)
 
     if (!account) return { user, account: null, accountFiles: null }
 
@@ -25,12 +22,7 @@ const getFilesData = createServerFn({ method: 'GET' })
     const pageSize = data.pageSize ?? 20
     const offset = (page - 1) * pageSize
 
-    const ctx = createContext(user.id)
-    const accountFiles = await fileService.list(ctx, {
-      accountId: data.accountId,
-      limit: pageSize,
-      offset,
-    })
+    const accountFiles = await fileService.listByAccount(ctx, data.accountId, { limit: pageSize, offset })
 
     return { user, account, accountFiles }
   })

@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, isNull } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, categories } from '~/db/schema'
+import { users } from '~/db/schema'
 import type { Category } from '~/db/schema'
+import { categoryService, createContext } from '~/db/services'
 
 // ─── Server function ──────────────────────────────────────────────────────────
 
@@ -11,11 +11,8 @@ const getData = createServerFn({ method: 'GET' })
 .handler(async () => {
   const [user] = await db.select().from(users).limit(1)
   if (!user) return { user: null, categories: [] }
-  const cats = await db
-    .select()
-    .from(categories)
-    .where(eq(categories.userId, user.id))
-  return { user, categories: cats }
+  const categories = await categoryService.list(createContext(user.id))
+  return { user, categories }
 })
 
 // ─── Route ────────────────────────────────────────────────────────────────────

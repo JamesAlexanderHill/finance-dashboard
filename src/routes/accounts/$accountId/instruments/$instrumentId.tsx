@@ -1,14 +1,11 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and, desc, isNull, sql } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts, instruments, events, legs, categories } from '~/db/schema'
+import { users } from '~/db/schema'
 import { formatCurrency } from '~/lib/format-currency'
-import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 import Badge from '~/components/ui/badge'
-import EventPreviewTable from '~/components/event/event-preview-table'
-import { createContext, eventService } from '~/db/services'
+import { accountService, createContext, eventService, instrumentService } from '~/db/services'
 import EventTable from '~/components/event/event-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -17,42 +14,25 @@ const getInstrumentDetailData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { page?: number, pageSize?: number, accountId: string; instrumentId: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, instrument: null, balance: BigInt(0), recentEvents: [] }
+    if (!user) return { user: null, account: null, instrument: null, balance: BigInt(0), instrumentEvents: null }
 
-    const [account] = await db
-      .select()
-      .from(accounts)
-      .where(and(eq(accounts.id, data.accountId), eq(accounts.userId, user.id)))
+    const ctx = createContext(user.id)
+    const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, instrument: null, balance: BigInt(0), recentEvents: [] }
+    if (!account) return { user, account: null, instrument: null, balance: BigInt(0), instrumentEvents: null }
 
-    const [instrument] = await db
-      .select()
-      .from(instruments)
-      .where(and(eq(instruments.id, data.instrumentId), eq(instruments.accountId, data.accountId)))
+    const instrument = await instrumentService.getById(ctx, data.instrumentId)
 
-    if (!instrument) return { user, account, instrument: null, balance: BigInt(0), recentEvents: [] }
+    if (!instrument) return { user, account, instrument: null, balance: BigInt(0), instrumentEvents: null }
 
-    // paginated events
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
     const offset = (page - 1) * pageSize
 
-    // Calculate balance for this instrument
-    const [balanceResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(${legs.unitCount}), 0)` })
-      .from(legs)
-      .innerJoin(events, eq(legs.eventId, events.id))
-      .where(and(eq(legs.instrumentId, data.instrumentId), isNull(events.deletedAt)))
-
-    const balance = BigInt(balanceResult?.total ?? '0')
-
-    // const recentEvents = Array.from(eventMap.values())
-    const instrumentEvents = await eventService.list(createContext(user.id), {
-      instrumentId: data.instrumentId,
-      limit: pageSize,
-      offset,
-    });
+    const [balance, instrumentEvents] = await Promise.all([
+      instrumentService.getBalance(ctx, data.instrumentId),
+      eventService.listByInstrument(ctx, data.instrumentId, { limit: pageSize, offset }),
+    ])
 
     return { user, account, instrument, balance, instrumentEvents }
   })
@@ -66,14 +46,10 @@ const updateInstrument = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user found')
-
-    await db
-      .update(instruments)
-      .set({
-        name: data.name.trim(),
-        exponent: data.exponent,
-      })
-      .where(and(eq(instruments.id, data.instrumentId), eq(instruments.userId, user.id)))
+    await instrumentService.update(createContext(user.id), data.instrumentId, {
+      name: data.name,
+      exponent: data.exponent,
+    })
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -137,7 +113,7 @@ function InstrumentDetailPage() {
     )
   }
 
-  if (!instrument) {
+  if (!instrument || !instrumentEvents) {
     return (
       <div className="text-gray-500 dark:text-gray-400 text-sm">
         Instrument not found.{' '}

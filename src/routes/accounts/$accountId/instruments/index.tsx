@@ -1,10 +1,9 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts, instruments } from '~/db/schema'
-import { instrumentService, createContext } from '~/db/services'
+import { users } from '~/db/schema'
+import { accountService, instrumentService, createContext } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 
@@ -14,31 +13,24 @@ const getInstrumentsData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string; page?: number; pageSize?: number })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, instruments: [], totalCount: 0, page: 1, pageSize: 20 }
+    if (!user) return { user: null, account: null, accountInstruments: null }
 
-    const [account] = await db
-      .select()
-      .from(accounts)
-      .where(and(eq(accounts.id, data.accountId), eq(accounts.userId, user.id)))
+    const ctx = createContext(user.id)
+    const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, instruments: [], totalCount: 0, page: 1, pageSize: 20 }
+    if (!account) return { user, account: null, accountInstruments: null }
 
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? 20
     const offset = (page - 1) * pageSize
 
-    const ctx = createContext(user.id)
     const accountInstruments = await instrumentService.list(ctx, {
       accountIds: [data.accountId],
       limit: pageSize,
       offset,
     })
 
-    return {
-      user,
-      account,
-      accountInstruments,
-    }
+    return { user, account, accountInstruments }
   })
 
 const createInstrument = createServerFn({ method: 'POST' })
@@ -51,19 +43,10 @@ const createInstrument = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user found')
-
-    const [account] = await db
-      .select()
-      .from(accounts)
-      .where(and(eq(accounts.id, data.accountId), eq(accounts.userId, user.id)))
-
-    if (!account) throw new Error('Account not found')
-
-    await db.insert(instruments).values({
-      userId: user.id,
+    await instrumentService.create(createContext(user.id), {
       accountId: data.accountId,
-      ticker: data.ticker.trim().toUpperCase(),
-      name: data.name.trim(),
+      ticker: data.ticker,
+      name: data.name,
       exponent: data.exponent,
     })
   })
@@ -109,7 +92,7 @@ function InstrumentsPage() {
     )
   }
 
-  if (!account) {
+  if (!account || !accountInstruments) {
     return (
       <div className="text-gray-500 dark:text-gray-400 text-sm">
         Account not found.{' '}

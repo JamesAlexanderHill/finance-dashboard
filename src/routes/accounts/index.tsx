@@ -1,11 +1,10 @@
 import * as React from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, inArray, sql, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, instruments, files, accounts } from '~/db/schema'
+import { users } from '~/db/schema'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
-import { accountService, instrumentService, createContext } from '~/db/services'
+import { accountService, instrumentService, fileService, createContext } from '~/db/services'
 import Badge from '~/components/ui/badge'
 import { formatBalance } from '~/lib/format'
 
@@ -26,46 +25,21 @@ const getData = createServerFn({ method: 'GET' })
 
   const ctx = createContext(user.id)
 
-  // Get accounts with counts
-  const userAccounts = await accountService.list(ctx, { limit: pageSize, offset });
+  const userAccounts = await accountService.list(ctx, { limit: pageSize, offset })
+  const accountIds = userAccounts.data.map((a) => a.id)
 
-  // Get instrument + their balances, account instrument counts, and account import counts
-  const [accountInstruments, accountInstrumentCounts, accountImportCounts] = await Promise.all([
-    instrumentService.list(ctx, { accountIds: userAccounts.data.map((a) => a.id) }),
-    db
-      .select({
-        accountId: instruments.accountId,
-        count: sql<number>`count(*)`.as('count'),
-      })
-      .from(instruments)
-      .where(and(
-        eq(instruments.userId, user.id),
-        inArray(instruments.accountId, userAccounts.data.map((a) => a.id))
-      ))
-      .groupBy(instruments.accountId),
-    db
-      .select({
-        accountId: files.accountId,
-        count: sql<number>`count(*)`.as('count'),
-      })
-      .from(files)
-      .where(and(
-        eq(files.userId, user.id),
-        inArray(files.accountId, userAccounts.data.map((a) => a.id))
-      ))
-      .groupBy(files.accountId),
+  const [accountInstruments, fileCounts] = await Promise.all([
+    instrumentService.list(ctx, { accountIds }),
+    fileService.countsByAccount(ctx, accountIds),
   ])
 
+  const fileCountMap = new Map(fileCounts.map((r) => [r.accountId, r.count]))
   const accountMetaMap = new Map(userAccounts.data.map((account) => {
-    const instrumentCount = accountInstrumentCounts.find((c) => c.accountId === account.id)?.count ?? 0
-    const importCount = accountImportCounts.find((c) => c.accountId === account.id)?.count ?? 0
-
-    return [account.id, {
-      instrumentCount: Number(instrumentCount),
-      importCount: Number(importCount)
-    }];
-  }));
-  const accountInstrumentsMap = new Map(accountInstruments.data.map((i) => [i.id, i]));
+    const instrumentCount = accountInstruments.data.filter((i) => i.accountId === account.id).length
+    const importCount = fileCountMap.get(account.id) ?? 0
+    return [account.id, { instrumentCount, importCount }]
+  }))
+  const accountInstrumentsMap = new Map(accountInstruments.data.map((i) => [i.id, i]))
 
   return { user, accounts: userAccounts, accountMetaMap, accountInstrumentsMap }
 })
@@ -75,10 +49,7 @@ const createAccount = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user found')
-    await db.insert(accounts).values({
-      userId: user.id,
-      name: data.name.trim(),
-    })
+    await accountService.create(createContext(user.id), { name: data.name })
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────

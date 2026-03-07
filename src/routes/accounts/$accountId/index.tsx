@@ -1,9 +1,8 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts } from '~/db/schema'
+import { users } from '~/db/schema'
 import { ImportWizard } from '~/components/ImportWizard'
 import InstrumentCard from '~/components/instrument-card'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
@@ -16,17 +15,17 @@ const getData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, instruments: [], balances: [], files: [], recentEvents: [] }
+    if (!user) return { user: null, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [] }
 
     const ctx = createContext(user.id)
-    const { data: [account] } = await accountService.list(ctx, { accountIds: [data.accountId] });
+    const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, instruments: [], balances: [], files: [], recentEvents: [], legs: [] }
+    if (!account) return { user, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [] }
 
     const [accountInstruments, recentAccountfiles, recentAccountEvents] = await Promise.all([
       instrumentService.list(ctx, { accountIds: [data.accountId] }),
-      fileService.list(ctx, { accountId: data.accountId, limit: 5 }),
-      eventService.list(ctx, { accountId: data.accountId, limit: 10 }),
+      fileService.listByAccount(ctx, data.accountId, { limit: 5 }),
+      eventService.listByAccount(ctx, data.accountId, { limit: 10 }),
     ]);
 
     return { user, account, accountInstruments, recentAccountfiles, recentAccountEvents }
@@ -37,13 +36,10 @@ const updateAccount = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user found')
-    await db
-      .update(accounts)
-      .set({
-        name: data.name.trim(),
-        defaultInstrumentId: data.defaultInstrumentId || null,
-      })
-      .where(and(eq(accounts.id, data.id), eq(accounts.userId, user.id)))
+    await accountService.update(createContext(user.id), data.id, {
+      name: data.name,
+      defaultInstrumentId: data.defaultInstrumentId,
+    })
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -318,7 +314,6 @@ function AccountDetailPage() {
         {showImportWizard && (
           <div className="mb-6">
             <ImportWizard
-              userId={user!.id}
               accountId={account!.id}
               accountName={account!.name}
               onClose={() => setShowImportWizard(false)}

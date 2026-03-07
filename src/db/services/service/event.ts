@@ -1,44 +1,37 @@
-import { eq, and, desc, count } from 'drizzle-orm'
-import { db } from '~/db'
-import { events, legs } from '~/db/schema'
 import type { RequestContext } from '../utils/context'
 import { buildPaginatedResult, type PaginationOptions } from '../utils/pagination'
+import {
+  queryEventsByAccount,
+  queryEventsByFile,
+  queryEventsByInstrument,
+  queryAllEvents,
+} from '../query/event'
 
-type ListEventsOptions = PaginationOptions & {
-  accountId?: string,
-  instrumentId?: string,
-  fileId?: string,  
-}
-
-async function list(ctx: RequestContext, opts: ListEventsOptions = {}) {
-  const { limit = 20, offset = 0, accountId, instrumentId, fileId } = opts
-
-  const where = and(
-    eq(events.userId, ctx.userId),
-    accountId ? eq(events.accountId, accountId) : undefined,
-    fileId ? eq(events.fileId, fileId) : undefined,
-  )
-
-  const [data, [{ total }]] = await Promise.all([
-    db.query.events.findMany({
-      where,
-      orderBy: [desc(events.effectiveAt)],
-      limit,
-      offset,
-      with: {
-        account: true,
-        legs: {
-          where: instrumentId ? eq(legs.instrumentId, instrumentId) : undefined,
-          with: {
-            instrument: true
-          }
-        },
-      },
-    }),
-    db.select({ total: count() }).from(events).where(where),
-  ])
-
+async function listByAccount(ctx: RequestContext, accountId: string, opts: PaginationOptions = {}) {
+  const { limit = 20, offset = 0 } = opts
+  const { data, total } = await queryEventsByAccount(ctx.userId, accountId, opts)
   return buildPaginatedResult(data, total, limit, offset)
 }
 
-export const eventService = { list }
+async function listByFile(ctx: RequestContext, fileId: string, opts: PaginationOptions = {}) {
+  const { limit = 20, offset = 0 } = opts
+  const { data, total } = await queryEventsByFile(ctx.userId, fileId, opts)
+  return buildPaginatedResult(data, total, limit, offset)
+}
+
+async function listByInstrument(ctx: RequestContext, instrumentId: string, opts: PaginationOptions = {}) {
+  const { limit = 20, offset = 0 } = opts
+  const { data, total } = await queryEventsByInstrument(ctx.userId, instrumentId, opts)
+  return buildPaginatedResult(data, total, limit, offset)
+}
+
+async function listAll(
+  ctx: RequestContext,
+  opts: PaginationOptions & { accountId?: string } = {},
+) {
+  const { limit = 20, offset = 0 } = opts
+  const { data, total } = await queryAllEvents(ctx.userId, opts)
+  return buildPaginatedResult(data, total, limit, offset)
+}
+
+export const eventService = { listByAccount, listByFile, listByInstrument, listAll }

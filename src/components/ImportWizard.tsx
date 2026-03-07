@@ -1,27 +1,32 @@
 import * as React from 'react'
 import { createServerFn } from '@tanstack/react-start'
-import { eq } from 'drizzle-orm'
 import { db } from '~/db'
-import { instruments } from '~/db/schema'
+import { users } from '~/db/schema'
 import { parseCanonicalCsv } from '~/importers/canonical'
 import type { ParsedEvent } from '~/importers/canonical'
-import { commitImport } from '~/lib/import-runner'
-import type { InstrumentDraft } from '~/lib/import-runner'
+import { importService, instrumentService, createContext } from '~/db/services'
+import type { CommitImportParams, InstrumentDraft } from '~/db/services'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 export const getAccountInstruments = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string })
   .handler(async ({ data }) => {
-    return db
-      .select()
-      .from(instruments)
-      .where(eq(instruments.accountId, data.accountId))
+    const [user] = await db.select().from(users).limit(1)
+    if (!user) return []
+    const ctx = createContext(user.id)
+    const result = await instrumentService.list(ctx, { accountIds: [data.accountId] })
+    return result.data
   })
 
 export const doCommitImport = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as Parameters<typeof commitImport>[0])
-  .handler(async ({ data }) => commitImport(data))
+  .inputValidator((data: unknown) => data as CommitImportParams)
+  .handler(async ({ data }) => {
+    const [user] = await db.select().from(users).limit(1)
+    if (!user) throw new Error('No user found')
+    const ctx = createContext(user.id)
+    return importService.commitImport(ctx, data)
+  })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,7 +59,6 @@ const EMPTY_WIZARD: WizardState = {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 export interface ImportWizardProps {
-  userId: string
   accountId: string
   accountName: string
   onClose: () => void
@@ -63,7 +67,7 @@ export interface ImportWizardProps {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ImportWizard({ userId, accountId, accountName, onClose, onSuccess }: ImportWizardProps) {
+export function ImportWizard({ accountId, accountName, onClose, onSuccess }: ImportWizardProps) {
   const [wizard, setWizard] = React.useState<WizardState>({
     ...EMPTY_WIZARD,
     step: 1,
@@ -118,7 +122,6 @@ export function ImportWizard({ userId, accountId, accountName, onClose, onSucces
     try {
       const runId = await doCommitImport({
         data: {
-          userId,
           accountId: wizard.accountId,
           filename: wizard.filename,
           events: wizard.parsedEvents,
