@@ -364,6 +364,7 @@ function AccountDetailPage() {
         <EventPreviewTable
           hideColumns={["account"]} // hide account filter since we are already scoped to an account
           events={recentAccountEvents}
+          onRowClick={(event) => navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })}
         />
       </section>
     </div>
