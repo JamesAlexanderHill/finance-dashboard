@@ -61,7 +61,7 @@ export default function EventTable({
                 }, {} as Record<string, [Instrument, bigint]>);
 
                 return (
-                    <div>
+                    <div className="flex gap-2">
                         {Object.entries(instrumentNetChange).map(([instrumentId, [instrument, totalUnitCount]]) => {
                             if (!instrument) return null;
 

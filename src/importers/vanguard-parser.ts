@@ -200,7 +200,7 @@ function main() {
         legTicker: "AUD",
         legUnitCount: totalCents,
       });
-      // ETF leg: units × 100 (minor units = 1/100th of a share)
+      // ETF leg: whole units (exponent 0 — shares are not subdivided)
       legs.push({
         externalEventId: id,
         eventGroup: id,
@@ -209,7 +209,7 @@ function main() {
         postedAt: effectiveAt,
         legDescription: description,
         legTicker: productId,
-        legUnitCount: Math.round(units * 100),
+        legUnitCount: Math.round(units),
       });
     } else {
       console.error(`Row ${r + 2}: Unknown type "${type}", skipping.`);
