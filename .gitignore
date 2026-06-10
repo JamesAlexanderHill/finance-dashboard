@@ -18,3 +18,4 @@ yarn.lock
 /playwright/.cache/
 /dist/
 .tanstack
+.db
