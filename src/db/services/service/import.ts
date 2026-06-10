@@ -8,6 +8,7 @@ import type { RequestContext } from '../utils/context'
 import { queryAccountById } from '../query/account'
 import { queryEventByDedupeKey } from '../query/event'
 import { queryCategoriesByUser } from '../query/category'
+import { checkpointService } from './checkpoint'
 
 export interface InstrumentDraft {
   ticker: string
@@ -181,6 +182,11 @@ async function commitImport(ctx: RequestContext, params: CommitImportParams): Pr
     .update(files)
     .set({ importedCount, skippedCount, restoredCount, errorCount, skippedKeys, errors: importErrors })
     .where(eq(files.id, fileId))
+
+  // ── 7. Refresh balance checkpoints for affected instruments ───────────────
+  for (const instrumentId of new Set(instrumentMap.values())) {
+    await checkpointService.refresh(ctx, instrumentId)
+  }
 
   return fileId
 }

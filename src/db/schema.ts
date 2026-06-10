@@ -131,6 +131,25 @@ export const legs = pgTable('legs', {
   createdAt: createdAt(),
 })
 
+// ─── Instrument Checkpoints ───────────────────────────────────────────────────
+
+export const instrumentCheckpoints = pgTable(
+  'instrument_checkpoints',
+  {
+    id: id(),
+    userId: userId().references(() => users.id),
+    instrumentId: text('instrument_id')
+      .notNull()
+      .references(() => instruments.id),
+    // Exclusive upper bound: first instant of the month AFTER the checkpointed
+    // month (UTC). balance covers all non-deleted legs with effectiveAt < periodEnd.
+    periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+    balance: bigint('balance', { mode: 'bigint' }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [unique().on(t.instrumentId, t.periodEnd)],
+)
+
 // ─── Line Items ───────────────────────────────────────────────────────────────
 
 export const lineItems = pgTable('line_items', {
@@ -188,6 +207,15 @@ export const instrumentsRelations = relations(instruments, ({ one, many }) => ({
 
   // optional but usually useful
   user: one(users, { fields: [instruments.userId], references: [users.id] }),
+
+  checkpoints: many(instrumentCheckpoints),
+}))
+
+export const instrumentCheckpointsRelations = relations(instrumentCheckpoints, ({ one }) => ({
+  instrument: one(instruments, {
+    fields: [instrumentCheckpoints.instrumentId],
+    references: [instruments.id],
+  }),
 }))
 
 export const eventsRelations = relations(events, ({ one, many }) => ({
@@ -234,5 +262,6 @@ export type Category = typeof categories.$inferSelect
 export type File = typeof files.$inferSelect
 export type Event = typeof events.$inferSelect
 export type Leg = typeof legs.$inferSelect
+export type InstrumentCheckpoint = typeof instrumentCheckpoints.$inferSelect
 export type LineItem = typeof lineItems.$inferSelect
 export type EventRelation = typeof eventRelations.$inferSelect

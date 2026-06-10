@@ -1,6 +1,6 @@
 import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { instruments } from '~/db/schema'
+import { instruments, instrumentCheckpoints } from '~/db/schema'
 import type { RequestContext } from '../utils/context'
 import { buildPaginatedResult, type PaginationOptions } from '../utils/pagination'
 import {
@@ -77,6 +77,8 @@ async function remove(ctx: RequestContext, instrumentId: string) {
 
   const hasLegs = await queryInstrumentHasLegs(instrumentId)
   if (hasLegs) throw new Error('Cannot delete an instrument that has associated events')
+
+  await db.delete(instrumentCheckpoints).where(eq(instrumentCheckpoints.instrumentId, instrumentId))
 
   await db
     .delete(instruments)

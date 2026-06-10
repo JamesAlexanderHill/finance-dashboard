@@ -5,6 +5,7 @@ import {
   eventRelations,
   events,
   files,
+  instrumentCheckpoints,
   instruments,
   legs,
   lineItems,
@@ -17,6 +18,7 @@ import {
 export async function clearAllData(): Promise<void> {
   await db.delete(eventRelations)
   await db.delete(lineItems)
+  await db.delete(instrumentCheckpoints)
   await db.delete(legs)
   await db.delete(events)
   await db.delete(files)
@@ -208,7 +210,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     relationType: 'transfer_pair',
   })
 
-  // Exchange: $100 USD → ~$158.73 AUD on Wise
+  // Exchange: $100 NZD → ~$92.00 AUD on Wise
   const [exchange] = await db
     .insert(events)
     .values({
@@ -216,16 +218,16 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
       accountId: accountIds.wise,
       effectiveAt: new Date('2025-02-01T00:00:00Z'),
       postedAt: new Date('2025-02-01T00:00:00Z'),
-      description: 'Converted 100 USD to AUD',
-      dedupeKey: 'seed:exchange:wise-usd-aud',
+      description: 'Converted 100 NZD to AUD',
+      dedupeKey: 'seed:exchange:wise-nzd-aud',
     })
     .returning()
   await db.insert(legs).values([
-    { userId, eventId: exchange.id, instrumentId: instrumentIds.wiseUsd, unitCount: BigInt(-10000) },
-    { userId, eventId: exchange.id, instrumentId: instrumentIds.wiseAud, unitCount: BigInt(15873) },
+    { userId, eventId: exchange.id, instrumentId: instrumentIds.wiseNzd, unitCount: BigInt(-10000) },
+    { userId, eventId: exchange.id, instrumentId: instrumentIds.wiseAud, unitCount: BigInt(9200) },
   ])
 
-  // Trade: Buy 19 VDAL for $855 AUD
+  // Trade: Buy 19 VHY for $855 AUD
   const [trade] = await db
     .insert(events)
     .values({
@@ -233,8 +235,8 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
       accountId: accountIds.vanguard,
       effectiveAt: new Date('2025-04-06T00:00:00Z'),
       postedAt: new Date('2025-04-06T00:00:00Z'),
-      description: 'Buy VDAL x19',
-      dedupeKey: 'seed:trade:vdal-buy-2025-04-06',
+      description: 'Buy VHY x19',
+      dedupeKey: 'seed:trade:vhy-buy-2025-04-06',
     })
     .returning()
   await db.insert(legs).values([

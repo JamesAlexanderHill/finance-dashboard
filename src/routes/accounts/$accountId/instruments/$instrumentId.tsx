@@ -135,8 +135,7 @@ function InstrumentDetailPage() {
       data: {
         instrumentId,
         name: String(fd.get('name')),
-        kind: String(fd.get('kind')) as 'fiat' | 'security' | 'crypto' | 'other',
-        minorUnit: parseInt(String(fd.get('minorUnit')), 10),
+        exponent: parseInt(String(fd.get('exponent')), 10),
       },
     })
     setEditing(false)
@@ -197,35 +196,18 @@ function InstrumentDetailPage() {
                 className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Kind
-                </label>
-                <select
-                  name="kind"
-                  defaultValue={instrument.ticker}
-                  className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="fiat">Fiat</option>
-                  <option value="security">Security</option>
-                  <option value="crypto">Crypto</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Minor Unit
-                </label>
-                <input
-                  name="minorUnit"
-                  type="number"
-                  min={0}
-                  max={8}
-                  defaultValue={instrument.exponent}
-                  className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                Exponent (decimal places)
+              </label>
+              <input
+                name="exponent"
+                type="number"
+                min={0}
+                max={8}
+                defaultValue={instrument.exponent}
+                className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
             <div className="flex gap-2">
               <button

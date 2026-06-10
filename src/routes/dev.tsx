@@ -3,6 +3,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { db } from '~/db'
 import { users } from '~/db/schema'
+import { checkpointService, createContext } from '~/db/services'
 import { clearAllData, seedBase, seedSampleEvents } from '~/lib/seed'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -32,66 +33,60 @@ const devSeedSampleEvents = createServerFn({ method: 'POST' }).handler(async () 
     db.select().from(categories).where(eq(categories.userId, user.id)),
   ])
 
-  // Map to expected keys used by seedSampleEvents
-  const commbank = accs.find((a) => a.name.toLowerCase().includes('commbank'))
-  const amex = accs.find((a) => a.name.toLowerCase() === 'amex')
-  const wise = accs.find((a) => a.name.toLowerCase() === 'wise')
-  const vanguardCash = accs.find((a) => a.name.toLowerCase().includes('vanguard cash'))
-  const vanguardHoldings = accs.find((a) => a.name.toLowerCase().includes('vanguard holdings'))
+  // Map to the keys used by seedSampleEvents (matching seedBase's SeedResult shape)
+  const commbank = accs.find((a) => a.name === 'CommBank')
+  const amex = accs.find((a) => a.name === 'AMEX')
+  const wise = accs.find((a) => a.name === 'Wise')
+  const vanguard = accs.find((a) => a.name === 'Vanguard')
 
-  if (!commbank || !amex || !wise || !vanguardCash || !vanguardHoldings) {
+  if (!commbank || !amex || !wise || !vanguard) {
     return { ok: false, message: 'Expected accounts not found. Run "Seed Base" first.' }
   }
 
-  const cbAudInstr = instrs.find((i) => i.accountId === commbank.id && i.ticker === 'AUD')
-  const amexAudInstr = instrs.find((i) => i.accountId === amex.id && i.ticker === 'AUD')
-  const wiseAudInstr = instrs.find((i) => i.accountId === wise.id && i.ticker === 'AUD')
-  const wiseUsdInstr = instrs.find((i) => i.accountId === wise.id && i.ticker === 'USD')
-  const vCashAudInstr = instrs.find((i) => i.accountId === vanguardCash.id && i.ticker === 'AUD')
-  const vHoldVdalInstr = instrs.find((i) => i.accountId === vanguardHoldings.id && i.ticker === 'VDAL')
+  const commbankAud = instrs.find((i) => i.accountId === commbank.id && i.ticker === 'AUD')
+  const amexAud = instrs.find((i) => i.accountId === amex.id && i.ticker === 'AUD')
+  const wiseAud = instrs.find((i) => i.accountId === wise.id && i.ticker === 'AUD')
+  const wiseNzd = instrs.find((i) => i.accountId === wise.id && i.ticker === 'NZD')
+  const vanguardAud = instrs.find((i) => i.accountId === vanguard.id && i.ticker === 'AUD')
+  const vanguardVhy = instrs.find((i) => i.accountId === vanguard.id && i.ticker === 'VHY')
 
-  if (!cbAudInstr || !amexAudInstr || !wiseAudInstr || !wiseUsdInstr || !vCashAudInstr || !vHoldVdalInstr) {
+  if (!commbankAud || !amexAud || !wiseAud || !wiseNzd || !vanguardAud || !vanguardVhy) {
     return { ok: false, message: 'Expected instruments not found. Run "Seed Base" first.' }
   }
 
-  const groceries = cats.find((c) => c.name.toLowerCase() === 'groceries')
+  const groceries = cats.find((c) => c.name === 'Groceries')
 
   const mappedSeedResult = {
     userId: user.id,
-    accountIds: {
-      commbank: commbank.id,
-      amex: amex.id,
-      wise: wise.id,
-      vanguardCash: vanguardCash.id,
-      vanguardHoldings: vanguardHoldings.id,
-    },
+    accountIds: { commbank: commbank.id, amex: amex.id, wise: wise.id, vanguard: vanguard.id },
     instrumentIds: {
-      cbAud: cbAudInstr.id,
-      amexAud: amexAudInstr.id,
-      wiseAud: wiseAudInstr.id,
-      wiseUsd: wiseUsdInstr.id,
-      vCashAud: vCashAudInstr.id,
-      vHoldVdal: vHoldVdalInstr.id,
+      commbankAud: commbankAud.id,
+      amexAud: amexAud.id,
+      wiseAud: wiseAud.id,
+      wiseNzd: wiseNzd.id,
+      vanguardAud: vanguardAud.id,
+      vanguardVhy: vanguardVhy.id,
     },
     categoryIds: { groceries: groceries?.id ?? '' },
   }
 
-  await seedSampleEvents(mappedSeedResult as any)
+  await seedSampleEvents(mappedSeedResult)
   return { ok: true }
 })
 
 const getDevStatus = createServerFn({ method: 'GET' }).handler(async () => {
   const { count } = await import('drizzle-orm')
-  const { events, legs, accounts: accountsTable } = await import('~/db/schema')
+  const { events, legs, accounts: accountsTable, instrumentCheckpoints } = await import('~/db/schema')
 
   const [user] = await db.select().from(users).limit(1)
-  if (!user) return { hasUser: false, eventCount: 0, legCount: 0, accountCount: 0 }
+  if (!user) return { hasUser: false, eventCount: 0, legCount: 0, accountCount: 0, checkpointCount: 0 }
 
   const { eq } = await import('drizzle-orm')
-  const [evtResult, legResult, accResult] = await Promise.all([
+  const [evtResult, legResult, accResult, checkpointResult] = await Promise.all([
     db.select({ n: count() }).from(events).where(eq(events.userId, user.id)),
     db.select({ n: count() }).from(legs).where(eq(legs.userId, user.id)),
     db.select({ n: count() }).from(accountsTable).where(eq(accountsTable.userId, user.id)),
+    db.select({ n: count() }).from(instrumentCheckpoints).where(eq(instrumentCheckpoints.userId, user.id)),
   ])
 
   return {
@@ -101,7 +96,16 @@ const getDevStatus = createServerFn({ method: 'GET' }).handler(async () => {
     eventCount: Number(evtResult[0]?.n ?? 0),
     legCount: Number(legResult[0]?.n ?? 0),
     accountCount: Number(accResult[0]?.n ?? 0),
+    checkpointCount: Number(checkpointResult[0]?.n ?? 0),
   }
+})
+
+const devRecomputeCheckpoints = createServerFn({ method: 'POST' }).handler(async () => {
+  const [user] = await db.select().from(users).limit(1)
+  if (!user) return { ok: false, message: 'No user found. Seed base data first.' }
+
+  const count = await checkpointService.refreshAll(createContext(user.id))
+  return { ok: true, message: `Recomputed checkpoints for ${count} instrument(s).` }
 })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -164,6 +168,12 @@ function DevPage() {
     return r as any
   })
 
+  const recomputeCheckpointsAction = useAction(async () => {
+    const r = await devRecomputeCheckpoints()
+    router.invalidate()
+    return r
+  })
+
   const actions = [
     {
       label: 'Clear all data',
@@ -180,6 +190,11 @@ function DevPage() {
       label: 'Seed sample events',
       description: 'Add purchase, transfer pair, exchange, and VDAL trade (requires base seed).',
       action: seedEventsAction,
+    },
+    {
+      label: 'Recompute checkpoints',
+      description: 'Rebuild monthly balance checkpoints for every instrument.',
+      action: recomputeCheckpointsAction,
     },
   ]
 
@@ -222,6 +237,7 @@ function DevPage() {
             <Stat label="Accounts" value={status.accountCount} />
             <Stat label="Events" value={status.eventCount} />
             <Stat label="Legs" value={status.legCount} />
+            <Stat label="Checkpoints" value={status.checkpointCount} />
           </div>
         </div>
       </div>

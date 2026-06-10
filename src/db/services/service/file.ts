@@ -9,6 +9,7 @@ import {
   queryFileById,
   queryFileCountsByAccount,
 } from '../query/file'
+import { checkpointService } from './checkpoint'
 
 async function getById(ctx: RequestContext, fileId: string) {
   return queryFileById(ctx.userId, fileId)
@@ -37,19 +38,33 @@ async function remove(ctx: RequestContext, fileId: string) {
   const file = await queryFileById(ctx.userId, fileId)
   if (!file) throw new Error(`File not found: ${fileId}`)
 
-  await db.transaction(async (tx) => {
+  const affectedInstrumentIds = await db.transaction(async (tx) => {
     const fileEvents = await tx
       .select({ id: events.id })
       .from(events)
       .where(and(eq(events.fileId, fileId), eq(events.userId, ctx.userId)))
 
+    let instrumentIds: string[] = []
     if (fileEvents.length > 0) {
-      await tx.delete(legs).where(inArray(legs.eventId, fileEvents.map((e) => e.id)))
+      const eventIds = fileEvents.map((e) => e.id)
+      const affectedLegs = await tx
+        .selectDistinct({ instrumentId: legs.instrumentId })
+        .from(legs)
+        .where(inArray(legs.eventId, eventIds))
+      instrumentIds = affectedLegs.map((l) => l.instrumentId)
+
+      await tx.delete(legs).where(inArray(legs.eventId, eventIds))
     }
 
     await tx.delete(events).where(eq(events.fileId, fileId))
     await tx.delete(files).where(eq(files.id, fileId))
+
+    return instrumentIds
   })
+
+  for (const instrumentId of affectedInstrumentIds) {
+    await checkpointService.refresh(ctx, instrumentId)
+  }
 }
 
 export const fileService = { getById, listByUser, listByAccount, countsByAccount, delete: remove }

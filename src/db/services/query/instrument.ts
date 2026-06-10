@@ -1,10 +1,35 @@
-import { eq, and, inArray, isNull, count, sql } from 'drizzle-orm'
+import { eq, and, inArray, isNull, count, desc, gte, sql } from 'drizzle-orm'
 import { db } from '~/db'
-import { instruments, legs, events, accounts } from '~/db/schema'
+import { instruments, legs, events, accounts, instrumentCheckpoints } from '~/db/schema'
 import type { PaginationOptions } from '../utils/pagination'
 
 type QueryInstrumentsOpts = PaginationOptions & {
   accountIds?: string[]
+}
+
+// Fully-qualified reference to instruments.id — required because the
+// correlated subqueries below (instrument_checkpoints, legs, events) all
+// have their own "id" columns, so a bare "id" would be ambiguous.
+const instrumentIdRef = sql.raw('"instruments"."id"')
+
+/**
+ * Balance for an instrument as of now: latest completed-month checkpoint
+ * (if any) plus the sum of non-deleted legs since that checkpoint's period.
+ */
+function balanceSinceCheckpointExpr(userId: string) {
+  return sql<string>`(
+    coalesce((select c.balance from instrument_checkpoints c
+      where c.instrument_id = ${instrumentIdRef} and c.user_id = ${userId}
+      order by c.period_end desc limit 1), 0)
+    + coalesce((select sum(l.unit_count) from legs l
+      inner join events e on e.id = l.event_id
+      where l.instrument_id = ${instrumentIdRef} and l.user_id = ${userId}
+        and e.deleted_at is null
+        and e.effective_at >= coalesce((select c2.period_end from instrument_checkpoints c2
+          where c2.instrument_id = ${instrumentIdRef} and c2.user_id = ${userId}
+          order by c2.period_end desc limit 1), '-infinity'::timestamptz)
+      ), 0)
+  )`
 }
 
 export async function queryInstrumentsWithBalance(userId: string, opts: QueryInstrumentsOpts = {}) {
@@ -24,12 +49,10 @@ export async function queryInstrumentsWithBalance(userId: string, opts: QueryIns
         name: instruments.name,
         ticker: instruments.ticker,
         exponent: instruments.exponent,
-        balance: sql<string>`coalesce(sum(${legs.unitCount})::text, '0')`.as('balance'),
+        balance: balanceSinceCheckpointExpr(userId).as('balance'),
       })
       .from(instruments)
-      .leftJoin(legs, and(eq(legs.instrumentId, instruments.id), eq(legs.userId, userId)))
       .where(where)
-      .groupBy(instruments.id)
       .limit(limit)
       .offset(offset),
     db.select({ total: count() }).from(instruments).where(where),
@@ -68,25 +91,19 @@ export async function queryInstrumentBalances(userId: string, accountIds?: strin
 export async function queryAccountBalances(userId: string) {
   const rows = await db
     .select({
-      accountId: events.accountId,
+      accountId: instruments.accountId,
       accountName: accounts.name,
-      instrumentId: legs.instrumentId,
+      instrumentId: instruments.id,
       instrumentTicker: instruments.ticker,
       instrumentExponent: instruments.exponent,
-      unitCount: sql<string>`SUM(${legs.unitCount})`,
+      unitCount: balanceSinceCheckpointExpr(userId),
     })
-    .from(legs)
-    .innerJoin(events, eq(legs.eventId, events.id))
-    .innerJoin(accounts, eq(events.accountId, accounts.id))
-    .innerJoin(instruments, eq(legs.instrumentId, instruments.id))
-    .where(and(eq(events.userId, userId), isNull(events.deletedAt)))
-    .groupBy(
-      events.accountId,
-      accounts.name,
-      legs.instrumentId,
-      instruments.ticker,
-      instruments.exponent,
-    )
+    .from(instruments)
+    .innerJoin(accounts, eq(instruments.accountId, accounts.id))
+    .where(and(
+      eq(instruments.userId, userId),
+      sql`exists (select 1 from legs l inner join events e on e.id = l.event_id where l.instrument_id = ${instrumentIdRef} and l.user_id = ${userId} and e.deleted_at is null)`,
+    ))
 
   return rows.map((r) => ({ ...r, unitCount: BigInt(r.unitCount) }))
 }
@@ -109,8 +126,18 @@ export interface AccountBalance {
   unitCount: bigint
 }
 
-/** Balance for a single instrument, excluding soft-deleted events. */
+/**
+ * Balance for a single instrument, excluding soft-deleted events: latest
+ * completed-month checkpoint (if any) plus the sum of legs since then.
+ */
 export async function queryInstrumentBalance(userId: string, instrumentId: string): Promise<bigint> {
+  const [checkpoint] = await db
+    .select({ periodEnd: instrumentCheckpoints.periodEnd, balance: instrumentCheckpoints.balance })
+    .from(instrumentCheckpoints)
+    .where(and(eq(instrumentCheckpoints.userId, userId), eq(instrumentCheckpoints.instrumentId, instrumentId)))
+    .orderBy(desc(instrumentCheckpoints.periodEnd))
+    .limit(1)
+
   const [result] = await db
     .select({ total: sql<string>`COALESCE(SUM(${legs.unitCount}), 0)` })
     .from(legs)
@@ -120,10 +147,11 @@ export async function queryInstrumentBalance(userId: string, instrumentId: strin
         eq(legs.instrumentId, instrumentId),
         eq(legs.userId, userId),
         isNull(events.deletedAt),
+        checkpoint ? gte(events.effectiveAt, checkpoint.periodEnd) : undefined,
       ),
     )
 
-  return BigInt(result?.total ?? '0')
+  return (checkpoint?.balance ?? BigInt(0)) + BigInt(result?.total ?? '0')
 }
 
 export async function queryInstrumentHasLegs(instrumentId: string): Promise<boolean> {

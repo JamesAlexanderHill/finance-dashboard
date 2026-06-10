@@ -4,6 +4,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, events, legs, lineItems, categories } from '~/db/schema'
+import { checkpointService, createContext } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import Badge from '~/components/ui/badge'
 import {
@@ -54,6 +55,16 @@ const softDeleteEvent = createServerFn({ method: 'POST' })
       .update(events)
       .set({ deletedAt: data.deletedAt ? new Date(data.deletedAt) : null })
       .where(and(eq(events.id, data.id), eq(events.userId, user.id)))
+
+    const affectedLegs = await db
+      .selectDistinct({ instrumentId: legs.instrumentId })
+      .from(legs)
+      .where(eq(legs.eventId, data.id))
+
+    const ctx = createContext(user.id)
+    for (const { instrumentId } of affectedLegs) {
+      await checkpointService.refresh(ctx, instrumentId)
+    }
   })
 
 const updateLegCategory = createServerFn({ method: 'POST' })

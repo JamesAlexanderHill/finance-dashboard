@@ -101,7 +101,6 @@ function AccountDetailPage() {
       data: {
         id: account!.id,
         name: String(fd.get('name')),
-        fileKey: String(fd.get('fileKey')),
         defaultInstrumentId: String(fd.get('defaultInstrumentId')) || null,
       },
     })
