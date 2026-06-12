@@ -3,6 +3,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { db } from '~/db'
 import { users } from '~/db/schema'
 import { parseCanonicalCsv } from '~/importers/canonical'
+import scaleUnit from '~/lib/scale-unit'
 import type { ParsedEvent } from '~/importers/canonical'
 import { importService, instrumentService, createContext } from '~/db/services'
 import type { CommitImportParams, InstrumentDraft } from '~/db/services'
@@ -188,6 +189,7 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
         {wizard.step === 3 && (
           <Step3
             events={wizard.parsedEvents}
+            instrumentDrafts={wizard.instrumentDrafts}
             categoryAssignments={wizard.categoryAssignments}
             restoreDeletedChosen={wizard.restoreDeletedChosen}
             onCategoryAssign={(key, path) =>
@@ -349,6 +351,7 @@ function Step2({
 
 function Step3({
   events,
+  instrumentDrafts,
   categoryAssignments,
   restoreDeletedChosen,
   onCategoryAssign,
@@ -357,6 +360,7 @@ function Step3({
   onNext,
 }: {
   events: ParsedEvent[]
+  instrumentDrafts: InstrumentDraft[]
   categoryAssignments: Record<string, string | null>
   restoreDeletedChosen: boolean
   onCategoryAssign: (key: string, path: string | null) => void
@@ -365,6 +369,18 @@ function Step3({
   onNext: () => void
 }) {
   const [expandedEvents, setExpandedEvents] = React.useState<Set<string>>(new Set())
+
+  const exponentByTicker = React.useMemo(() => {
+    const map = new Map<string, number>()
+    for (const draft of instrumentDrafts) map.set(draft.ticker.toUpperCase(), draft.exponent)
+    return map
+  }, [instrumentDrafts])
+
+  function formatLegAmount(amountMinor: bigint, instrumentCode: string): string {
+    const exponent = exponentByTicker.get(instrumentCode.toUpperCase()) ?? 0
+    const abs = amountMinor < BigInt(0) ? -amountMinor : amountMinor
+    return scaleUnit(abs, exponent).toFixed(exponent)
+  }
 
   function toggleEvent(eventGroup: string) {
     setExpandedEvents((prev) => {
@@ -451,7 +467,6 @@ function Step3({
                   <div className="flex gap-1.5">
                     {ev.legs.slice(0, 3).map((leg, idx) => {
                       const neg = leg.amountMinor < BigInt(0)
-                      const abs = neg ? -leg.amountMinor : leg.amountMinor
                       return (
                         <span
                           key={idx}
@@ -462,7 +477,7 @@ function Step3({
                               : 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300',
                           ].join(' ')}
                         >
-                          {neg ? '−' : '+'}{abs.toString()} {leg.instrumentCode}
+                          {neg ? '−' : '+'}{formatLegAmount(leg.amountMinor, leg.instrumentCode)} {leg.instrumentCode}
                         </span>
                       )
                     })}
@@ -501,7 +516,7 @@ function Step3({
                         ].join(' ')}
                       >
                         {leg.amountMinor < BigInt(0) ? '−' : '+'}
-                        {(leg.amountMinor < BigInt(0) ? -leg.amountMinor : leg.amountMinor).toString()}{' '}
+                        {formatLegAmount(leg.amountMinor, leg.instrumentCode)}{' '}
                         {leg.instrumentCode}
                       </span>
 

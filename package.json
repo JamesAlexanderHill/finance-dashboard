@@ -24,6 +24,7 @@
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.1",
     "lucide-react": "^0.575.0",
+    "pdfjs-dist": "^6.0.227",
     "pg": "^8.18.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
