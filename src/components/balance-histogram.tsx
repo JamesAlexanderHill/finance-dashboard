@@ -93,8 +93,14 @@ const ZERO_SHADES: ChartColor[] = ['gray', 'slate', 'zinc', 'stone']
 
 // Each instrument gets a distinct shade within its balance-sign family,
 // cycling by index so multi-instrument accounts (e.g. AUD/VHY/VAP/VAS/VDAL)
-// are visually distinguishable.
-function colorForInstrument(balance: bigint, index: number): ChartColor {
+// are visually distinguishable. An instrument with an explicit
+// positive/negative/neutral color set (see instrument detail page) uses that
+// instead, for the sign matching its current balance.
+function colorForInstrument(instrument: Instrument, balance: bigint, index: number): ChartColor {
+  if (balance > 0n && instrument.positiveColor) return instrument.positiveColor
+  if (balance < 0n && instrument.negativeColor) return instrument.negativeColor
+  if (balance === 0n && instrument.neutralColor) return instrument.neutralColor
+
   const shades = balance > 0n ? POSITIVE_SHADES : balance < 0n ? NEGATIVE_SHADES : ZERO_SHADES
   return shades[index % shades.length]
 }
@@ -142,7 +148,7 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
       return {
         id: instrument.id,
         data,
-        color: colorForInstrument(BigInt(instrument.balance), index),
+        color: colorForInstrument(instrument, BigInt(instrument.balance), index),
         isProjected: (d: ChartPoint) => d.projected,
       }
     })
@@ -193,7 +199,7 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
       {instruments.length > 1 && (
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           {instruments.map((instrument, index) => {
-            const color = colorForInstrument(BigInt(instrument.balance), index)
+            const color = colorForInstrument(instrument, BigInt(instrument.balance), index)
             const checked = visible.has(instrument.id)
             return (
               <label

@@ -49,6 +49,9 @@ export async function queryInstrumentsWithBalance(userId: string, opts: QueryIns
         name: instruments.name,
         ticker: instruments.ticker,
         exponent: instruments.exponent,
+        positiveColor: instruments.positiveColor,
+        negativeColor: instruments.negativeColor,
+        neutralColor: instruments.neutralColor,
         balance: balanceSinceCheckpointExpr(userId).as('balance'),
       })
       .from(instruments)

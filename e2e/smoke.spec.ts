@@ -15,14 +15,17 @@ test.describe('core flows', () => {
     await expect(page.getByRole('heading', { name: 'Dev Tools' })).toBeVisible()
     await page.waitForLoadState('networkidle')
 
-    await page.getByRole('button', { name: 'Clear all data' }).click()
-    await expect(page.getByText('Done!')).toBeVisible()
+    const clearRow = page.locator('div', { has: page.getByRole('button', { name: 'Clear all data' }) }).last()
+    await clearRow.getByRole('button', { name: 'Clear all data' }).click()
+    await expect(clearRow.getByText('Done!')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Seed base' }).click()
-    await expect(page.getByText('Done!')).toBeVisible()
+    const seedBaseRow = page.locator('div', { has: page.getByRole('button', { name: 'Seed base' }) }).last()
+    await seedBaseRow.getByRole('button', { name: 'Seed base' }).click()
+    await expect(seedBaseRow.getByText('Done!')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Seed sample events' }).click()
-    await expect(page.getByText('Done!')).toBeVisible()
+    const seedEventsRow = page.locator('div', { has: page.getByRole('button', { name: 'Seed sample events' }) }).last()
+    await seedEventsRow.getByRole('button', { name: 'Seed sample events' }).click()
+    await expect(seedEventsRow.getByText('Done!')).toBeVisible()
 
     await page.reload()
     await expect(page.getByText('Demo User', { exact: true })).toBeVisible()

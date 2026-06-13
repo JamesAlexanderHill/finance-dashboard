@@ -13,6 +13,9 @@ const aud: Instrument = {
   name: 'Australian Dollar',
   ticker: 'AUD',
   exponent: 2,
+  positiveColor: null,
+  negativeColor: null,
+  neutralColor: null,
 }
 
 const vhy: Instrument = {
@@ -22,6 +25,9 @@ const vhy: Instrument = {
   name: 'Vanguard High Yield ETF',
   ticker: 'VHY',
   exponent: 0,
+  positiveColor: null,
+  negativeColor: null,
+  neutralColor: null,
 }
 
 describe('formatBalance', () => {
