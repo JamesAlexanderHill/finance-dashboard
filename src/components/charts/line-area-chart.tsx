@@ -10,39 +10,82 @@ import { curveMonotoneX } from '@visx/curve'
 
 const MARGIN = { top: 8, right: 8, bottom: 20, left: 44 }
 
-const COLOR_CLASSES = {
+export const COLOR_CLASSES = {
   blue: {
     line: 'stroke-blue-500 dark:stroke-blue-400',
     dot: 'fill-blue-500 dark:fill-blue-400',
+    bg: 'bg-blue-500 dark:bg-blue-400',
   },
   red: {
     line: 'stroke-red-400',
     dot: 'fill-red-400',
+    bg: 'bg-red-400',
   },
   green: {
     line: 'stroke-green-500 dark:stroke-green-400',
     dot: 'fill-green-500 dark:fill-green-400',
+    bg: 'bg-green-500 dark:bg-green-400',
+  },
+  purple: {
+    line: 'stroke-purple-500 dark:stroke-purple-400',
+    dot: 'fill-purple-500 dark:fill-purple-400',
+    bg: 'bg-purple-500 dark:bg-purple-400',
+  },
+  orange: {
+    line: 'stroke-orange-500 dark:stroke-orange-400',
+    dot: 'fill-orange-500 dark:fill-orange-400',
+    bg: 'bg-orange-500 dark:bg-orange-400',
+  },
+  teal: {
+    line: 'stroke-teal-500 dark:stroke-teal-400',
+    dot: 'fill-teal-500 dark:fill-teal-400',
+    bg: 'bg-teal-500 dark:bg-teal-400',
+  },
+  pink: {
+    line: 'stroke-pink-500 dark:stroke-pink-400',
+    dot: 'fill-pink-500 dark:fill-pink-400',
+    bg: 'bg-pink-500 dark:bg-pink-400',
   },
   gray: {
     line: 'stroke-gray-400 dark:stroke-gray-500',
     dot: 'fill-gray-400 dark:fill-gray-500',
+    bg: 'bg-gray-400 dark:bg-gray-500',
   },
 } as const
 
 export type ChartColor = keyof typeof COLOR_CLASSES
 
-export type LineAreaChartProps<T> = {
+export type ChartSeries<T> = {
+  /** Unique identifier for this series, e.g. an instrument id. */
+  id: string
   data: T[]
+  color: ChartColor
+  /**
+   * Mark a trailing run of points as "projected" (no underlying data, e.g. a
+   * balance carried forward with no transactions). These render as a dashed
+   * line, connected to the last non-projected point.
+   */
+  isProjected?: (d: T) => boolean
+}
+
+/** A point matched to the hovered x-position, one per series. */
+export type TooltipPoint<T> = {
+  seriesId: string
+  point: T
+  color: ChartColor
+}
+
+export type LineAreaChartProps<T> = {
+  series: ChartSeries<T>[]
   x: (d: T) => Date
   y: (d: T) => number
   height?: number
-  color?: ChartColor
   /** Format an x-axis tick label for the given data point's date and index. */
   tickFormat?: (date: Date, index: number) => string
   /** Number of x-axis ticks to show (auto-spaced). Defaults to one tick per data point. */
   numTicks?: number
-  /** Render the tooltip contents shown when hovering near a data point. */
-  renderTooltip?: (d: T) => React.ReactNode
+  /** Render the tooltip contents shown when hovering near a point, one entry per series. */
+  renderTooltip?: (points: TooltipPoint<T>[]) => React.ReactNode
   /** Draw a dashed line at y=0 when zero falls within the visible range. */
   zeroLine?: boolean
   /** Fix the lower bound of the y-axis (e.g. 0), instead of auto-scaling with padding. */
@@ -53,20 +96,14 @@ export type LineAreaChartProps<T> = {
   yTickFormat?: (value: number) => string
   /** Number of y-axis ticks to show (auto-spaced). Defaults to 4. */
   yNumTicks?: number
-  /**
-   * Mark a trailing run of points as "projected" (no underlying data, e.g. a
-   * balance carried forward with no transactions). These render as a dashed
-   * line with no area fill, connected to the last non-projected point.
-   */
-  isProjected?: (d: T) => boolean
 }
 
 /**
- * A responsive line + area chart for a small time series, built on visx.
- * Renders nothing if `data` is empty.
+ * A responsive multi-series line chart for small time series, built on visx.
+ * Renders nothing if every series is empty.
  */
 export default function LineAreaChart<T>({ height = 160, ...props }: LineAreaChartProps<T>) {
-  if (props.data.length === 0) return null
+  if (props.series.every((s) => s.data.length === 0)) return null
 
   return (
     <div style={{ height }}>
@@ -76,12 +113,11 @@ export default function LineAreaChart<T>({ height = 160, ...props }: LineAreaCha
 }
 
 function Chart<T>({
-  data,
+  series,
   x,
   y,
   width,
   height,
-  color = 'blue',
   tickFormat,
   numTicks,
   renderTooltip,
@@ -90,28 +126,26 @@ function Chart<T>({
   yMax: fixedYMax,
   yTickFormat,
   yNumTicks = 4,
-  isProjected,
 }: LineAreaChartProps<T> & { width: number; height: number }) {
-  const { tooltipData, tooltipLeft, tooltipTop, tooltipOpen, showTooltip, hideTooltip } = useTooltip<T>()
-  const colors = COLOR_CLASSES[color]
+  const { tooltipData, tooltipLeft, tooltipTop, tooltipOpen, showTooltip, hideTooltip } =
+    useTooltip<TooltipPoint<T>[]>()
 
-  const xValues = React.useMemo(() => data.map(x), [data, x])
-  const yValues = React.useMemo(() => data.map(y), [data, y])
+  const nonEmptySeries = React.useMemo(() => series.filter((s) => s.data.length > 0), [series])
 
-  // Split off a trailing run of "projected" points so they can render as a
-  // dashed line with no area fill, connected to the last solid point.
-  const firstProjectedIndex = isProjected ? data.findIndex((d) => isProjected(d)) : -1
-  const hasProjected = firstProjectedIndex > 0
-  const solidData = hasProjected ? data.slice(0, firstProjectedIndex) : data
-  const dashedData = hasProjected ? data.slice(firstProjectedIndex - 1) : []
+  // Reference series (the one with the most points) drives x-axis tick placement.
+  const tickSeries = React.useMemo(
+    () => nonEmptySeries.reduce((longest, s) => (s.data.length > longest.data.length ? s : longest), nonEmptySeries[0]),
+    [nonEmptySeries],
+  )
+  const tickXValues = React.useMemo(() => tickSeries.data.map(x), [tickSeries, x])
 
   const xDomain = React.useMemo<[Date, Date]>(() => {
-    if (xValues.length === 1) {
-      const only = xValues[0]
-      return [new Date(only.getTime() - 1), new Date(only.getTime() + 1)]
-    }
-    return [xValues[0], xValues[xValues.length - 1]]
-  }, [xValues])
+    const times = nonEmptySeries.flatMap((s) => s.data.map((d) => x(d).getTime()))
+    const min = Math.min(...times)
+    const max = Math.max(...times)
+    if (min === max) return [new Date(min - 1), new Date(max + 1)]
+    return [new Date(min), new Date(max)]
+  }, [nonEmptySeries, x])
 
   const xScale = React.useMemo(
     () => scaleTime({ domain: xDomain, range: [MARGIN.left, width - MARGIN.right] }),
@@ -119,6 +153,7 @@ function Chart<T>({
   )
 
   const yScale = React.useMemo(() => {
+    const yValues = nonEmptySeries.flatMap((s) => s.data.map(y))
     const dataMin = Math.min(...yValues)
     const dataMax = Math.max(...yValues)
     const pad = (dataMax - dataMin) * 0.1 || Math.abs(dataMax) * 0.1 || 1
@@ -126,33 +161,40 @@ function Chart<T>({
       domain: [fixedYMin ?? dataMin - pad, fixedYMax ?? dataMax + pad],
       range: [height - MARGIN.bottom, MARGIN.top],
     })
-  }, [yValues, height, fixedYMin, fixedYMax])
+  }, [nonEmptySeries, y, height, fixedYMin, fixedYMax])
 
   const handlePointerMove = (event: React.MouseEvent | React.TouchEvent) => {
     const point = localPoint(event)
     if (!point) return
 
     const targetX = xScale.invert(point.x).getTime()
-    let closestIndex = 0
-    let closestDist = Infinity
-    for (let i = 0; i < xValues.length; i++) {
-      const dist = Math.abs(xValues[i].getTime() - targetX)
-      if (dist < closestDist) {
-        closestDist = dist
-        closestIndex = i
-      }
-    }
 
-    const closest = data[closestIndex]
+    const matched: TooltipPoint<T>[] = []
+    for (const s of nonEmptySeries) {
+      let closestIndex = 0
+      let closestDist = Infinity
+      for (let i = 0; i < s.data.length; i++) {
+        const dist = Math.abs(x(s.data[i]).getTime() - targetX)
+        if (dist < closestDist) {
+          closestDist = dist
+          closestIndex = i
+        }
+      }
+      matched.push({ seriesId: s.id, point: s.data[closestIndex], color: s.color })
+    }
+    if (matched.length === 0) return
+
+    const refPoint = matched[0].point
     showTooltip({
-      tooltipData: closest,
-      tooltipLeft: xScale(x(closest)),
-      tooltipTop: yScale(y(closest)),
+      tooltipData: matched,
+      tooltipLeft: xScale(x(refPoint)),
+      tooltipTop: yScale(y(refPoint)),
     })
   }
 
   const [yDomainMin, yDomainMax] = yScale.domain()
   const showZeroLine = zeroLine && yDomainMin <= 0 && yDomainMax >= 0
+  const showDots = nonEmptySeries.length === 1 && nonEmptySeries[0].data.length <= 20
 
   return (
     <div className="relative">
@@ -172,35 +214,47 @@ function Chart<T>({
             strokeDasharray="4 4"
           />
         )}
-        <LinePath
-          data={solidData}
-          x={(d) => xScale(x(d))}
-          y={(d) => yScale(y(d))}
-          curve={curveMonotoneX}
-          fill="none"
-          strokeWidth={2}
-          className={colors.line}
-        />
-        {hasProjected && (
-          <LinePath
-            data={dashedData}
-            x={(d) => xScale(x(d))}
-            y={(d) => yScale(y(d))}
-            curve={curveMonotoneX}
-            fill="none"
-            strokeWidth={2}
-            strokeDasharray="4 4"
-            className={colors.line}
-          />
-        )}
-        {data.length <= 20 &&
-          data.map((d, i) => (
-            <circle key={i} cx={xScale(x(d))} cy={yScale(y(d))} r={3} className={colors.dot} />
-          ))}
+        {nonEmptySeries.map((s) => {
+          const colors = COLOR_CLASSES[s.color]
+          const firstProjectedIndex = s.isProjected ? s.data.findIndex((d) => s.isProjected!(d)) : -1
+          const hasProjected = firstProjectedIndex > 0
+          const solidData = hasProjected ? s.data.slice(0, firstProjectedIndex) : s.data
+          const dashedData = hasProjected ? s.data.slice(firstProjectedIndex - 1) : []
+
+          return (
+            <g key={s.id}>
+              <LinePath
+                data={solidData}
+                x={(d) => xScale(x(d))}
+                y={(d) => yScale(y(d))}
+                curve={curveMonotoneX}
+                fill="none"
+                strokeWidth={2}
+                className={colors.line}
+              />
+              {hasProjected && (
+                <LinePath
+                  data={dashedData}
+                  x={(d) => xScale(x(d))}
+                  y={(d) => yScale(y(d))}
+                  curve={curveMonotoneX}
+                  fill="none"
+                  strokeWidth={2}
+                  strokeDasharray="4 4"
+                  className={colors.line}
+                />
+              )}
+              {showDots &&
+                s.data.map((d, i) => (
+                  <circle key={i} cx={xScale(x(d))} cy={yScale(y(d))} r={3} className={colors.dot} />
+                ))}
+            </g>
+          )
+        })}
         <AxisBottom
           top={height - MARGIN.bottom}
           scale={xScale}
-          {...(numTicks === undefined || xValues.length <= numTicks ? { tickValues: xValues } : { numTicks })}
+          {...(numTicks === undefined || tickXValues.length <= numTicks ? { tickValues: tickXValues } : { numTicks })}
           tickFormat={(value, index) => {
             const date = value as unknown as Date
             return tickFormat ? tickFormat(date, index) : date.toLocaleDateString('en-AU', { month: 'short' })
@@ -236,13 +290,16 @@ function Chart<T>({
               className="stroke-gray-300 dark:stroke-gray-700"
               strokeDasharray="2 2"
             />
-            <circle
-              cx={tooltipLeft}
-              cy={tooltipTop}
-              r={4}
-              strokeWidth={2}
-              className={`${colors.dot} stroke-white dark:stroke-gray-900`}
-            />
+            {tooltipData.map((p) => (
+              <circle
+                key={p.seriesId}
+                cx={xScale(x(p.point))}
+                cy={yScale(y(p.point))}
+                r={4}
+                strokeWidth={2}
+                className={`${COLOR_CLASSES[p.color].dot} stroke-white dark:stroke-gray-900`}
+              />
+            ))}
           </g>
         )}
         <Bar

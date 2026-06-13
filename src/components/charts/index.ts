@@ -1,2 +1,2 @@
-export { default as LineAreaChart } from './line-area-chart'
-export type { LineAreaChartProps, ChartColor } from './line-area-chart'
+export { default as LineAreaChart, COLOR_CLASSES } from './line-area-chart'
+export type { LineAreaChartProps, ChartColor, ChartSeries, TooltipPoint } from './line-area-chart'

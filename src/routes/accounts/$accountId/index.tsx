@@ -256,8 +256,12 @@ function AccountDetailPage() {
       </section>
 
       {/* Section A.5: Balance Histogram */}
-      {chartInstrument && (
-        <BalanceHistogram data={balanceHistory} instrument={chartInstrument} />
+      {accountInstruments.data.length > 0 && (
+        <BalanceHistogram
+          instruments={accountInstruments.data}
+          defaultInstrumentId={chartInstrument?.id ?? null}
+          initialData={balanceHistory}
+        />
       )}
 
       {/* Section B: Instruments Carousel */}
