@@ -50,6 +50,29 @@ export interface FileImportResult {
   errorCount: number
 }
 
+/**
+ * Sort parsed events by `effectiveAt`, with same-timestamp events ordered so
+ * that net inflows (e.g. a deposit) come before net outflows (e.g. a
+ * purchase funded by it). This becomes the events' insertion order, which
+ * uuidv7 ids — and therefore the same-timestamp tiebreak used when ordering
+ * an instrument's transaction history — preserve. Without this, a same-day
+ * "deposit then spend" pair could end up stored in the opposite order and
+ * show the balance dipping negative before the deposit lands.
+ */
+function sortEventsForImport(parsedEvents: ParsedEvent[]): ParsedEvent[] {
+  return [...parsedEvents].sort((a, b) => {
+    const timeDiff = a.effectiveAt.getTime() - b.effectiveAt.getTime()
+    if (timeDiff !== 0) return timeDiff
+    const diff = netAmount(b) - netAmount(a)
+    return diff > 0n ? 1 : diff < 0n ? -1 : 0
+  })
+}
+
+/** Sum of an event's leg amounts across all instruments — positive for net inflows, negative for net outflows. */
+function netAmount(event: ParsedEvent): bigint {
+  return event.legs.reduce((sum, leg) => sum + leg.amountMinor, 0n)
+}
+
 function resolveCategoryPath(
   userId: string,
   path: string,
@@ -230,7 +253,7 @@ async function commitImport(ctx: RequestContext, params: CommitImportParams): Pr
     ctx,
     accountId,
     filename,
-    params.events,
+    sortEventsForImport(params.events),
     instrumentMap,
     params.categoryAssignments,
     restoreDeletedChosen,
@@ -262,7 +285,7 @@ async function commitBulkImport(ctx: RequestContext, params: CommitBulkImportPar
       ctx,
       accountId,
       file.filename,
-      file.events,
+      sortEventsForImport(file.events),
       instrumentMap,
       {},
       restoreDeletedChosen,
