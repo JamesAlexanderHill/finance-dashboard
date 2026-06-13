@@ -14,6 +14,7 @@ import {
 import { relations } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { uuidv7 } from 'uuidv7'
+import { CHART_COLORS } from '~/lib/chart-colors'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,8 @@ export const eventTypeEnum = pgEnum('event_type', [
 ])
 
 export const rateSourceEnum = pgEnum('rate_source', ['transaction', 'manual'])
+
+export const chartColorEnum = pgEnum('chart_color', CHART_COLORS)
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +68,10 @@ export const instruments = pgTable('instruments', {
   name: text('name').notNull(),
   ticker: text('ticker').notNull(), // e.g. "USD", "VHY"
   exponent: integer('exponent').notNull(), // Number of decimal places (e.g. 2 for USD)
+  // Chart line colors for the balance graph. null = auto-assigned.
+  positiveColor: chartColorEnum('positive_color'),
+  negativeColor: chartColorEnum('negative_color'),
+  neutralColor: chartColorEnum('neutral_color'),
 });
 
 // ─── Categories ───────────────────────────────────────────────────────────────

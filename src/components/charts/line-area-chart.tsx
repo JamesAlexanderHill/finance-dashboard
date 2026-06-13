@@ -8,6 +8,7 @@ import { useTooltip, TooltipWithBounds } from '@visx/tooltip'
 import { localPoint } from '@visx/event'
 import { curveMonotoneX } from '@visx/curve'
 import type { CurveFactory } from '@visx/vendor/d3-shape'
+import type { ChartColorName } from '~/lib/chart-colors'
 
 export const MARGIN = { top: 8, right: 8, bottom: 20, left: 44 }
 
@@ -85,9 +86,9 @@ export const COLOR_CLASSES = {
     dot: 'fill-stone-400 dark:fill-stone-500',
     bg: 'bg-stone-400 dark:bg-stone-500',
   },
-} as const
+} as const satisfies Record<ChartColorName, { line: string; dot: string; bg: string }>
 
-export type ChartColor = keyof typeof COLOR_CLASSES
+export type ChartColor = ChartColorName
 
 export type ChartSeries<T> = {
   /** Unique identifier for this series, e.g. an instrument id. */
