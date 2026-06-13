@@ -5,10 +5,10 @@ import { db } from '~/db'
 import { users } from '~/db/schema'
 import { ImportWizard } from '~/components/ImportWizard'
 import InstrumentCard from '~/components/instrument-card'
-import BalanceHistogram from '~/components/balance-histogram'
+import BalanceHistogram, { type InstrumentRates } from '~/components/balance-histogram'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 import EventPreviewTable from '~/components/event/event-preview-table'
-import { accountService, eventService, fileService, instrumentService, createContext } from '~/db/services'
+import { accountService, eventService, fileService, instrumentService, rateService, createContext } from '~/db/services'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -16,25 +16,30 @@ const getData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [], balanceHistory: [], chartInstrument: null }
+    if (!user) return { user: null, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [], balanceHistory: [], chartInstrument: null, rates: {} as InstrumentRates }
 
     const ctx = createContext(user.id)
     const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [], balanceHistory: [], chartInstrument: null }
+    if (!account) return { user, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [], balanceHistory: [], chartInstrument: null, rates: {} as InstrumentRates }
 
     const accountInstruments = await instrumentService.list(ctx, { accountIds: [data.accountId] })
 
     const chartInstrument =
       accountInstruments.data.find((i) => i.id === account.defaultInstrumentId) ?? accountInstruments.data[0] ?? null
 
-    const [recentAccountfiles, recentAccountEvents, balanceHistory] = await Promise.all([
+    const [recentAccountfiles, recentAccountEvents, balanceHistory, ratesMap] = await Promise.all([
       fileService.listByAccount(ctx, data.accountId, { limit: 5 }),
       eventService.listByAccount(ctx, data.accountId, { limit: 10 }),
       chartInstrument ? instrumentService.getBalanceHistory(ctx, chartInstrument.id, '30d', 'day') : Promise.resolve([]),
+      rateService.getRates(ctx, accountInstruments.data.map((i) => i.id)),
     ]);
 
-    return { user, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument }
+    const rates: InstrumentRates = Object.fromEntries(
+      Array.from(ratesMap.entries()).map(([id, r]) => [id, { rate: r.rate, asOf: r.asOf.toISOString(), source: r.source }]),
+    )
+
+    return { user, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument, rates }
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
@@ -70,7 +75,7 @@ function formatDateTime(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function AccountDetailPage() {
-  const { user, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument } = Route.useLoaderData()
+  const { user, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument, rates } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const router = useRouter()
   const [editing, setEditing] = React.useState(false)
@@ -261,6 +266,8 @@ function AccountDetailPage() {
           instruments={accountInstruments.data}
           defaultInstrumentId={chartInstrument?.id ?? null}
           initialData={balanceHistory}
+          rates={rates}
+          homeCurrencyCode={user.homeCurrencyCode}
         />
       )}
 
@@ -295,6 +302,8 @@ function AccountDetailPage() {
                   account={account}
                   balance={amountMinor}
                   isDefault={isDefault}
+                  rate={rates[instrument.id]?.rate ?? 1}
+                  homeCurrencyCode={user.homeCurrencyCode}
                 />
               )
             })}

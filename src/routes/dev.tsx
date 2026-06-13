@@ -3,7 +3,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { db } from '~/db'
 import { users } from '~/db/schema'
-import { checkpointService, createContext } from '~/db/services'
+import { checkpointService, rateService, createContext } from '~/db/services'
 import { clearAllData, seedBase, seedSampleEvents } from '~/lib/seed'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -76,17 +76,18 @@ const devSeedSampleEvents = createServerFn({ method: 'POST' }).handler(async () 
 
 const getDevStatus = createServerFn({ method: 'GET' }).handler(async () => {
   const { count } = await import('drizzle-orm')
-  const { events, legs, accounts: accountsTable, instrumentCheckpoints } = await import('~/db/schema')
+  const { events, legs, accounts: accountsTable, instrumentCheckpoints, instrumentRates } = await import('~/db/schema')
 
   const [user] = await db.select().from(users).limit(1)
-  if (!user) return { hasUser: false, eventCount: 0, legCount: 0, accountCount: 0, checkpointCount: 0 }
+  if (!user) return { hasUser: false, eventCount: 0, legCount: 0, accountCount: 0, checkpointCount: 0, rateCount: 0 }
 
   const { eq } = await import('drizzle-orm')
-  const [evtResult, legResult, accResult, checkpointResult] = await Promise.all([
+  const [evtResult, legResult, accResult, checkpointResult, rateResult] = await Promise.all([
     db.select({ n: count() }).from(events).where(eq(events.userId, user.id)),
     db.select({ n: count() }).from(legs).where(eq(legs.userId, user.id)),
     db.select({ n: count() }).from(accountsTable).where(eq(accountsTable.userId, user.id)),
     db.select({ n: count() }).from(instrumentCheckpoints).where(eq(instrumentCheckpoints.userId, user.id)),
+    db.select({ n: count() }).from(instrumentRates).where(eq(instrumentRates.userId, user.id)),
   ])
 
   return {
@@ -97,6 +98,7 @@ const getDevStatus = createServerFn({ method: 'GET' }).handler(async () => {
     legCount: Number(legResult[0]?.n ?? 0),
     accountCount: Number(accResult[0]?.n ?? 0),
     checkpointCount: Number(checkpointResult[0]?.n ?? 0),
+    rateCount: Number(rateResult[0]?.n ?? 0),
   }
 })
 
@@ -106,6 +108,14 @@ const devRecomputeCheckpoints = createServerFn({ method: 'POST' }).handler(async
 
   const count = await checkpointService.refreshAll(createContext(user.id))
   return { ok: true, message: `Recomputed checkpoints for ${count} instrument(s).` }
+})
+
+const devRecomputeRates = createServerFn({ method: 'POST' }).handler(async () => {
+  const [user] = await db.select().from(users).limit(1)
+  if (!user) return { ok: false, message: 'No user found. Seed base data first.' }
+
+  const count = await rateService.refreshAll(createContext(user.id))
+  return { ok: true, message: `Recomputed rates for ${count} instrument(s).` }
 })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -174,6 +184,12 @@ function DevPage() {
     return r
   })
 
+  const recomputeRatesAction = useAction(async () => {
+    const r = await devRecomputeRates()
+    router.invalidate()
+    return r
+  })
+
   const actions = [
     {
       label: 'Clear all data',
@@ -195,6 +211,11 @@ function DevPage() {
       label: 'Recompute checkpoints',
       description: 'Rebuild monthly balance checkpoints for every instrument.',
       action: recomputeCheckpointsAction,
+    },
+    {
+      label: 'Recompute rates',
+      description: 'Rebuild transaction-derived currency rates for every instrument (manual rates are preserved).',
+      action: recomputeRatesAction,
     },
   ]
 
@@ -238,6 +259,7 @@ function DevPage() {
             <Stat label="Events" value={status.eventCount} />
             <Stat label="Legs" value={status.legCount} />
             <Stat label="Checkpoints" value={status.checkpointCount} />
+            <Stat label="Rates" value={status.rateCount} />
           </div>
         </div>
       </div>

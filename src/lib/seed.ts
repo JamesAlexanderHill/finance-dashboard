@@ -6,6 +6,7 @@ import {
   events,
   files,
   instrumentCheckpoints,
+  instrumentRates,
   instruments,
   legs,
   lineItems,
@@ -19,6 +20,7 @@ export async function clearAllData(): Promise<void> {
   await db.delete(eventRelations)
   await db.delete(lineItems)
   await db.delete(instrumentCheckpoints)
+  await db.delete(instrumentRates)
   await db.delete(legs)
   await db.delete(events)
   await db.delete(files)

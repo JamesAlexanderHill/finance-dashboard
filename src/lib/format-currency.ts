@@ -40,3 +40,30 @@ export function formatCurrency(unitCount: bigint, {
     return `${ticker} ${scaledValue.toFixed(exponent)}`;
   };
 };
+
+type formatMajorAmountOptions = {
+  compact?: boolean;
+};
+
+/**
+ * Formats a value already in major units (e.g. dollars, not cents) as
+ * currency. Used for converted/derived amounts (e.g. an instrument's balance
+ * converted to the home currency via an exchange rate), where there's no
+ * underlying minor-unit bigint to scale.
+ */
+export function formatMajorAmount(value: number, ticker: string, { compact = false }: formatMajorAmountOptions = {}): string {
+  const numberFormatOptions: Intl.NumberFormatOptions = compact
+    ? { notation: 'compact', maximumFractionDigits: 1 }
+    : { maximumFractionDigits: 2 };
+
+  try {
+    return new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: ticker,
+      currencyDisplay: 'narrowSymbol',
+      ...numberFormatOptions,
+    }).format(value);
+  } catch {
+    return new Intl.NumberFormat('en-AU', numberFormatOptions).format(value);
+  }
+}

@@ -4,7 +4,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, events, legs, lineItems, categories } from '~/db/schema'
-import { checkpointService, createContext } from '~/db/services'
+import { checkpointService, rateService, createContext } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import Badge from '~/components/ui/badge'
 import {
@@ -64,6 +64,7 @@ const softDeleteEvent = createServerFn({ method: 'POST' })
     const ctx = createContext(user.id)
     for (const { instrumentId } of affectedLegs) {
       await checkpointService.refresh(ctx, instrumentId)
+      await rateService.refresh(ctx, instrumentId)
     }
   })
 

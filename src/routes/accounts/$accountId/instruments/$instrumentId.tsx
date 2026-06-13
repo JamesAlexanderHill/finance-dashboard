@@ -3,9 +3,10 @@ import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { db } from '~/db'
 import { users } from '~/db/schema'
-import { formatCurrency } from '~/lib/format-currency'
+import { formatCurrency, formatMajorAmount } from '~/lib/format-currency'
+import scaleUnit from '~/lib/scale-unit'
 import Badge from '~/components/ui/badge'
-import { accountService, createContext, eventService, instrumentService } from '~/db/services'
+import { accountService, createContext, eventService, instrumentService, rateService } from '~/db/services'
 import EventTable from '~/components/event/event-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -14,27 +15,30 @@ const getInstrumentDetailData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { page?: number, pageSize?: number, accountId: string; instrumentId: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, instrument: null, balance: BigInt(0), instrumentEvents: null }
+    if (!user) return { user: null, account: null, instrument: null, balance: BigInt(0), instrumentEvents: null, rate: null }
 
     const ctx = createContext(user.id)
     const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, instrument: null, balance: BigInt(0), instrumentEvents: null }
+    if (!account) return { user, account: null, instrument: null, balance: BigInt(0), instrumentEvents: null, rate: null }
 
     const instrument = await instrumentService.getById(ctx, data.instrumentId)
 
-    if (!instrument) return { user, account, instrument: null, balance: BigInt(0), instrumentEvents: null }
+    if (!instrument) return { user, account, instrument: null, balance: BigInt(0), instrumentEvents: null, rate: null }
 
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
     const offset = (page - 1) * pageSize
 
-    const [balance, instrumentEvents] = await Promise.all([
+    const [balance, instrumentEvents, currentRate] = await Promise.all([
       instrumentService.getBalance(ctx, data.instrumentId),
       eventService.listByInstrument(ctx, data.instrumentId, { limit: pageSize, offset }),
+      rateService.getRate(ctx, data.instrumentId),
     ])
 
-    return { user, account, instrument, balance, instrumentEvents }
+    const rate = currentRate ? { rate: currentRate.rate, asOf: currentRate.asOf.toISOString(), source: currentRate.source } : null
+
+    return { user, account, instrument, balance, instrumentEvents, rate }
   })
 
 const updateInstrument = createServerFn({ method: 'POST' })
@@ -50,6 +54,14 @@ const updateInstrument = createServerFn({ method: 'POST' })
       name: data.name,
       exponent: data.exponent,
     })
+  })
+
+const setInstrumentRate = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { instrumentId: string; rate: number })
+  .handler(async ({ data }) => {
+    const [user] = await db.select().from(users).limit(1)
+    if (!user) throw new Error('No user found')
+    await rateService.setManualRate(createContext(user.id), data.instrumentId, data.rate)
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -84,11 +96,12 @@ function formatDate(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function InstrumentDetailPage() {
-  const { user, account, instrument, balance, instrumentEvents } = Route.useLoaderData()
+  const { user, account, instrument, balance, instrumentEvents, rate } = Route.useLoaderData()
   const { accountId, instrumentId } = Route.useParams()
   const router = useRouter()
   const navigate = Route.useNavigate()
   const [editing, setEditing] = React.useState(false)
+  const [editingRate, setEditingRate] = React.useState(false)
 
   if (!user) {
     return (
@@ -142,8 +155,23 @@ function InstrumentDetailPage() {
     router.invalidate()
   }
 
+  async function handleUpdateRate(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    await setInstrumentRate({
+      data: {
+        instrumentId,
+        rate: parseFloat(String(fd.get('rate'))),
+      },
+    })
+    setEditingRate(false)
+    router.invalidate()
+  }
+
   const neg = balance < 0
   const abs = neg ? -balance : balance
+  const isHomeCurrency = instrument.ticker === user.homeCurrencyCode
+  const effectiveRate = rate?.rate ?? 1
 
   return (
     <div className="max-w-4xl space-y-8">
@@ -257,6 +285,70 @@ function InstrumentDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Current Value / Exchange Rate */}
+      {!isHomeCurrency && (
+        <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+          {editingRate ? (
+            <form onSubmit={handleUpdateRate} className="space-y-3 max-w-sm">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  1 {instrument.ticker} = ? {user.homeCurrencyCode}
+                </label>
+                <input
+                  name="rate"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  defaultValue={effectiveRate}
+                  required
+                  className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingRate(false)}
+                  className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-2xl font-bold tabular-nums text-gray-900 dark:text-gray-100">
+                  {formatMajorAmount(scaleUnit(balance, instrument.exponent) * effectiveRate, user.homeCurrencyCode)}
+                  <span className="text-base font-normal text-gray-500 dark:text-gray-400 ml-2">
+                    current value
+                  </span>
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  1 {instrument.ticker} = {effectiveRate} {user.homeCurrencyCode}
+                  {rate && (
+                    <span className="text-gray-400 dark:text-gray-500">
+                      {' '}({rate.source === 'manual' ? 'manually set' : 'from transactions'}, as of {formatDate(rate.asOf)})
+                    </span>
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingRate(true)}
+                className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-md whitespace-nowrap"
+              >
+                Update price
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Recent Events */}
       <section>       

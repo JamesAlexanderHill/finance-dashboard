@@ -7,6 +7,7 @@ import {
   boolean,
   timestamp,
   jsonb,
+  numeric,
   unique,
   primaryKey,
 } from 'drizzle-orm/pg-core'
@@ -31,6 +32,8 @@ export const eventTypeEnum = pgEnum('event_type', [
   'bill_payment',
   'payout',
 ])
+
+export const rateSourceEnum = pgEnum('rate_source', ['transaction', 'manual'])
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
@@ -150,6 +153,27 @@ export const instrumentCheckpoints = pgTable(
   (t) => [unique().on(t.instrumentId, t.periodEnd)],
 )
 
+// ─── Instrument Rates ─────────────────────────────────────────────────────────
+
+// 1 unit of `instrumentId` = `rate` units of the user's home currency
+// (users.homeCurrencyCode). Instruments whose ticker === homeCurrencyCode have
+// no row (implicit rate = 1).
+export const instrumentRates = pgTable(
+  'instrument_rates',
+  {
+    id: id(),
+    userId: userId().references(() => users.id),
+    instrumentId: text('instrument_id')
+      .notNull()
+      .references(() => instruments.id),
+    rate: numeric('rate', { precision: 20, scale: 8, mode: 'number' }).notNull(),
+    asOf: timestamp('as_of', { withTimezone: true }).notNull(),
+    source: rateSourceEnum('source').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [unique().on(t.instrumentId, t.source)],
+)
+
 // ─── Line Items ───────────────────────────────────────────────────────────────
 
 export const lineItems = pgTable('line_items', {
@@ -209,11 +233,19 @@ export const instrumentsRelations = relations(instruments, ({ one, many }) => ({
   user: one(users, { fields: [instruments.userId], references: [users.id] }),
 
   checkpoints: many(instrumentCheckpoints),
+  rates: many(instrumentRates),
 }))
 
 export const instrumentCheckpointsRelations = relations(instrumentCheckpoints, ({ one }) => ({
   instrument: one(instruments, {
     fields: [instrumentCheckpoints.instrumentId],
+    references: [instruments.id],
+  }),
+}))
+
+export const instrumentRatesRelations = relations(instrumentRates, ({ one }) => ({
+  instrument: one(instruments, {
+    fields: [instrumentRates.instrumentId],
     references: [instruments.id],
   }),
 }))
@@ -263,5 +295,7 @@ export type File = typeof files.$inferSelect
 export type Event = typeof events.$inferSelect
 export type Leg = typeof legs.$inferSelect
 export type InstrumentCheckpoint = typeof instrumentCheckpoints.$inferSelect
+export type InstrumentRate = typeof instrumentRates.$inferSelect
+export type RateSource = (typeof rateSourceEnum.enumValues)[number]
 export type LineItem = typeof lineItems.$inferSelect
 export type EventRelation = typeof eventRelations.$inferSelect

@@ -3,10 +3,11 @@ import { useQueries } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
 import { db } from '~/db'
 import { users } from '~/db/schema'
-import type { Instrument } from '~/db/schema'
+import type { Instrument, RateSource } from '~/db/schema'
 import type { BalanceHistoryPeriod, BalanceHistoryRange, BalancePoint } from '~/db/services'
 import { instrumentService, createContext } from '~/db/services'
 import { formatBalance } from '~/lib/format'
+import { formatMajorAmount } from '~/lib/format-currency'
 import scaleUnit from '~/lib/scale-unit'
 import { LineAreaChart, COLOR_CLASSES, type ChartColor, type ChartSeries, type TooltipPoint } from '~/components/charts'
 
@@ -24,11 +25,17 @@ const getBalanceHistory = createServerFn({ method: 'GET' })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/** 1 unit of the instrument = `rate` units of `homeCurrencyCode`. */
+export type InstrumentRates = Record<string, { rate: number; asOf: string; source: RateSource }>
+
 type BalanceHistogramProps = {
   instruments: Instrument[]
   defaultInstrumentId: string | null
   /** Pre-fetched 30D/daily history for `defaultInstrumentId`, from the route loader. */
   initialData: BalancePoint[]
+  /** Current exchange/price rates, keyed by instrument id. */
+  rates: InstrumentRates
+  homeCurrencyCode: string
 }
 
 type ChartPoint = {
@@ -60,7 +67,7 @@ const COLOR_ORDER: ChartColor[] = ['blue', 'red', 'green', 'purple', 'orange', '
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function BalanceHistogram({ instruments, defaultInstrumentId, initialData }: BalanceHistogramProps) {
+export default function BalanceHistogram({ instruments, defaultInstrumentId, initialData, rates, homeCurrencyCode }: BalanceHistogramProps) {
   const [range, setRange] = useState<BalanceHistoryRange>(DEFAULT_RANGE)
   const [period, setPeriod] = useState<BalanceHistoryPeriod>(DEFAULT_PERIOD)
   const [visible, setVisible] = useState<Set<string>>(() => new Set(instruments.map((i) => i.id)))
@@ -88,10 +95,11 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
       const history = queries[index].data
       if (!history || history.length === 0) return null
 
+      const rate = rateFor(instrument, homeCurrencyCode, rates)
       const data: ChartPoint[] = history.map((point) => ({
         period: new Date(point.period),
         balance: BigInt(point.balance),
-        value: scaleUnit(point.balance, instrument.exponent),
+        value: scaleUnit(point.balance, instrument.exponent) * rate,
         projected: point.projected,
       }))
 
@@ -104,8 +112,7 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
     })
     .filter((s): s is ChartSeries<ChartPoint> => s !== null)
 
-  const referenceInstrument = instruments.find((i) => i.id === defaultInstrumentId) ?? instruments[0]
-  const yTickFormat = (value: number) => formatAxisValue(value, referenceInstrument.ticker)
+  const yTickFormat = (value: number) => formatMajorAmount(value, homeCurrencyCode, { compact: true })
 
   function toggle(instrumentId: string) {
     setVisible((prev) => {
@@ -172,7 +179,7 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
                   {points[0].point.period.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </div>
                 {points.map((p) => (
-                  <TooltipRow key={p.seriesId} point={p} instruments={instruments} />
+                  <TooltipRow key={p.seriesId} point={p} instruments={instruments} homeCurrencyCode={homeCurrencyCode} />
                 ))}
               </>
             )}
@@ -189,7 +196,15 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function TooltipRow({ point, instruments }: { point: TooltipPoint<ChartPoint>; instruments: Instrument[] }) {
+function TooltipRow({
+  point,
+  instruments,
+  homeCurrencyCode,
+}: {
+  point: TooltipPoint<ChartPoint>
+  instruments: Instrument[]
+  homeCurrencyCode: string
+}) {
   const instrument = instruments.find((i) => i.id === point.seriesId)
   if (!instrument) return null
 
@@ -197,25 +212,19 @@ function TooltipRow({ point, instruments }: { point: TooltipPoint<ChartPoint>; i
     <div className="flex items-center gap-1.5 tabular-nums">
       <span className={`inline-block w-2 h-2 rounded-full ${COLOR_CLASSES[point.color].bg}`} />
       <span>{formatBalance(point.point.balance, instrument)}</span>
+      {instrument.ticker !== homeCurrencyCode && (
+        <span className="text-gray-400 dark:text-gray-500">({formatMajorAmount(point.point.value, homeCurrencyCode)})</span>
+      )}
       {point.point.projected && <span className="text-gray-400 dark:text-gray-500">(no activity)</span>}
     </div>
   )
 }
 
-// Compact currency label for y-axis ticks, e.g. "$1.2K". Falls back to a plain
-// compact number if `ticker` isn't a valid ISO currency code (e.g. share tickers).
-function formatAxisValue(value: number, ticker: string): string {
-  try {
-    return new Intl.NumberFormat('en-AU', {
-      style: 'currency',
-      currency: ticker,
-      currencyDisplay: 'narrowSymbol',
-      notation: 'compact',
-      maximumFractionDigits: 1,
-    }).format(value)
-  } catch {
-    return new Intl.NumberFormat('en-AU', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
-  }
+// 1 unit of `instrument` = N units of `homeCurrencyCode`. Instruments whose
+// ticker matches the home currency, or with no stored rate, default to 1.
+function rateFor(instrument: Instrument, homeCurrencyCode: string, rates: InstrumentRates): number {
+  if (instrument.ticker === homeCurrencyCode) return 1
+  return rates[instrument.id]?.rate ?? 1
 }
 
 function SegmentedControl<T extends string>({

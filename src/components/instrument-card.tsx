@@ -2,12 +2,17 @@ import { Link } from "@tanstack/react-router";
 import type { Instrument, Account } from "~/db/schema";
 import Badge from "~/components/ui/badge";
 import { formatBalance } from "~/lib/format";
+import { formatMajorAmount } from "~/lib/format-currency";
+import scaleUnit from "~/lib/scale-unit";
 
 type InstrumentCardProps = {
     instrument: Instrument;
     account: Account;
     balance: bigint;
     isDefault?: boolean;
+    /** 1 unit of `instrument` = `rate` units of `homeCurrencyCode`. */
+    rate: number;
+    homeCurrencyCode: string;
 }
 
 export default function InstrumentCard({
@@ -15,7 +20,8 @@ export default function InstrumentCard({
     account,
     isDefault = false,
     balance,
-    // TODO: pass in a globalCurrency object (ticker, exponent, conversionRate) and show converted balance instead of just AUD
+    rate,
+    homeCurrencyCode,
 }: InstrumentCardProps) {
     const isNegative = balance < 0;
 
@@ -45,9 +51,9 @@ export default function InstrumentCard({
             >
                 {formatBalance(balance, instrument)}
             </p>
-            {instrument.ticker !== "AUD" && (
+            {instrument.ticker !== homeCurrencyCode && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {formatBalance(balance, instrument, { convertTo: { ticker: "AUD", exponent: instrument.exponent, conversionRate: 1 } })}
+                    {formatMajorAmount(scaleUnit(balance, instrument.exponent) * rate, homeCurrencyCode)}
                 </p>
             )}
         </Link>

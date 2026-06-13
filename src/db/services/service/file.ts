@@ -10,6 +10,7 @@ import {
   queryFileCountsByAccount,
 } from '../query/file'
 import { checkpointService } from './checkpoint'
+import { rateService } from './rate'
 
 async function getById(ctx: RequestContext, fileId: string) {
   return queryFileById(ctx.userId, fileId)
@@ -64,6 +65,7 @@ async function remove(ctx: RequestContext, fileId: string) {
 
   for (const instrumentId of affectedInstrumentIds) {
     await checkpointService.refresh(ctx, instrumentId)
+    await rateService.refresh(ctx, instrumentId)
   }
 }
 
