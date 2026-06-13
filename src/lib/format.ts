@@ -94,3 +94,13 @@ export function formatBalance(balance: bigint, instrument: Instrument, options?:
 export function formatChange(unitCount: bigint, instrument: Instrument): string {
   return formatBalance(unitCount, instrument, {numberFormatOptions: { signDisplay: "exceptZero" }});
 }
+
+/**
+ * Returns Tailwind text color classes for a balance: green when positive,
+ * red when negative, and the neutral gray/foreground color when zero.
+ */
+export function balanceColorClass(value: bigint | number): string {
+  if (value > 0) return 'text-green-600 dark:text-green-400'
+  if (value < 0) return 'text-red-600 dark:text-red-400'
+  return 'text-gray-900 dark:text-gray-100'
+}

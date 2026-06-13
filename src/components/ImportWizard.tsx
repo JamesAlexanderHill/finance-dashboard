@@ -177,7 +177,7 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
 
         {/* Step 2 */}
         {wizard.step === 2 && (
-          <Step2
+          <InstrumentReview
             drafts={wizard.instrumentDrafts}
             onChange={(drafts) => setWizard((w) => ({ ...w, instrumentDrafts: drafts }))}
             onBack={() => setWizard((w) => ({ ...w, step: 1 }))}
@@ -273,7 +273,7 @@ function Step1({
   )
 }
 
-function Step2({
+export function InstrumentReview({
   drafts,
   onChange,
   onBack,

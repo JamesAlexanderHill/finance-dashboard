@@ -4,6 +4,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { db } from '~/db'
 import { users } from '~/db/schema'
 import { formatCurrency, formatMajorAmount } from '~/lib/format-currency'
+import { balanceColorClass } from '~/lib/format'
 import scaleUnit from '~/lib/scale-unit'
 import Badge from '~/components/ui/badge'
 import { accountService, createContext, eventService, instrumentService, rateService } from '~/db/services'
@@ -168,8 +169,6 @@ function InstrumentDetailPage() {
     router.invalidate()
   }
 
-  const neg = balance < 0
-  const abs = neg ? -balance : balance
   const isHomeCurrency = instrument.ticker === user.homeCurrencyCode
   const effectiveRate = rate?.rate ?? 1
 
@@ -264,7 +263,7 @@ function InstrumentDetailPage() {
               <p
                 className={[
                   'mt-3 text-2xl font-bold tabular-nums',
-                  neg ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
+                  balanceColorClass(balance),
                 ].join(' ')}
               >
                 {formatCurrency(balance, {

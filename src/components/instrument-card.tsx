@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { Instrument, Account } from "~/db/schema";
 import Badge from "~/components/ui/badge";
-import { formatBalance } from "~/lib/format";
+import { balanceColorClass, formatBalance } from "~/lib/format";
 import { formatMajorAmount } from "~/lib/format-currency";
 import scaleUnit from "~/lib/scale-unit";
 
@@ -23,8 +23,6 @@ export default function InstrumentCard({
     rate,
     homeCurrencyCode,
 }: InstrumentCardProps) {
-    const isNegative = balance < 0;
-
     return (
         <Link
             key={instrument.id}
@@ -46,7 +44,7 @@ export default function InstrumentCard({
             <p
                 className={[
                     'mt-2 text-lg font-semibold tabular-nums',
-                    isNegative ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
+                    balanceColorClass(balance),
                 ].join(' ')}
             >
                 {formatBalance(balance, instrument)}

@@ -5,6 +5,7 @@ import { db } from '~/db'
 import { users } from '~/db/schema'
 import { accountService, instrumentService, createContext } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
+import { balanceColorClass } from '~/lib/format'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -151,12 +152,11 @@ function InstrumentsPage() {
       header: 'Balance',
       cell: ({ row }) => {
         const unitCount = BigInt(row.original.balance)
-        const neg = unitCount < 0
         return (
           <span
             className={[
               'font-medium tabular-nums',
-              neg ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
+              balanceColorClass(unitCount),
             ].join(' ')}
           >
             {formatCurrency(unitCount, {

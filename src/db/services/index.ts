@@ -5,7 +5,13 @@ export type { AccountBalance, BalancePoint, BalanceHistoryRange, BalanceHistoryP
 export { fileService } from './service/file'
 export { categoryService } from './service/category'
 export { importService } from './service/import'
-export type { CommitImportParams, InstrumentDraft } from './service/import'
+export type {
+  BulkImportFile,
+  CommitBulkImportParams,
+  CommitImportParams,
+  FileImportResult,
+  InstrumentDraft,
+} from './service/import'
 export { checkpointService } from './service/checkpoint'
 export { rateService } from './service/rate'
 export type { CurrentRate } from './service/rate'

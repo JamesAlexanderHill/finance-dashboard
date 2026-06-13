@@ -4,6 +4,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { db } from '~/db'
 import { users } from '~/db/schema'
 import { ImportWizard } from '~/components/ImportWizard'
+import { BulkImportWizard } from '~/components/BulkImportWizard'
 import InstrumentCard from '~/components/instrument-card'
 import BalanceHistogram, { type InstrumentRates } from '~/components/balance-histogram'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
@@ -80,6 +81,7 @@ function AccountDetailPage() {
   const router = useRouter()
   const [editing, setEditing] = React.useState(false)
   const [showImportWizard, setShowImportWizard] = React.useState(false)
+  const [showBulkImportWizard, setShowBulkImportWizard] = React.useState(false)
   const navigate = Route.useNavigate()
 
   if (!user) {
@@ -323,13 +325,21 @@ function AccountDetailPage() {
             >
               View all
             </Link>
-            {!showImportWizard && (
-              <button
-                onClick={() => setShowImportWizard(true)}
-                className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
-              >
-                + Import CSV
-              </button>
+            {!showImportWizard && !showBulkImportWizard && (
+              <>
+                <button
+                  onClick={() => setShowBulkImportWizard(true)}
+                  className="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-md transition-colors"
+                >
+                  Bulk import
+                </button>
+                <button
+                  onClick={() => setShowImportWizard(true)}
+                  className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                >
+                  + Import CSV
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -344,6 +354,17 @@ function AccountDetailPage() {
                 setShowImportWizard(false)
                 router.invalidate()
               }}
+            />
+          </div>
+        )}
+
+        {showBulkImportWizard && (
+          <div className="mb-6">
+            <BulkImportWizard
+              accountId={account!.id}
+              accountName={account!.name}
+              onClose={() => setShowBulkImportWizard(false)}
+              onSuccess={() => router.invalidate()}
             />
           </div>
         )}

@@ -29,7 +29,7 @@ const getBalanceHistory = createServerFn({ method: 'GET' })
 export type InstrumentRates = Record<string, { rate: number; asOf: string; source: RateSource }>
 
 type BalanceHistogramProps = {
-  instruments: Instrument[]
+  instruments: (Instrument & { balance: string })[]
   defaultInstrumentId: string | null
   /** Pre-fetched 30D/daily history for `defaultInstrumentId`, from the route loader. */
   initialData: BalancePoint[]
@@ -61,9 +61,14 @@ const PERIOD_OPTIONS: { value: BalanceHistoryPeriod; label: string }[] = [
   { value: 'month', label: 'Monthly' },
 ]
 
-// Colors are assigned to instruments by position, so each instrument keeps a
-// stable color regardless of which others are currently visible.
-const COLOR_ORDER: ChartColor[] = ['blue', 'red', 'green', 'purple', 'orange', 'teal', 'pink', 'gray']
+// Lines are colored by the instrument's current balance: green when
+// positive, red when negative (e.g. always-red for a credit card like Amex),
+// gray when exactly zero.
+function colorForBalance(balance: bigint): ChartColor {
+  if (balance > 0n) return 'green'
+  if (balance < 0n) return 'red'
+  return 'gray'
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -106,7 +111,7 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
       return {
         id: instrument.id,
         data,
-        color: COLOR_ORDER[index % COLOR_ORDER.length],
+        color: colorForBalance(BigInt(instrument.balance)),
         isProjected: (d: ChartPoint) => d.projected,
       }
     })
@@ -136,8 +141,8 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
 
       {instruments.length > 1 && (
         <div className="flex items-center gap-3 mb-4 flex-wrap">
-          {instruments.map((instrument, index) => {
-            const color = COLOR_ORDER[index % COLOR_ORDER.length]
+          {instruments.map((instrument) => {
+            const color = colorForBalance(BigInt(instrument.balance))
             const checked = visible.has(instrument.id)
             return (
               <label

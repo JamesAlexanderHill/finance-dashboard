@@ -29,6 +29,27 @@ export interface CommitImportParams {
   restoreDeletedChosen: boolean
 }
 
+export interface BulkImportFile {
+  filename: string
+  events: ParsedEvent[]
+}
+
+export interface CommitBulkImportParams {
+  accountId: string
+  instrumentDrafts: InstrumentDraft[]
+  restoreDeletedChosen: boolean
+  files: BulkImportFile[]
+}
+
+export interface FileImportResult {
+  fileId: string
+  filename: string
+  importedCount: number
+  skippedCount: number
+  restoredCount: number
+  errorCount: number
+}
+
 function resolveCategoryPath(
   userId: string,
   path: string,
@@ -48,18 +69,16 @@ function resolveCategoryPath(
   return parentId
 }
 
-async function commitImport(ctx: RequestContext, params: CommitImportParams): Promise<string> {
-  const { accountId, filename, restoreDeletedChosen } = params
+/** Create any instrument drafts that don't already have an `existingId`, returning ticker.upper → id for all of them. */
+async function resolveInstruments(
+  ctx: RequestContext,
+  accountId: string,
+  drafts: InstrumentDraft[],
+): Promise<Map<string, string>> {
   const { userId } = ctx
+  const instrumentMap = new Map<string, string>()
 
-  // ── 1. Verify account ownership ────────────────────────────────────────────
-  const account = await queryAccountById(userId, accountId)
-  if (!account) throw new Error(`Account not found: ${accountId}`)
-
-  // ── 2. Create / resolve instruments ───────────────────────────────────────
-  const instrumentMap = new Map<string, string>() // ticker.upper → id
-
-  for (const draft of params.instrumentDrafts) {
+  for (const draft of drafts) {
     const ticker = draft.ticker.toUpperCase()
     if (draft.existingId) {
       instrumentMap.set(ticker, draft.existingId)
@@ -78,10 +97,22 @@ async function commitImport(ctx: RequestContext, params: CommitImportParams): Pr
     }
   }
 
-  // ── 3. Load categories ────────────────────────────────────────────────────
-  const userCategories = await queryCategoriesByUser(userId)
+  return instrumentMap
+}
 
-  // ── 4. Create file record upfront to get fileId ───────────────────────────
+/** Create a `files` row and import its events/legs against an already-resolved instrument map. */
+async function commitEventsForFile(
+  ctx: RequestContext,
+  accountId: string,
+  filename: string,
+  parsedEvents: ParsedEvent[],
+  instrumentMap: Map<string, string>,
+  categoryAssignments: Record<string, string | null>,
+  restoreDeletedChosen: boolean,
+  userCategories: Category[],
+): Promise<FileImportResult> {
+  const { userId } = ctx
+
   const [file] = await db
     .insert(files)
     .values({
@@ -98,7 +129,6 @@ async function commitImport(ctx: RequestContext, params: CommitImportParams): Pr
     .returning({ id: files.id })
   const fileId = file.id
 
-  // ── 5. Process events ─────────────────────────────────────────────────────
   let importedCount = 0
   let skippedCount = 0
   let restoredCount = 0
@@ -106,8 +136,8 @@ async function commitImport(ctx: RequestContext, params: CommitImportParams): Pr
   const skippedKeys: string[] = []
   const importErrors: Array<{ line: number; message: string; phase: string }> = []
 
-  for (let evIdx = 0; evIdx < params.events.length; evIdx++) {
-    const parsed = params.events[evIdx]
+  for (let evIdx = 0; evIdx < parsedEvents.length; evIdx++) {
+    const parsed = parsedEvents[evIdx]
     const line = evIdx + 2
 
     try {
@@ -158,7 +188,7 @@ async function commitImport(ctx: RequestContext, params: CommitImportParams): Pr
           if (!instrumentId) throw new Error(`Unknown instrument: ${leg.instrumentCode}`)
 
           const catKey = `${parsed.eventGroup}_${legIdx}`
-          const catPath = params.categoryAssignments[catKey] ?? null
+          const catPath = categoryAssignments[catKey] ?? null
           const categoryId = catPath ? resolveCategoryPath(userId, catPath, userCategories) : null
 
           await tx.insert(legs).values({
@@ -178,19 +208,75 @@ async function commitImport(ctx: RequestContext, params: CommitImportParams): Pr
     }
   }
 
-  // ── 6. Update file record with final counts ───────────────────────────────
   await db
     .update(files)
     .set({ importedCount, skippedCount, restoredCount, errorCount, skippedKeys, errors: importErrors })
     .where(eq(files.id, fileId))
 
-  // ── 7. Refresh balance checkpoints for affected instruments ───────────────
+  return { fileId, filename, importedCount, skippedCount, restoredCount, errorCount }
+}
+
+async function commitImport(ctx: RequestContext, params: CommitImportParams): Promise<string> {
+  const { accountId, filename, restoreDeletedChosen } = params
+  const { userId } = ctx
+
+  const account = await queryAccountById(userId, accountId)
+  if (!account) throw new Error(`Account not found: ${accountId}`)
+
+  const instrumentMap = await resolveInstruments(ctx, accountId, params.instrumentDrafts)
+  const userCategories = await queryCategoriesByUser(userId)
+
+  const result = await commitEventsForFile(
+    ctx,
+    accountId,
+    filename,
+    params.events,
+    instrumentMap,
+    params.categoryAssignments,
+    restoreDeletedChosen,
+    userCategories,
+  )
+
   for (const instrumentId of new Set(instrumentMap.values())) {
     await checkpointService.refresh(ctx, instrumentId)
     await rateService.refresh(ctx, instrumentId)
   }
 
-  return fileId
+  return result.fileId
 }
 
-export const importService = { commitImport }
+/** Commit several canonical CSV files in one run, sharing a single instrument resolution pass. */
+async function commitBulkImport(ctx: RequestContext, params: CommitBulkImportParams): Promise<FileImportResult[]> {
+  const { accountId, restoreDeletedChosen } = params
+  const { userId } = ctx
+
+  const account = await queryAccountById(userId, accountId)
+  if (!account) throw new Error(`Account not found: ${accountId}`)
+
+  const instrumentMap = await resolveInstruments(ctx, accountId, params.instrumentDrafts)
+  const userCategories = await queryCategoriesByUser(userId)
+
+  const results: FileImportResult[] = []
+  for (const file of params.files) {
+    const result = await commitEventsForFile(
+      ctx,
+      accountId,
+      file.filename,
+      file.events,
+      instrumentMap,
+      {},
+      restoreDeletedChosen,
+      userCategories,
+    )
+    results.push(result)
+  }
+
+  for (const instrumentId of new Set(instrumentMap.values())) {
+    await checkpointService.refresh(ctx, instrumentId)
+    await rateService.refresh(ctx, instrumentId)
+  }
+
+  return results
+}
+
+export const importService = { commitImport, commitBulkImport }

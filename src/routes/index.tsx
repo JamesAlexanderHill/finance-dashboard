@@ -5,6 +5,7 @@ import { db } from '~/db'
 import { users } from '~/db/schema'
 import { instrumentService, createContext } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
+import { balanceColorClass } from '~/lib/format'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -60,8 +61,6 @@ function DashboardPage() {
   )
   const netWorthMinor = homeBalances.reduce((sum, b) => sum + b.unitCount, BigInt(0))
   const homeMinorUnit = homeBalances[0]?.instrumentExponent ?? 2
-  const isNegative = netWorthMinor < 0
-  const absWorth = isNegative ? -netWorthMinor : netWorthMinor
 
   return (
     <div className="max-w-4xl">
@@ -79,10 +78,10 @@ function DashboardPage() {
         <p
           className={[
             'text-3xl font-bold tabular-nums',
-            isNegative ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
+            balanceColorClass(netWorthMinor),
           ].join(' ')}
         >
-          {formatCurrency(absWorth, {
+          {formatCurrency(netWorthMinor, {
             exponent: homeMinorUnit,
             ticker: homeCurrency,
           })}
@@ -111,8 +110,6 @@ function DashboardPage() {
                 </p>
                 <div className="space-y-1.5">
                   {accountBalances.map((b) => {
-                    const neg = b.unitCount < 0
-                    const abs = neg ? -b.unitCount : b.unitCount
                     return (
                       <div key={b.instrumentId} className="flex items-center justify-between">
                         <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
@@ -121,7 +118,7 @@ function DashboardPage() {
                         <span
                           className={[
                             'text-sm font-medium tabular-nums',
-                            neg ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100',
+                            balanceColorClass(b.unitCount),
                           ].join(' ')}
                         >
                           {formatCurrency(b.unitCount, {
