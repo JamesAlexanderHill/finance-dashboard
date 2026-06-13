@@ -1,27 +1,25 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
 import EventTable from '~/components/event/event-table'
-import { accountService, createContext, eventService, fileService } from '~/db/services'
+import { accountService, eventService, fileService, getSession } from '~/db/services'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getFilesDetailData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string; fileId: string; page?: number; pageSize?: number })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, file: null, fileEvents: null }
+    const session = await getSession()
+    if (!session) return { user: null, account: null, file: null, fileEvents: null }
 
-    const ctx = createContext(user.id)
+    const ctx = session.ctx
     const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, file: null, fileEvents: null }
+    if (!account) return { user: session.user, account: null, file: null, fileEvents: null }
 
     const file = await fileService.getById(ctx, data.fileId)
 
-    if (!file) return { user, account, file: null, fileEvents: null }
+    if (!file) return { user: session.user, account, file: null, fileEvents: null }
 
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? 20
@@ -29,15 +27,15 @@ const getFilesDetailData = createServerFn({ method: 'GET' })
 
     const fileEvents = await eventService.listByFile(ctx, data.fileId, { limit: pageSize, offset })
 
-    return { user, account, file, fileEvents }
+    return { user: session.user, account, file, fileEvents }
   })
 
 const deleteFile = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => data as { fileId: string })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) throw new Error('No user found')
-    await fileService.delete(createContext(user.id), data.fileId)
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    await fileService.delete(session.ctx, data.fileId)
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────

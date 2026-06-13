@@ -1,18 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
 import type { Category } from '~/db/schema'
-import { categoryService, createContext } from '~/db/services'
+import { categoryService, getSession } from '~/db/services'
 
 // ─── Server function ──────────────────────────────────────────────────────────
 
 const getData = createServerFn({ method: 'GET' })
 .handler(async () => {
-  const [user] = await db.select().from(users).limit(1)
-  if (!user) return { user: null, categories: [] }
-  const categories = await categoryService.list(createContext(user.id))
-  return { user, categories }
+  const session = await getSession()
+  if (!session) return { user: null, categories: [] }
+  const categories = await categoryService.list(session.ctx)
+  return { user: session.user, categories }
 })
 
 // ─── Route ────────────────────────────────────────────────────────────────────

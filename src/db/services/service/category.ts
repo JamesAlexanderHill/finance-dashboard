@@ -1,8 +1,8 @@
 import type { RequestContext } from '../utils/context'
-import { queryCategoriesByUser } from '../query/category'
+import { queryCategoriesByWorkspace } from '../query/category'
 
 async function list(ctx: RequestContext) {
-  return queryCategoriesByUser(ctx.userId)
+  return queryCategoriesByWorkspace(ctx.workspaceId)
 }
 
 export const categoryService = { list }

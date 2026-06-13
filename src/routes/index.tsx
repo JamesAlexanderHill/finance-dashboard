@@ -1,21 +1,19 @@
 import * as React from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
-import { instrumentService, createContext } from '~/db/services'
+import { instrumentService, getSession } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import { balanceColorClass } from '~/lib/format'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
-  const [user] = await db.select().from(users).limit(1)
-  if (!user) return { user: null, balances: [] }
+  const session = await getSession()
+  if (!session) return { user: null, workspace: null, balances: [] }
 
-  const balances = await instrumentService.getAccountBalances(createContext(user.id))
+  const balances = await instrumentService.getAccountBalances(session.ctx)
 
-  return { user, balances }
+  return { user: session.user, workspace: session.workspace, balances }
 })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -28,9 +26,9 @@ export const Route = createFileRoute('/')({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function DashboardPage() {
-  const { user, balances } = Route.useLoaderData()
+  const { user, workspace, balances } = Route.useLoaderData()
 
-  if (!user) {
+  if (!user || !workspace) {
     return (
       <div className="max-w-lg mx-auto mt-16 text-center">
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
@@ -54,8 +52,8 @@ function DashboardPage() {
     byAccount.get(b.accountId)!.push(b)
   }
 
-  // Net worth: sum fiat balances in the user's home currency only
-  const homeCurrency = user.homeCurrencyCode
+  // Net worth: sum fiat balances in the workspace's home currency only
+  const homeCurrency = workspace.homeCurrencyCode
   const homeBalances = balances.filter(
     (b) => b.instrumentTicker === homeCurrency,
   )

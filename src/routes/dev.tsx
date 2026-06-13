@@ -1,9 +1,10 @@
 import * as React from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { eq, count } from 'drizzle-orm'
 import { db } from '~/db'
-import { users } from '~/db/schema'
-import { checkpointService, rateService, createContext } from '~/db/services'
+import { users, accounts, instruments, categories, events, legs, instrumentCheckpoints, instrumentRates } from '~/db/schema'
+import { checkpointService, rateService, createUserWithPersonalWorkspace, getSession } from '~/db/services'
 import { clearAllData, seedBase, seedSampleEvents } from '~/lib/seed'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -21,16 +22,14 @@ const devSeedBase = createServerFn({ method: 'POST' }).handler(async () => {
 })
 
 const devSeedSampleEvents = createServerFn({ method: 'POST' }).handler(async () => {
-  const [user] = await db.select().from(users).limit(1)
-  if (!user) return { ok: false, message: 'No user found. Seed base data first.' }
+  const session = await getSession()
+  if (!session) return { ok: false, message: 'No user found. Seed base data first.' }
 
-  // Build seed result from existing data
-  const { accounts, instruments, categories } = await import('~/db/schema')
-  const { eq } = await import('drizzle-orm')
+  const { workspace } = session
   const [accs, instrs, cats] = await Promise.all([
-    db.select().from(accounts).where(eq(accounts.userId, user.id)),
-    db.select().from(instruments).where(eq(instruments.userId, user.id)),
-    db.select().from(categories).where(eq(categories.userId, user.id)),
+    db.select().from(accounts).where(eq(accounts.workspaceId, workspace.id)),
+    db.select().from(instruments).where(eq(instruments.workspaceId, workspace.id)),
+    db.select().from(categories).where(eq(categories.workspaceId, workspace.id)),
   ])
 
   // Map to the keys used by seedSampleEvents (matching seedBase's SeedResult shape)
@@ -57,7 +56,8 @@ const devSeedSampleEvents = createServerFn({ method: 'POST' }).handler(async () 
   const groceries = cats.find((c) => c.name === 'Groceries')
 
   const mappedSeedResult = {
-    userId: user.id,
+    userId: session.user.id,
+    workspaceId: workspace.id,
     accountIds: { commbank: commbank.id, amex: amex.id, wise: wise.id, vanguard: vanguard.id },
     instrumentIds: {
       commbankAud: commbankAud.id,
@@ -75,25 +75,23 @@ const devSeedSampleEvents = createServerFn({ method: 'POST' }).handler(async () 
 })
 
 const getDevStatus = createServerFn({ method: 'GET' }).handler(async () => {
-  const { count } = await import('drizzle-orm')
-  const { events, legs, accounts: accountsTable, instrumentCheckpoints, instrumentRates } = await import('~/db/schema')
+  const session = await getSession()
+  if (!session) return { hasUser: false, eventCount: 0, legCount: 0, accountCount: 0, checkpointCount: 0, rateCount: 0 }
 
-  const [user] = await db.select().from(users).limit(1)
-  if (!user) return { hasUser: false, eventCount: 0, legCount: 0, accountCount: 0, checkpointCount: 0, rateCount: 0 }
-
-  const { eq } = await import('drizzle-orm')
+  const { user, workspace } = session
   const [evtResult, legResult, accResult, checkpointResult, rateResult] = await Promise.all([
-    db.select({ n: count() }).from(events).where(eq(events.userId, user.id)),
-    db.select({ n: count() }).from(legs).where(eq(legs.userId, user.id)),
-    db.select({ n: count() }).from(accountsTable).where(eq(accountsTable.userId, user.id)),
-    db.select({ n: count() }).from(instrumentCheckpoints).where(eq(instrumentCheckpoints.userId, user.id)),
-    db.select({ n: count() }).from(instrumentRates).where(eq(instrumentRates.userId, user.id)),
+    db.select({ n: count() }).from(events).where(eq(events.workspaceId, workspace.id)),
+    db.select({ n: count() }).from(legs).where(eq(legs.workspaceId, workspace.id)),
+    db.select({ n: count() }).from(accounts).where(eq(accounts.workspaceId, workspace.id)),
+    db.select({ n: count() }).from(instrumentCheckpoints).where(eq(instrumentCheckpoints.workspaceId, workspace.id)),
+    db.select({ n: count() }).from(instrumentRates).where(eq(instrumentRates.workspaceId, workspace.id)),
   ])
 
   return {
     hasUser: true,
     userId: user.id,
     userName: user.name,
+    workspaceName: workspace.name,
     eventCount: Number(evtResult[0]?.n ?? 0),
     legCount: Number(legResult[0]?.n ?? 0),
     accountCount: Number(accResult[0]?.n ?? 0),
@@ -103,20 +101,35 @@ const getDevStatus = createServerFn({ method: 'GET' }).handler(async () => {
 })
 
 const devRecomputeCheckpoints = createServerFn({ method: 'POST' }).handler(async () => {
-  const [user] = await db.select().from(users).limit(1)
-  if (!user) return { ok: false, message: 'No user found. Seed base data first.' }
+  const session = await getSession()
+  if (!session) return { ok: false, message: 'No user found. Seed base data first.' }
 
-  const count = await checkpointService.refreshAll(createContext(user.id))
-  return { ok: true, message: `Recomputed checkpoints for ${count} instrument(s).` }
+  const result = await checkpointService.refreshAll(session.ctx)
+  return { ok: true, message: `Recomputed checkpoints for ${result} instrument(s).` }
 })
 
 const devRecomputeRates = createServerFn({ method: 'POST' }).handler(async () => {
-  const [user] = await db.select().from(users).limit(1)
-  if (!user) return { ok: false, message: 'No user found. Seed base data first.' }
+  const session = await getSession()
+  if (!session) return { ok: false, message: 'No user found. Seed base data first.' }
 
-  const count = await rateService.refreshAll(createContext(user.id))
-  return { ok: true, message: `Recomputed rates for ${count} instrument(s).` }
+  const result = await rateService.refreshAll(session.ctx)
+  return { ok: true, message: `Recomputed rates for ${result} instrument(s).` }
 })
+
+const devCreateAdditionalUser = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { name: string; email: string; homeCurrencyCode: string })
+  .handler(async ({ data }) => {
+    try {
+      const { user, workspace } = await createUserWithPersonalWorkspace({
+        name: data.name,
+        email: data.email,
+        homeCurrencyCode: data.homeCurrencyCode,
+      })
+      return { ok: true, message: `Created ${user.name} <${user.email}> with workspace "${workspace.name}".` }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
@@ -140,7 +153,7 @@ function useAction(fn: () => Promise<{ ok: boolean; message?: string }>) {
       const result = await fn()
       if (result.ok) {
         setState('success')
-        setMessage('Done!')
+        setMessage(result.message || 'Done!')
       } else {
         setState('error')
         setMessage(result.message ?? 'Failed')
@@ -159,6 +172,10 @@ function useAction(fn: () => Promise<{ ok: boolean; message?: string }>) {
 function DevPage() {
   const status = Route.useLoaderData()
   const router = useRouter()
+
+  const [newUserName, setNewUserName] = React.useState('')
+  const [newUserEmail, setNewUserEmail] = React.useState('')
+  const [newUserCurrency, setNewUserCurrency] = React.useState('AUD')
 
   const clearAction = useAction(async () => {
     const r = await devClearAll()
@@ -190,16 +207,29 @@ function DevPage() {
     return r
   })
 
+  const createUserAction = useAction(async () => {
+    const r = await devCreateAdditionalUser({
+      data: { name: newUserName, email: newUserEmail, homeCurrencyCode: newUserCurrency },
+    })
+    if (r.ok) {
+      setNewUserName('')
+      setNewUserEmail('')
+      setNewUserCurrency('AUD')
+    }
+    router.invalidate()
+    return r
+  })
+
   const actions = [
     {
       label: 'Clear all data',
-      description: 'Delete all users, accounts, events, legs, etc.',
+      description: 'Delete all users, workspaces, accounts, events, legs, etc.',
       action: clearAction,
       danger: true,
     },
     {
       label: 'Seed base',
-      description: 'Create demo user, 5 accounts, instruments, 8 categories, 2 views.',
+      description: 'Create demo user with personal workspace, 5 accounts, instruments, 8 categories, 2 views.',
       action: seedBaseAction,
     },
     {
@@ -240,10 +270,11 @@ function DevPage() {
       {/* Status */}
       <div className="mb-6 grid grid-cols-2 gap-3 text-sm">
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">User</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">User / Workspace</p>
           {status.hasUser ? (
             <>
               <p className="font-medium text-gray-900 dark:text-gray-100">{status.userName}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{status.workspaceName}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate">
                 {status.userId}
               </p>
@@ -301,6 +332,57 @@ function DevPage() {
             </button>
           </div>
         ))}
+
+        {/* Create additional user */}
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Create additional user</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
+            Create a new user with their own personal workspace, for testing shared workspaces.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              value={newUserName}
+              onChange={(e) => setNewUserName(e.target.value)}
+              placeholder="Name"
+              className="flex-1 min-w-[120px] text-sm border border-gray-200 dark:border-gray-700 rounded-md px-3 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <input
+              type="email"
+              value={newUserEmail}
+              onChange={(e) => setNewUserEmail(e.target.value)}
+              placeholder="Email"
+              className="flex-1 min-w-[160px] text-sm border border-gray-200 dark:border-gray-700 rounded-md px-3 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <input
+              type="text"
+              value={newUserCurrency}
+              onChange={(e) => setNewUserCurrency(e.target.value.toUpperCase())}
+              placeholder="AUD"
+              maxLength={3}
+              className="w-20 text-sm border border-gray-200 dark:border-gray-700 rounded-md px-3 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={createUserAction.run}
+              disabled={createUserAction.state === 'loading' || !newUserName || !newUserEmail}
+              className="px-4 py-1.5 text-sm font-medium rounded-md transition-colors disabled:opacity-50 whitespace-nowrap bg-gray-800 dark:bg-gray-100 hover:bg-gray-700 dark:hover:bg-gray-200 text-white dark:text-gray-900"
+            >
+              {createUserAction.state === 'loading' ? 'Working…' : 'Create user'}
+            </button>
+          </div>
+          {createUserAction.message && (
+            <p
+              className={[
+                'text-xs mt-2',
+                createUserAction.state === 'success'
+                  ? 'text-green-600 dark:text-green-400'
+                  : 'text-red-600 dark:text-red-400',
+              ].join(' ')}
+            >
+              {createUserAction.message}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   )

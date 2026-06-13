@@ -25,24 +25,24 @@ type ListInstrumentsOptions = PaginationOptions & {
 
 async function list(ctx: RequestContext, opts: ListInstrumentsOptions = {}) {
   const { limit = 1000, offset = 0 } = opts
-  const { data, total } = await queryInstrumentsWithBalance(ctx.userId, opts)
+  const { data, total } = await queryInstrumentsWithBalance(ctx.workspaceId, opts)
   return buildPaginatedResult(data, total, limit, offset)
 }
 
 async function getBalances(ctx: RequestContext, accountIds?: string[]) {
-  return queryInstrumentBalances(ctx.userId, accountIds)
+  return queryInstrumentBalances(ctx.workspaceId, accountIds)
 }
 
 async function getAccountBalances(ctx: RequestContext) {
-  return queryAccountBalances(ctx.userId)
+  return queryAccountBalances(ctx.workspaceId)
 }
 
 async function getById(ctx: RequestContext, instrumentId: string) {
-  return queryInstrumentById(ctx.userId, instrumentId)
+  return queryInstrumentById(ctx.workspaceId, instrumentId)
 }
 
 async function getBalance(ctx: RequestContext, instrumentId: string): Promise<bigint> {
-  return queryInstrumentBalance(ctx.userId, instrumentId)
+  return queryInstrumentBalance(ctx.workspaceId, instrumentId)
 }
 
 async function getBalanceHistory(
@@ -52,9 +52,9 @@ async function getBalanceHistory(
   period: BalanceHistoryPeriod = 'day',
 ) {
   if (period === 'transaction') {
-    return queryInstrumentTransactionHistory(ctx.userId, instrumentId, range)
+    return queryInstrumentTransactionHistory(ctx.workspaceId, instrumentId, range)
   }
-  return queryInstrumentBalanceHistory(ctx.userId, instrumentId, range, period)
+  return queryInstrumentBalanceHistory(ctx.workspaceId, instrumentId, range, period)
 }
 
 async function create(
@@ -64,7 +64,7 @@ async function create(
   const [instrument] = await db
     .insert(instruments)
     .values({
-      userId: ctx.userId,
+      workspaceId: ctx.workspaceId,
       accountId: data.accountId,
       ticker: data.ticker.trim().toUpperCase(),
       name: data.name.trim(),
@@ -85,7 +85,7 @@ async function update(
     neutralColor?: ChartColorName | null
   },
 ) {
-  const existing = await queryInstrumentById(ctx.userId, instrumentId)
+  const existing = await queryInstrumentById(ctx.workspaceId, instrumentId)
   if (!existing) throw new Error(`Instrument not found: ${instrumentId}`)
 
   await db
@@ -97,11 +97,11 @@ async function update(
       ...(data.negativeColor !== undefined ? { negativeColor: data.negativeColor } : {}),
       ...(data.neutralColor !== undefined ? { neutralColor: data.neutralColor } : {}),
     })
-    .where(and(eq(instruments.id, instrumentId), eq(instruments.userId, ctx.userId)))
+    .where(and(eq(instruments.id, instrumentId), eq(instruments.workspaceId, ctx.workspaceId)))
 }
 
 async function remove(ctx: RequestContext, instrumentId: string) {
-  const existing = await queryInstrumentById(ctx.userId, instrumentId)
+  const existing = await queryInstrumentById(ctx.workspaceId, instrumentId)
   if (!existing) throw new Error(`Instrument not found: ${instrumentId}`)
 
   const hasLegs = await queryInstrumentHasLegs(instrumentId)
@@ -112,7 +112,7 @@ async function remove(ctx: RequestContext, instrumentId: string) {
 
   await db
     .delete(instruments)
-    .where(and(eq(instruments.id, instrumentId), eq(instruments.userId, ctx.userId)))
+    .where(and(eq(instruments.id, instrumentId), eq(instruments.workspaceId, ctx.workspaceId)))
 }
 
 export const instrumentService = {

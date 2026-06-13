@@ -1,9 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import EventTable from '~/components/event/event-table'
-import { db } from '~/db'
-import { eventService, accountService, createContext } from '~/db/services'
-import { users } from '~/db/schema'
+import { eventService, accountService, getSession } from '~/db/services'
 
 const DEFAULT_PAGE_SIZE = 10
 
@@ -12,15 +10,15 @@ const DEFAULT_PAGE_SIZE = 10
 const getData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { page?: number, pageSize?: number, accountId?: string })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, events: [], accounts: [] }
+    const session = await getSession()
+    if (!session) return { user: null, events: [], accounts: [] }
 
     // paginated events
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
     const offset = (page - 1) * pageSize
 
-    const ctx = createContext(user.id)
+    const ctx = session.ctx
 
     // need the account list so that we can filter events by account id
     const [accountsResult, eventsResult] = await Promise.all([
@@ -29,7 +27,7 @@ const getData = createServerFn({ method: 'GET' })
     ])
 
     return {
-      user,
+      user: session.user,
       events: eventsResult,
       accounts: accountsResult,
     }

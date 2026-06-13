@@ -11,7 +11,10 @@ import {
   legs,
   lineItems,
   users,
+  workspaceMembers,
+  workspaces,
 } from '~/db/schema'
+import { createUserWithPersonalWorkspace } from '~/db/services'
 
 // ─── Clear ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +32,8 @@ export async function clearAllData(): Promise<void> {
   await db.update(accounts).set({ defaultInstrumentId: null })
   await db.delete(instruments)
   await db.delete(accounts)
+  await db.delete(workspaceMembers)
+  await db.delete(workspaces)
   await db.delete(users)
 }
 
@@ -36,6 +41,7 @@ export async function clearAllData(): Promise<void> {
 
 export interface SeedResult {
   userId: string
+  workspaceId: string
   accountIds: Record<string, string>
   instrumentIds: Record<string, string>
   categoryIds: Record<string, string>
@@ -45,20 +51,22 @@ export interface SeedResult {
 
 /** Seed the single demo user, accounts, instruments, and categories. */
 export async function seedBase(): Promise<SeedResult> {
-  // ── User ──────────────────────────────────────────────────────────────────
-  const [user] = await db
-    .insert(users)
-    .values({ name: 'Demo User', homeCurrencyCode: 'AUD' })
-    .returning()
+  // ── User + personal workspace ────────────────────────────────────────────
+  const { user, workspace } = await createUserWithPersonalWorkspace({
+    name: 'Demo User',
+    email: 'demo@example.com',
+    homeCurrencyCode: 'AUD',
+  })
+  const workspaceId = workspace.id
 
   // ── Accounts ──────────────────────────────────────────────────────────────
   const [commbank, amex, wise, vanguard] = await db
     .insert(accounts)
     .values([
-      { userId: user.id, name: 'CommBank' },
-      { userId: user.id, name: 'AMEX' },
-      { userId: user.id, name: 'Wise' },
-      { userId: user.id, name: 'Vanguard' },
+      { workspaceId, name: 'CommBank' },
+      { workspaceId, name: 'AMEX' },
+      { workspaceId, name: 'Wise' },
+      { workspaceId, name: 'Vanguard' },
     ])
     .returning()
 
@@ -66,12 +74,12 @@ export async function seedBase(): Promise<SeedResult> {
   const [commbankAud, amexAud, wiseAud, wiseNzd, vanguardAud, vanguardVhy] = await db
     .insert(instruments)
     .values([
-      { userId: user.id, accountId: commbank.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
-      { userId: user.id, accountId: amex.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
-      { userId: user.id, accountId: wise.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
-      { userId: user.id, accountId: wise.id, ticker: 'NZD', exponent: 2, name: 'New Zealand Dollar' },
-      { userId: user.id, accountId: vanguard.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
-      { userId: user.id, accountId: vanguard.id, ticker: 'VHY', exponent: 0, name: 'Vanguard Australian Shares High Yield ETF' },
+      { workspaceId, accountId: commbank.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
+      { workspaceId, accountId: amex.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
+      { workspaceId, accountId: wise.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
+      { workspaceId, accountId: wise.id, ticker: 'NZD', exponent: 2, name: 'New Zealand Dollar' },
+      { workspaceId, accountId: vanguard.id, ticker: 'AUD', exponent: 2, name: 'Australian Dollar' },
+      { workspaceId, accountId: vanguard.id, ticker: 'VHY', exponent: 0, name: 'Vanguard Australian Shares High Yield ETF' },
     ])
     .returning()
 
@@ -89,10 +97,10 @@ export async function seedBase(): Promise<SeedResult> {
   const [income, savings, lifestyle, essential] = await db
     .insert(categories)
     .values([
-      { userId: user.id, name: 'Income' },
-      { userId: user.id, name: 'Savings' },
-      { userId: user.id, name: 'Lifestyle' },
-      { userId: user.id, name: 'Essential' },
+      { workspaceId, name: 'Income' },
+      { workspaceId, name: 'Savings' },
+      { workspaceId, name: 'Lifestyle' },
+      { workspaceId, name: 'Essential' },
     ])
     .returning()
 
@@ -100,21 +108,22 @@ export async function seedBase(): Promise<SeedResult> {
   const [food, transport] = await db
     .insert(categories)
     .values([
-      { userId: user.id, parentId: lifestyle.id, name: 'Food' },
-      { userId: user.id, parentId: essential.id, name: 'Transport' },
+      { workspaceId, parentId: lifestyle.id, name: 'Food' },
+      { workspaceId, parentId: essential.id, name: 'Transport' },
     ])
     .returning()
 
   const [coffee, groceries] = await db
     .insert(categories)
     .values([
-      { userId: user.id, parentId: food.id, name: 'Coffee' },
-      { userId: user.id, parentId: food.id, name: 'Groceries' },
+      { workspaceId, parentId: food.id, name: 'Coffee' },
+      { workspaceId, parentId: food.id, name: 'Groceries' },
     ])
     .returning()
 
   return {
     userId: user.id,
+    workspaceId,
     accountIds: {
       commbank: commbank.id,
       amex: amex.id,
@@ -146,13 +155,13 @@ export async function seedBase(): Promise<SeedResult> {
 
 /** Seed sample purchase, transfer, exchange, and trade events. */
 export async function seedSampleEvents(seed: SeedResult): Promise<void> {
-  const { userId, accountIds, instrumentIds, categoryIds } = seed
+  const { workspaceId, accountIds, instrumentIds, categoryIds } = seed
 
   // Purchase: Woolworths $55.20 from CommBank
   const [purchase] = await db
     .insert(events)
     .values({
-      userId,
+      workspaceId,
       accountId: accountIds.commbank,
       effectiveAt: new Date('2025-01-10T00:00:00Z'),
       postedAt: new Date('2025-01-11T00:00:00Z'),
@@ -161,7 +170,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     })
     .returning()
   await db.insert(legs).values({
-    userId,
+    workspaceId,
     eventId: purchase.id,
     instrumentId: instrumentIds.commbankAud,
     unitCount: BigInt(-5520),
@@ -172,7 +181,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
   const [transfer] = await db
     .insert(events)
     .values({
-      userId,
+      workspaceId,
       accountId: accountIds.commbank,
       effectiveAt: new Date('2025-01-15T00:00:00Z'),
       postedAt: new Date('2025-01-15T00:00:00Z'),
@@ -181,7 +190,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     })
     .returning()
   await db.insert(legs).values({
-    userId,
+    workspaceId,
     eventId: transfer.id,
     instrumentId: instrumentIds.commbankAud,
     unitCount: BigInt(-50000),
@@ -190,7 +199,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
   const [transferIn] = await db
     .insert(events)
     .values({
-      userId,
+      workspaceId,
       accountId: accountIds.wise,
       effectiveAt: new Date('2025-01-15T00:00:00Z'),
       postedAt: new Date('2025-01-15T00:00:00Z'),
@@ -199,7 +208,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     })
     .returning()
   await db.insert(legs).values({
-    userId,
+    workspaceId,
     eventId: transferIn.id,
     instrumentId: instrumentIds.wiseAud,
     unitCount: BigInt(50000),
@@ -216,7 +225,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
   const [exchange] = await db
     .insert(events)
     .values({
-      userId,
+      workspaceId,
       accountId: accountIds.wise,
       effectiveAt: new Date('2025-02-01T00:00:00Z'),
       postedAt: new Date('2025-02-01T00:00:00Z'),
@@ -225,15 +234,15 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     })
     .returning()
   await db.insert(legs).values([
-    { userId, eventId: exchange.id, instrumentId: instrumentIds.wiseNzd, unitCount: BigInt(-10000) },
-    { userId, eventId: exchange.id, instrumentId: instrumentIds.wiseAud, unitCount: BigInt(9200) },
+    { workspaceId, eventId: exchange.id, instrumentId: instrumentIds.wiseNzd, unitCount: BigInt(-10000) },
+    { workspaceId, eventId: exchange.id, instrumentId: instrumentIds.wiseAud, unitCount: BigInt(9200) },
   ])
 
   // Trade: Buy 19 VHY for $855 AUD
   const [trade] = await db
     .insert(events)
     .values({
-      userId,
+      workspaceId,
       accountId: accountIds.vanguard,
       effectiveAt: new Date('2025-04-06T00:00:00Z'),
       postedAt: new Date('2025-04-06T00:00:00Z'),
@@ -242,7 +251,7 @@ export async function seedSampleEvents(seed: SeedResult): Promise<void> {
     })
     .returning()
   await db.insert(legs).values([
-    { userId, eventId: trade.id, instrumentId: instrumentIds.vanguardVhy, unitCount: BigInt(19) },
-    { userId, eventId: trade.id, instrumentId: instrumentIds.vanguardAud, unitCount: BigInt(-85500) },
+    { workspaceId, eventId: trade.id, instrumentId: instrumentIds.vanguardVhy, unitCount: BigInt(19) },
+    { workspaceId, eventId: trade.id, instrumentId: instrumentIds.vanguardAud, unitCount: BigInt(-85500) },
   ])
 }

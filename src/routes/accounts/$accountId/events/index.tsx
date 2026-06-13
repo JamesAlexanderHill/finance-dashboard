@@ -1,8 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
-import { accountService, eventService, createContext } from '~/db/services'
+import { accountService, eventService, getSession } from '~/db/services'
 import EventTable from '~/components/event/event-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -12,13 +10,13 @@ const DEFAULT_PAGE_SIZE = 10
 const getEventsData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string; page?: number; pageSize?: number })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, events: null }
+    const session = await getSession()
+    if (!session) return { user: null, account: null, events: null }
 
-    const ctx = createContext(user.id)
+    const ctx = session.ctx
     const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, events: null }
+    if (!account) return { user: session.user, account: null, events: null }
 
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
@@ -26,7 +24,7 @@ const getEventsData = createServerFn({ method: 'GET' })
 
     const events = await eventService.listByAccount(ctx, data.accountId, { limit: pageSize, offset })
 
-    return { user, account, events }
+    return { user: session.user, account, events }
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────

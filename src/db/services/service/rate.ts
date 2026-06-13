@@ -1,6 +1,6 @@
 import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, instruments, instrumentRates } from '~/db/schema'
+import { workspaces, instruments, instrumentRates } from '~/db/schema'
 import type { InstrumentRate, RateSource } from '~/db/schema'
 import type { RequestContext } from '../utils/context'
 import { queryInstrumentById } from '../query/instrument'
@@ -18,29 +18,32 @@ function pickRate(rows: InstrumentRate[]): CurrentRate | null {
 
 /**
  * Recomputes the `source: 'transaction'` rate for an instrument from its
- * latest 2-leg exchange/trade against the home currency. Any `source:
- * 'manual'` rate is left untouched.
+ * latest 2-leg exchange/trade against the workspace's home currency. Any
+ * `source: 'manual'` rate is left untouched.
  */
 async function refresh(ctx: RequestContext, instrumentId: string): Promise<void> {
-  const instrument = await queryInstrumentById(ctx.userId, instrumentId)
+  const instrument = await queryInstrumentById(ctx.workspaceId, instrumentId)
   if (!instrument) return
 
-  const [user] = await db.select({ homeCurrencyCode: users.homeCurrencyCode }).from(users).where(eq(users.id, ctx.userId))
-  if (!user) return
+  const [workspace] = await db
+    .select({ homeCurrencyCode: workspaces.homeCurrencyCode })
+    .from(workspaces)
+    .where(eq(workspaces.id, ctx.workspaceId))
+  if (!workspace) return
 
-  const latest = instrument.ticker === user.homeCurrencyCode
+  const latest = instrument.ticker === workspace.homeCurrencyCode
     ? null
-    : await queryLatestExchangeRate(ctx.userId, instrumentId, user.homeCurrencyCode)
+    : await queryLatestExchangeRate(ctx.workspaceId, instrumentId, workspace.homeCurrencyCode)
 
   await db.transaction(async (tx) => {
     await tx.delete(instrumentRates).where(and(
-      eq(instrumentRates.userId, ctx.userId),
+      eq(instrumentRates.workspaceId, ctx.workspaceId),
       eq(instrumentRates.instrumentId, instrumentId),
       eq(instrumentRates.source, 'transaction'),
     ))
     if (latest) {
       await tx.insert(instrumentRates).values({
-        userId: ctx.userId,
+        workspaceId: ctx.workspaceId,
         instrumentId,
         rate: latest.rate,
         asOf: latest.asOf,
@@ -51,14 +54,14 @@ async function refresh(ctx: RequestContext, instrumentId: string): Promise<void>
 }
 
 async function refreshAll(ctx: RequestContext): Promise<number> {
-  const userInstruments = await db.select({ id: instruments.id }).from(instruments).where(eq(instruments.userId, ctx.userId))
-  for (const { id } of userInstruments) await refresh(ctx, id)
-  return userInstruments.length
+  const workspaceInstruments = await db.select({ id: instruments.id }).from(instruments).where(eq(instruments.workspaceId, ctx.workspaceId))
+  for (const { id } of workspaceInstruments) await refresh(ctx, id)
+  return workspaceInstruments.length
 }
 
 async function setManualRate(ctx: RequestContext, instrumentId: string, rate: number): Promise<void> {
   await db.insert(instrumentRates)
-    .values({ userId: ctx.userId, instrumentId, rate, asOf: new Date(), source: 'manual' })
+    .values({ workspaceId: ctx.workspaceId, instrumentId, rate, asOf: new Date(), source: 'manual' })
     .onConflictDoUpdate({
       target: [instrumentRates.instrumentId, instrumentRates.source],
       set: { rate, asOf: new Date() },
@@ -66,12 +69,12 @@ async function setManualRate(ctx: RequestContext, instrumentId: string, rate: nu
 }
 
 async function getRate(ctx: RequestContext, instrumentId: string): Promise<CurrentRate | null> {
-  const rows = await queryRatesForInstruments(ctx.userId, [instrumentId])
+  const rows = await queryRatesForInstruments(ctx.workspaceId, [instrumentId])
   return pickRate(rows)
 }
 
 async function getRates(ctx: RequestContext, instrumentIds: string[]): Promise<Map<string, CurrentRate>> {
-  const rows = await queryRatesForInstruments(ctx.userId, instrumentIds)
+  const rows = await queryRatesForInstruments(ctx.workspaceId, instrumentIds)
 
   const byInstrument = new Map<string, InstrumentRate[]>()
   for (const row of rows) {

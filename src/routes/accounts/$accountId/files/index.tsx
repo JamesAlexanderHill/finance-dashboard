@@ -1,8 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
-import { accountService, fileService, createContext } from '~/db/services'
+import { accountService, fileService, getSession } from '~/db/services'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -10,13 +8,13 @@ import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 const getFilesData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string; page?: number; pageSize?: number })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, accountFiles: null }
+    const session = await getSession()
+    if (!session) return { user: null, account: null, accountFiles: null }
 
-    const ctx = createContext(user.id)
+    const ctx = session.ctx
     const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, accountFiles: null }
+    if (!account) return { user: session.user, account: null, accountFiles: null }
 
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? 20
@@ -24,7 +22,7 @@ const getFilesData = createServerFn({ method: 'GET' })
 
     const accountFiles = await fileService.listByAccount(ctx, data.accountId, { limit: pageSize, offset })
 
-    return { user, account, accountFiles }
+    return { user: session.user, account, accountFiles }
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────

@@ -7,11 +7,11 @@ type QueryAccountsOpts = PaginationOptions & {
   accountIds?: string[]
 }
 
-export async function queryAccountsByUser(userId: string, opts: QueryAccountsOpts = {}) {
+export async function queryAccountsByWorkspace(workspaceId: string, opts: QueryAccountsOpts = {}) {
   const { limit = 1000, offset = 0, accountIds } = opts
 
   const where = and(
-    eq(accounts.userId, userId),
+    eq(accounts.workspaceId, workspaceId),
     accountIds?.length ? inArray(accounts.id, accountIds) : undefined,
   )
 
@@ -23,11 +23,11 @@ export async function queryAccountsByUser(userId: string, opts: QueryAccountsOpt
   return { data, total }
 }
 
-export async function queryAccountById(userId: string, accountId: string) {
+export async function queryAccountById(workspaceId: string, accountId: string) {
   const [account] = await db
     .select()
     .from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.userId, userId)))
+    .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, workspaceId)))
 
   return account ?? null
 }

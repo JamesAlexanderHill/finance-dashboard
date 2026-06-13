@@ -7,11 +7,11 @@ import scaleUnit from '~/lib/scale-unit'
 /**
  * Finds the most recent non-deleted, exactly-2-leg event where this
  * instrument's leg is paired with a leg in an instrument whose ticker
- * matches the user's home currency, and derives an implied "1 unit of
+ * matches the workspace's home currency, and derives an implied "1 unit of
  * `instrumentId` = X units of home currency" rate from the two legs' amounts.
  */
 export async function queryLatestExchangeRate(
-  userId: string,
+  workspaceId: string,
   instrumentId: string,
   homeCurrencyCode: string,
 ): Promise<{ rate: number; asOf: Date } | null> {
@@ -33,7 +33,7 @@ export async function queryLatestExchangeRate(
     .innerJoin(otherInstrument, eq(otherLeg.instrumentId, otherInstrument.id))
     .where(and(
       eq(legs.instrumentId, instrumentId),
-      eq(legs.userId, userId),
+      eq(legs.workspaceId, workspaceId),
       isNull(events.deletedAt),
       eq(otherInstrument.ticker, homeCurrencyCode),
       sql`(select count(*) from legs l3 where l3.event_id = ${sql.raw('"events"."id"')}) = 2`,
@@ -50,14 +50,14 @@ export async function queryLatestExchangeRate(
   return { rate: otherMajor / thisMajor, asOf: new Date(row.effectiveAt) }
 }
 
-export async function queryRatesForInstruments(userId: string, instrumentIds: string[]) {
+export async function queryRatesForInstruments(workspaceId: string, instrumentIds: string[]) {
   if (instrumentIds.length === 0) return []
 
   return db
     .select()
     .from(instrumentRates)
     .where(and(
-      eq(instrumentRates.userId, userId),
+      eq(instrumentRates.workspaceId, workspaceId),
       inArray(instrumentRates.instrumentId, instrumentIds),
     ))
 }

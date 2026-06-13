@@ -1,10 +1,8 @@
 import * as React from 'react'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
 import { parseCanonicalCsv } from '~/importers/canonical'
 import type { ParseError, ParsedEvent } from '~/importers/canonical'
-import { importService, createContext } from '~/db/services'
+import { importService, getSession } from '~/db/services'
 import type { CommitBulkImportParams, FileImportResult, InstrumentDraft } from '~/db/services'
 import { getAccountInstruments, InstrumentReview } from '~/components/ImportWizard'
 
@@ -13,10 +11,9 @@ import { getAccountInstruments, InstrumentReview } from '~/components/ImportWiza
 export const doCommitBulkImport = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => data as CommitBulkImportParams)
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) throw new Error('No user found')
-    const ctx = createContext(user.id)
-    return importService.commitBulkImport(ctx, data)
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    return importService.commitBulkImport(session.ctx, data)
   })
 
 // ─── Types ────────────────────────────────────────────────────────────────────

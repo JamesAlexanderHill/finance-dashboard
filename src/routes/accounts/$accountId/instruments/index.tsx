@@ -1,9 +1,7 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
-import { accountService, instrumentService, createContext } from '~/db/services'
+import { accountService, instrumentService, getSession } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import { balanceColorClass } from '~/lib/format'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
@@ -13,13 +11,13 @@ import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 const getInstrumentsData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string; page?: number; pageSize?: number })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, accountInstruments: null }
+    const session = await getSession()
+    if (!session) return { user: null, account: null, accountInstruments: null }
 
-    const ctx = createContext(user.id)
+    const ctx = session.ctx
     const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, accountInstruments: null }
+    if (!account) return { user: session.user, account: null, accountInstruments: null }
 
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? 20
@@ -31,7 +29,7 @@ const getInstrumentsData = createServerFn({ method: 'GET' })
       offset,
     })
 
-    return { user, account, accountInstruments }
+    return { user: session.user, account, accountInstruments }
   })
 
 const createInstrument = createServerFn({ method: 'POST' })
@@ -42,9 +40,9 @@ const createInstrument = createServerFn({ method: 'POST' })
     exponent: number
   })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) throw new Error('No user found')
-    await instrumentService.create(createContext(user.id), {
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    await instrumentService.create(session.ctx, {
       accountId: data.accountId,
       ticker: data.ticker,
       name: data.name,

@@ -1,15 +1,13 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
 import { formatCurrency, formatMajorAmount } from '~/lib/format-currency'
 import { balanceColorClass } from '~/lib/format'
 import scaleUnit from '~/lib/scale-unit'
 import { CHART_COLORS, type ChartColorName } from '~/lib/chart-colors'
 import Badge from '~/components/ui/badge'
 import { COLOR_CLASSES } from '~/components/charts'
-import { accountService, createContext, eventService, instrumentService, rateService } from '~/db/services'
+import { accountService, eventService, instrumentService, rateService, getSession } from '~/db/services'
 import EventTable from '~/components/event/event-table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -17,17 +15,17 @@ import EventTable from '~/components/event/event-table'
 const getInstrumentDetailData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { page?: number, pageSize?: number, accountId: string; instrumentId: string })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, instrument: null, balance: BigInt(0), instrumentEvents: null, rate: null }
+    const session = await getSession()
+    if (!session) return { user: null, workspace: null, account: null, instrument: null, balance: BigInt(0), instrumentEvents: null, rate: null }
 
-    const ctx = createContext(user.id)
+    const { ctx, user, workspace } = session
     const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, instrument: null, balance: BigInt(0), instrumentEvents: null, rate: null }
+    if (!account) return { user, workspace, account: null, instrument: null, balance: BigInt(0), instrumentEvents: null, rate: null }
 
     const instrument = await instrumentService.getById(ctx, data.instrumentId)
 
-    if (!instrument) return { user, account, instrument: null, balance: BigInt(0), instrumentEvents: null, rate: null }
+    if (!instrument) return { user, workspace, account, instrument: null, balance: BigInt(0), instrumentEvents: null, rate: null }
 
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
@@ -41,7 +39,7 @@ const getInstrumentDetailData = createServerFn({ method: 'GET' })
 
     const rate = currentRate ? { rate: currentRate.rate, asOf: currentRate.asOf.toISOString(), source: currentRate.source } : null
 
-    return { user, account, instrument, balance, instrumentEvents, rate }
+    return { user, workspace, account, instrument, balance, instrumentEvents, rate }
   })
 
 const updateInstrument = createServerFn({ method: 'POST' })
@@ -54,9 +52,9 @@ const updateInstrument = createServerFn({ method: 'POST' })
     neutralColor: ChartColorName | null
   })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) throw new Error('No user found')
-    await instrumentService.update(createContext(user.id), data.instrumentId, {
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    await instrumentService.update(session.ctx, data.instrumentId, {
       name: data.name,
       exponent: data.exponent,
       positiveColor: data.positiveColor,
@@ -68,9 +66,9 @@ const updateInstrument = createServerFn({ method: 'POST' })
 const setInstrumentRate = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => data as { instrumentId: string; rate: number })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) throw new Error('No user found')
-    await rateService.setManualRate(createContext(user.id), data.instrumentId, data.rate)
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    await rateService.setManualRate(session.ctx, data.instrumentId, data.rate)
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -140,14 +138,14 @@ function ChartColorSelect({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function InstrumentDetailPage() {
-  const { user, account, instrument, balance, instrumentEvents, rate } = Route.useLoaderData()
+  const { user, workspace, account, instrument, balance, instrumentEvents, rate } = Route.useLoaderData()
   const { accountId, instrumentId } = Route.useParams()
   const router = useRouter()
   const navigate = Route.useNavigate()
   const [editing, setEditing] = React.useState(false)
   const [editingRate, setEditingRate] = React.useState(false)
 
-  if (!user) {
+  if (!user || !workspace) {
     return (
       <div className="text-gray-500 dark:text-gray-400 text-sm">
         No user found. Visit{' '}
@@ -215,7 +213,7 @@ function InstrumentDetailPage() {
     router.invalidate()
   }
 
-  const isHomeCurrency = instrument.ticker === user.homeCurrencyCode
+  const isHomeCurrency = instrument.ticker === workspace.homeCurrencyCode
   const effectiveRate = rate?.rate ?? 1
 
   return (
@@ -343,7 +341,7 @@ function InstrumentDetailPage() {
             <form onSubmit={handleUpdateRate} className="space-y-3 max-w-sm">
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  1 {instrument.ticker} = ? {user.homeCurrencyCode}
+                  1 {instrument.ticker} = ? {workspace.homeCurrencyCode}
                 </label>
                 <input
                   name="rate"
@@ -375,13 +373,13 @@ function InstrumentDetailPage() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-2xl font-bold tabular-nums text-gray-900 dark:text-gray-100">
-                  {formatMajorAmount(scaleUnit(balance, instrument.exponent) * effectiveRate, user.homeCurrencyCode)}
+                  {formatMajorAmount(scaleUnit(balance, instrument.exponent) * effectiveRate, workspace.homeCurrencyCode)}
                   <span className="text-base font-normal text-gray-500 dark:text-gray-400 ml-2">
                     current value
                   </span>
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  1 {instrument.ticker} = {effectiveRate} {user.homeCurrencyCode}
+                  1 {instrument.ticker} = {effectiveRate} {workspace.homeCurrencyCode}
                   {rate && (
                     <span className="text-gray-400 dark:text-gray-500">
                       {' '}({rate.source === 'manual' ? 'manually set' : 'from transactions'}, as of {formatDate(rate.asOf)})

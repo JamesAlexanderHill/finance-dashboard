@@ -8,9 +8,9 @@ const eventWith = {
   legs: { with: { instrument: true as const } },
 }
 
-export async function queryEventsByAccount(userId: string, accountId: string, opts: PaginationOptions = {}) {
+export async function queryEventsByAccount(workspaceId: string, accountId: string, opts: PaginationOptions = {}) {
   const { limit = 20, offset = 0 } = opts
-  const where = and(eq(events.userId, userId), eq(events.accountId, accountId))
+  const where = and(eq(events.workspaceId, workspaceId), eq(events.accountId, accountId))
 
   const [data, [{ total }]] = await Promise.all([
     db.query.events.findMany({ where, orderBy: [desc(events.effectiveAt)], limit, offset, with: eventWith }),
@@ -20,9 +20,9 @@ export async function queryEventsByAccount(userId: string, accountId: string, op
   return { data, total }
 }
 
-export async function queryEventsByFile(userId: string, fileId: string, opts: PaginationOptions = {}) {
+export async function queryEventsByFile(workspaceId: string, fileId: string, opts: PaginationOptions = {}) {
   const { limit = 20, offset = 0 } = opts
-  const where = and(eq(events.userId, userId), eq(events.fileId, fileId))
+  const where = and(eq(events.workspaceId, workspaceId), eq(events.fileId, fileId))
 
   const [data, [{ total }]] = await Promise.all([
     db.query.events.findMany({ where, orderBy: [desc(events.effectiveAt)], limit, offset, with: eventWith }),
@@ -33,12 +33,12 @@ export async function queryEventsByFile(userId: string, fileId: string, opts: Pa
 }
 
 export async function queryAllEvents(
-  userId: string,
+  workspaceId: string,
   opts: PaginationOptions & { accountId?: string } = {},
 ) {
   const { limit = 20, offset = 0, accountId } = opts
   const where = and(
-    eq(events.userId, userId),
+    eq(events.workspaceId, workspaceId),
     accountId ? eq(events.accountId, accountId) : undefined,
   )
 
@@ -56,7 +56,7 @@ export async function queryAllEvents(
  * Only legs for the specified instrument are included on each event.
  */
 export async function queryEventsByInstrument(
-  userId: string,
+  workspaceId: string,
   instrumentId: string,
   opts: PaginationOptions = {},
 ) {
@@ -67,12 +67,12 @@ export async function queryEventsByInstrument(
       .select({ total: sql<number>`count(distinct ${events.id})` })
       .from(events)
       .innerJoin(legs, and(eq(legs.eventId, events.id), eq(legs.instrumentId, instrumentId)))
-      .where(eq(events.userId, userId)),
+      .where(eq(events.workspaceId, workspaceId)),
     db
       .selectDistinct({ id: events.id, effectiveAt: events.effectiveAt })
       .from(events)
       .innerJoin(legs, and(eq(legs.eventId, events.id), eq(legs.instrumentId, instrumentId)))
-      .where(eq(events.userId, userId))
+      .where(eq(events.workspaceId, workspaceId))
       .orderBy(desc(events.effectiveAt))
       .limit(limit)
       .offset(offset),

@@ -3,8 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
 import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, events, legs, lineItems, categories } from '~/db/schema'
-import { checkpointService, rateService, createContext } from '~/db/services'
+import { events, legs, lineItems, categories } from '~/db/schema'
+import { checkpointService, rateService, getSession } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import Badge from '~/components/ui/badge'
 import {
@@ -20,11 +20,11 @@ import {
 const getEventDrawerData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { id: string })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) throw new Error('No user')
+    const session = await getSession()
+    if (!session) throw new Error('No user')
 
     const event = await db.query.events.findFirst({
-      where: and(eq(events.id, data.id), eq(events.userId, user.id)),
+      where: and(eq(events.id, data.id), eq(events.workspaceId, session.workspace.id)),
       with: {
         legs: {
           with: {
@@ -41,27 +41,27 @@ const getEventDrawerData = createServerFn({ method: 'GET' })
     const userCategories = await db
       .select()
       .from(categories)
-      .where(eq(categories.userId, user.id))
+      .where(eq(categories.workspaceId, session.workspace.id))
 
-    return { event, userCategories, userId: user.id }
+    return { event, userCategories, workspaceId: session.workspace.id }
   })
 
 const softDeleteEvent = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => data as { id: string; deletedAt: string | null })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) throw new Error('No user')
+    const session = await getSession()
+    if (!session) throw new Error('No user')
     await db
       .update(events)
       .set({ deletedAt: data.deletedAt ? new Date(data.deletedAt) : null })
-      .where(and(eq(events.id, data.id), eq(events.userId, user.id)))
+      .where(and(eq(events.id, data.id), eq(events.workspaceId, session.workspace.id)))
 
     const affectedLegs = await db
       .selectDistinct({ instrumentId: legs.instrumentId })
       .from(legs)
       .where(eq(legs.eventId, data.id))
 
-    const ctx = createContext(user.id)
+    const ctx = session.ctx
     for (const { instrumentId } of affectedLegs) {
       await checkpointService.refresh(ctx, instrumentId)
       await rateService.refresh(ctx, instrumentId)
@@ -82,7 +82,7 @@ const upsertLineItems = createServerFn({ method: 'POST' })
     (data: unknown) =>
       data as {
         legId: string
-        userId: string
+        workspaceId: string
         items: Array<{ id?: string; unitCount: string; categoryId: string | null; description: string }>
       },
   )
@@ -91,7 +91,7 @@ const upsertLineItems = createServerFn({ method: 'POST' })
     if (data.items.length > 0) {
       await db.insert(lineItems).values(
         data.items.map((item) => ({
-          userId: data.userId,
+          workspaceId: data.workspaceId,
           legId: data.legId,
           unitCount: BigInt(item.unitCount),
           categoryId: item.categoryId,
@@ -268,12 +268,12 @@ export function EventDrawer({ eventId, onClose }: EventDrawerProps) {
                         {isExpanded && (
                           <LineItemEditor
                             leg={leg}
-                            userId={data.userId}
+                            workspaceId={data.workspaceId}
                             userCategories={data.userCategories}
                             buildCategoryLabel={buildCategoryLabel}
                             onSave={async (items) => {
                               await upsertLineItems({
-                                data: { legId: leg.id, userId: data.userId, items },
+                                data: { legId: leg.id, workspaceId: data.workspaceId, items },
                               })
                               queryClient.invalidateQueries({ queryKey: ['event-drawer', eventId] })
                             }}
@@ -335,13 +335,13 @@ type LineItemDraft = {
 
 function LineItemEditor({
   leg,
-  userId,
+  workspaceId,
   userCategories,
   buildCategoryLabel,
   onSave,
 }: {
   leg: any
-  userId: string
+  workspaceId: string
   userCategories: any[]
   buildCategoryLabel: (id: string) => string
   onSave: (items: LineItemDraft[]) => Promise<void>

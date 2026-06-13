@@ -1,28 +1,26 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
 import { ImportWizard } from '~/components/ImportWizard'
 import { BulkImportWizard } from '~/components/BulkImportWizard'
 import InstrumentCard from '~/components/instrument-card'
 import BalanceHistogram, { type InstrumentRates } from '~/components/balance-histogram'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 import EventPreviewTable from '~/components/event/event-preview-table'
-import { accountService, eventService, fileService, instrumentService, rateService, createContext } from '~/db/services'
+import { accountService, eventService, fileService, instrumentService, rateService, getSession } from '~/db/services'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [], balanceHistory: [], chartInstrument: null, rates: {} as InstrumentRates }
+    const session = await getSession()
+    if (!session) return { user: null, workspace: null, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [], balanceHistory: [], chartInstrument: null, rates: {} as InstrumentRates }
 
-    const ctx = createContext(user.id)
+    const { ctx, user, workspace } = session
     const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [], balanceHistory: [], chartInstrument: null, rates: {} as InstrumentRates }
+    if (!account) return { user, workspace, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [], balanceHistory: [], chartInstrument: null, rates: {} as InstrumentRates }
 
     const accountInstruments = await instrumentService.list(ctx, { accountIds: [data.accountId] })
 
@@ -40,15 +38,15 @@ const getData = createServerFn({ method: 'GET' })
       Array.from(ratesMap.entries()).map(([id, r]) => [id, { rate: r.rate, asOf: r.asOf.toISOString(), source: r.source }]),
     )
 
-    return { user, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument, rates }
+    return { user, workspace, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument, rates }
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => data as { id: string; name: string; defaultInstrumentId: string | null })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) throw new Error('No user found')
-    await accountService.update(createContext(user.id), data.id, {
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    await accountService.update(session.ctx, data.id, {
       name: data.name,
       defaultInstrumentId: data.defaultInstrumentId,
     })
@@ -76,7 +74,7 @@ function formatDateTime(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function AccountDetailPage() {
-  const { user, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument, rates } = Route.useLoaderData()
+  const { user, workspace, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument, rates } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const router = useRouter()
   const [editing, setEditing] = React.useState(false)
@@ -84,7 +82,7 @@ function AccountDetailPage() {
   const [showBulkImportWizard, setShowBulkImportWizard] = React.useState(false)
   const navigate = Route.useNavigate()
 
-  if (!user) {
+  if (!user || !workspace) {
     return (
       <div className="text-gray-500 dark:text-gray-400 text-sm">
         No user found. Visit{' '}
@@ -269,7 +267,7 @@ function AccountDetailPage() {
           defaultInstrumentId={chartInstrument?.id ?? null}
           initialData={balanceHistory}
           rates={rates}
-          homeCurrencyCode={user.homeCurrencyCode}
+          homeCurrencyCode={workspace.homeCurrencyCode}
         />
       )}
 
@@ -305,7 +303,7 @@ function AccountDetailPage() {
                   balance={amountMinor}
                   isDefault={isDefault}
                   rate={rates[instrument.id]?.rate ?? 1}
-                  homeCurrencyCode={user.homeCurrencyCode}
+                  homeCurrencyCode={workspace.homeCurrencyCode}
                 />
               )
             })}

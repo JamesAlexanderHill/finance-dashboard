@@ -8,7 +8,7 @@ const NBSP = ' '
 
 const aud: Instrument = {
   id: '1',
-  userId: 'u1',
+  workspaceId: 'w1',
   accountId: 'a1',
   name: 'Australian Dollar',
   ticker: 'AUD',
@@ -20,7 +20,7 @@ const aud: Instrument = {
 
 const vhy: Instrument = {
   id: '2',
-  userId: 'u1',
+  workspaceId: 'w1',
   accountId: 'a1',
   name: 'Vanguard High Yield ETF',
   ticker: 'VHY',

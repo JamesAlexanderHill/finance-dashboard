@@ -1,10 +1,8 @@
 import * as React from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
-import { accountService, instrumentService, fileService, createContext } from '~/db/services'
+import { accountService, instrumentService, fileService, getSession } from '~/db/services'
 import Badge from '~/components/ui/badge'
 import { formatBalance } from '~/lib/format'
 
@@ -15,18 +13,18 @@ const DEFAULT_PAGE_SIZE = 10
 const getData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { page?: number, pageSize?: number })
   .handler(async ({data}) => {
-  const [user] = await db.select().from(users).limit(1)
-  if (!user) return { user: null, accounts: [] }
+  const session = await getSession()
+  if (!session) return { user: null, accounts: [] }
 
   // paginated events
   const page = data.page ?? 1
   const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
   const offset = (page - 1) * pageSize
 
-  const ctx = createContext(user.id)
+  const ctx = session.ctx
 
-  const userAccounts = await accountService.list(ctx, { limit: pageSize, offset })
-  const accountIds = userAccounts.data.map((a) => a.id)
+  const workspaceAccounts = await accountService.list(ctx, { limit: pageSize, offset })
+  const accountIds = workspaceAccounts.data.map((a) => a.id)
 
   const [accountInstruments, fileCounts] = await Promise.all([
     instrumentService.list(ctx, { accountIds }),
@@ -34,22 +32,22 @@ const getData = createServerFn({ method: 'GET' })
   ])
 
   const fileCountMap = new Map(fileCounts.map((r) => [r.accountId, r.count]))
-  const accountMetaMap = new Map(userAccounts.data.map((account) => {
+  const accountMetaMap = new Map(workspaceAccounts.data.map((account) => {
     const instrumentCount = accountInstruments.data.filter((i) => i.accountId === account.id).length
     const importCount = fileCountMap.get(account.id) ?? 0
     return [account.id, { instrumentCount, importCount }]
   }))
   const accountInstrumentsMap = new Map(accountInstruments.data.map((i) => [i.id, i]))
 
-  return { user, accounts: userAccounts, accountMetaMap, accountInstrumentsMap }
+  return { user: session.user, accounts: workspaceAccounts, accountMetaMap, accountInstrumentsMap }
 })
 
 const createAccount = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => data as { name: string })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) throw new Error('No user found')
-    await accountService.create(createContext(user.id), { name: data.name })
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    await accountService.create(session.ctx, { name: data.name })
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────

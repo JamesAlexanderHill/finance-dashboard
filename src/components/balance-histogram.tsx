@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
 import type { Instrument, RateSource } from '~/db/schema'
 import type { BalanceHistoryPeriod, BalanceHistoryRange, BalancePoint } from '~/db/services'
-import { instrumentService, createContext } from '~/db/services'
+import { instrumentService, getSession } from '~/db/services'
 import { formatBalance } from '~/lib/format'
 import { formatMajorAmount } from '~/lib/format-currency'
 import scaleUnit from '~/lib/scale-unit'
@@ -27,11 +25,10 @@ import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from '~/c
 const getBalanceHistory = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { instrumentId: string; range: BalanceHistoryRange; period: BalanceHistoryPeriod })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) return []
+    const session = await getSession()
+    if (!session) return []
 
-    const ctx = createContext(user.id)
-    return instrumentService.getBalanceHistory(ctx, data.instrumentId, data.range, data.period)
+    return instrumentService.getBalanceHistory(session.ctx, data.instrumentId, data.range, data.period)
   })
 
 // ─── Types ────────────────────────────────────────────────────────────────────

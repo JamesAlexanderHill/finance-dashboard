@@ -1,11 +1,9 @@
 import * as React from 'react'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
 import { parseCanonicalCsv } from '~/importers/canonical'
 import scaleUnit from '~/lib/scale-unit'
 import type { ParsedEvent } from '~/importers/canonical'
-import { importService, instrumentService, createContext } from '~/db/services'
+import { importService, instrumentService, getSession } from '~/db/services'
 import type { CommitImportParams, InstrumentDraft } from '~/db/services'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -13,20 +11,18 @@ import type { CommitImportParams, InstrumentDraft } from '~/db/services'
 export const getAccountInstruments = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string })
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) return []
-    const ctx = createContext(user.id)
-    const result = await instrumentService.list(ctx, { accountIds: [data.accountId] })
+    const session = await getSession()
+    if (!session) return []
+    const result = await instrumentService.list(session.ctx, { accountIds: [data.accountId] })
     return result.data
   })
 
 export const doCommitImport = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => data as CommitImportParams)
   .handler(async ({ data }) => {
-    const [user] = await db.select().from(users).limit(1)
-    if (!user) throw new Error('No user found')
-    const ctx = createContext(user.id)
-    return importService.commitImport(ctx, data)
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    return importService.commitImport(session.ctx, data)
   })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
