@@ -1,4 +1,4 @@
-import { eq, and, inArray, isNull, count, desc, gte, sql } from 'drizzle-orm'
+import { eq, and, inArray, isNull, count, desc, gte, lt, lte, sql } from 'drizzle-orm'
 import { db } from '~/db'
 import { instruments, legs, events, accounts, instrumentCheckpoints } from '~/db/schema'
 import type { PaginationOptions } from '../utils/pagination'
@@ -152,6 +152,155 @@ export async function queryInstrumentBalance(userId: string, instrumentId: strin
     )
 
   return (checkpoint?.balance ?? BigInt(0)) + BigInt(result?.total ?? '0')
+}
+
+export type BalancePoint = {
+  period: Date
+  balance: bigint
+  /** True if this period is after the instrument's last transaction — the balance is carried forward, not observed. */
+  projected: boolean
+}
+
+/** How far back the balance history window extends. */
+export type BalanceHistoryRange = '30d' | '90d' | '1y' | 'all'
+
+/** Granularity of each point in the balance history. */
+export type BalanceHistoryPeriod = 'day' | 'week' | 'month'
+
+const RANGE_DAYS: Record<Exclude<BalanceHistoryRange, 'all'>, number> = {
+  '30d': 30,
+  '90d': 90,
+  '1y': 365,
+}
+
+// Truncate to the start (UTC midnight) of the period containing `date`.
+// Matches Postgres `date_trunc`: weeks start on Monday, months on the 1st.
+function truncateToPeriod(date: Date, period: BalanceHistoryPeriod): Date {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+  if (period === 'month') return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
+  if (period === 'week') {
+    const daysSinceMonday = (d.getUTCDay() + 6) % 7
+    d.setUTCDate(d.getUTCDate() - daysSinceMonday)
+  }
+  return d
+}
+
+function addPeriod(date: Date, period: BalanceHistoryPeriod): Date {
+  const d = new Date(date)
+  if (period === 'day') d.setUTCDate(d.getUTCDate() + 1)
+  else if (period === 'week') d.setUTCDate(d.getUTCDate() + 7)
+  else d.setUTCMonth(d.getUTCMonth() + 1)
+  return d
+}
+
+function periodTruncExpr(period: BalanceHistoryPeriod) {
+  switch (period) {
+    case 'day': return sql<string>`date_trunc('day', ${events.effectiveAt})`
+    case 'week': return sql<string>`date_trunc('week', ${events.effectiveAt})`
+    case 'month': return sql<string>`date_trunc('month', ${events.effectiveAt})`
+  }
+}
+
+/**
+ * Balance history for an instrument: one point per `period` covering the
+ * trailing `range` (or since the first event, for `'all'`), including today.
+ * Each point's `balance` is the instrument's balance as of the end of that period.
+ */
+export async function queryInstrumentBalanceHistory(
+  userId: string,
+  instrumentId: string,
+  range: BalanceHistoryRange = '30d',
+  period: BalanceHistoryPeriod = 'day',
+): Promise<BalancePoint[]> {
+  const now = new Date()
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+
+  const [{ earliest, latest }] = await db
+    .select({
+      earliest: sql<string | null>`MIN(${events.effectiveAt})`,
+      latest: sql<string | null>`MAX(${events.effectiveAt})`,
+    })
+    .from(legs)
+    .innerJoin(events, eq(legs.eventId, events.id))
+    .where(and(eq(legs.instrumentId, instrumentId), eq(legs.userId, userId), isNull(events.deletedAt)))
+
+  let rangeStart: Date
+  if (range === 'all') {
+    rangeStart = earliest ? new Date(earliest) : today
+  } else {
+    rangeStart = new Date(today)
+    rangeStart.setUTCDate(rangeStart.getUTCDate() - (RANGE_DAYS[range] - 1))
+  }
+
+  const periodStart = truncateToPeriod(rangeStart, period)
+
+  // The latest checkpoint at or before the window start — later checkpoints'
+  // balances already include the legs we're about to sum period-by-period.
+  const [checkpoint] = await db
+    .select({ periodEnd: instrumentCheckpoints.periodEnd, balance: instrumentCheckpoints.balance })
+    .from(instrumentCheckpoints)
+    .where(and(
+      eq(instrumentCheckpoints.userId, userId),
+      eq(instrumentCheckpoints.instrumentId, instrumentId),
+      lte(instrumentCheckpoints.periodEnd, periodStart),
+    ))
+    .orderBy(desc(instrumentCheckpoints.periodEnd))
+    .limit(1)
+
+  const checkpointBalance = checkpoint ? BigInt(checkpoint.balance) : BigInt(0)
+  const checkpointEnd = checkpoint?.periodEnd ?? new Date(0)
+
+  // Balance as of the start of the window: checkpoint balance plus any legs
+  // between the checkpoint and the window start.
+  const [{ total: preWindowTotal }] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${legs.unitCount}), 0)` })
+    .from(legs)
+    .innerJoin(events, eq(legs.eventId, events.id))
+    .where(and(
+      eq(legs.instrumentId, instrumentId),
+      eq(legs.userId, userId),
+      isNull(events.deletedAt),
+      gte(events.effectiveAt, checkpointEnd),
+      lt(events.effectiveAt, periodStart),
+    ))
+
+  // Net change per period within the window.
+  const windowSums = await db
+    .select({
+      period: periodTruncExpr(period),
+      total: sql<string>`SUM(${legs.unitCount})`,
+    })
+    .from(legs)
+    .innerJoin(events, eq(legs.eventId, events.id))
+    .where(and(
+      eq(legs.instrumentId, instrumentId),
+      eq(legs.userId, userId),
+      isNull(events.deletedAt),
+      gte(events.effectiveAt, periodStart),
+    ))
+    .groupBy(periodTruncExpr(period))
+
+  const changeByPeriod = new Map<number, bigint>()
+  for (const row of windowSums) {
+    changeByPeriod.set(new Date(row.period).getTime(), BigInt(row.total))
+  }
+
+  const lastActivity = latest ? truncateToPeriod(new Date(latest), period).getTime() : null
+
+  const points: BalancePoint[] = []
+  let running = checkpointBalance + BigInt(preWindowTotal)
+  let cursor = new Date(periodStart)
+  while (cursor.getTime() <= today.getTime()) {
+    running += changeByPeriod.get(cursor.getTime()) ?? BigInt(0)
+    points.push({
+      period: new Date(cursor),
+      balance: running,
+      projected: lastActivity !== null && cursor.getTime() > lastActivity,
+    })
+    cursor = addPeriod(cursor, period)
+  }
+
+  return points
 }
 
 export async function queryInstrumentHasLegs(instrumentId: string): Promise<boolean> {

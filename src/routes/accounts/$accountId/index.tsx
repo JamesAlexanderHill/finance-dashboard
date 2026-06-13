@@ -5,6 +5,7 @@ import { db } from '~/db'
 import { users } from '~/db/schema'
 import { ImportWizard } from '~/components/ImportWizard'
 import InstrumentCard from '~/components/instrument-card'
+import BalanceHistogram from '~/components/balance-histogram'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 import EventPreviewTable from '~/components/event/event-preview-table'
 import { accountService, eventService, fileService, instrumentService, createContext } from '~/db/services'
@@ -15,20 +16,25 @@ const getData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
-    if (!user) return { user: null, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [] }
+    if (!user) return { user: null, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [], balanceHistory: [], chartInstrument: null }
 
     const ctx = createContext(user.id)
     const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [] }
+    if (!account) return { user, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [], balanceHistory: [], chartInstrument: null }
 
-    const [accountInstruments, recentAccountfiles, recentAccountEvents] = await Promise.all([
-      instrumentService.list(ctx, { accountIds: [data.accountId] }),
+    const accountInstruments = await instrumentService.list(ctx, { accountIds: [data.accountId] })
+
+    const chartInstrument =
+      accountInstruments.data.find((i) => i.id === account.defaultInstrumentId) ?? accountInstruments.data[0] ?? null
+
+    const [recentAccountfiles, recentAccountEvents, balanceHistory] = await Promise.all([
       fileService.listByAccount(ctx, data.accountId, { limit: 5 }),
       eventService.listByAccount(ctx, data.accountId, { limit: 10 }),
+      chartInstrument ? instrumentService.getBalanceHistory(ctx, chartInstrument.id, '30d', 'day') : Promise.resolve([]),
     ]);
 
-    return { user, account, accountInstruments, recentAccountfiles, recentAccountEvents }
+    return { user, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument }
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
@@ -64,7 +70,7 @@ function formatDateTime(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function AccountDetailPage() {
-  const { user, account, accountInstruments, recentAccountfiles, recentAccountEvents } = Route.useLoaderData()
+  const { user, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const router = useRouter()
   const [editing, setEditing] = React.useState(false)
@@ -248,6 +254,11 @@ function AccountDetailPage() {
           </div>
         )}
       </section>
+
+      {/* Section A.5: Balance Histogram */}
+      {chartInstrument && (
+        <BalanceHistogram data={balanceHistory} instrument={chartInstrument} />
+      )}
 
       {/* Section B: Instruments Carousel */}
       <section>

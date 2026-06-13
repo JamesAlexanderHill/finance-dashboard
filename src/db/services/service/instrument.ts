@@ -10,9 +10,12 @@ import {
   queryInstrumentById,
   queryInstrumentBalance,
   queryInstrumentHasLegs,
+  queryInstrumentBalanceHistory,
+  type BalanceHistoryRange,
+  type BalanceHistoryPeriod,
 } from '../query/instrument'
 
-export type { AccountBalance } from '../query/instrument'
+export type { AccountBalance, BalancePoint, BalanceHistoryRange, BalanceHistoryPeriod } from '../query/instrument'
 
 type ListInstrumentsOptions = PaginationOptions & {
   accountIds?: string[]
@@ -38,6 +41,15 @@ async function getById(ctx: RequestContext, instrumentId: string) {
 
 async function getBalance(ctx: RequestContext, instrumentId: string): Promise<bigint> {
   return queryInstrumentBalance(ctx.userId, instrumentId)
+}
+
+async function getBalanceHistory(
+  ctx: RequestContext,
+  instrumentId: string,
+  range: BalanceHistoryRange = '30d',
+  period: BalanceHistoryPeriod = 'day',
+) {
+  return queryInstrumentBalanceHistory(ctx.userId, instrumentId, range, period)
 }
 
 async function create(
@@ -91,6 +103,7 @@ export const instrumentService = {
   getBalances,
   getAccountBalances,
   getBalance,
+  getBalanceHistory,
   create,
   update,
   delete: remove,

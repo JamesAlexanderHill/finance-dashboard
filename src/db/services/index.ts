@@ -1,7 +1,7 @@
 export { accountService } from './service/account'
 export { eventService } from './service/event'
 export { instrumentService } from './service/instrument'
-export type { AccountBalance } from './service/instrument'
+export type { AccountBalance, BalancePoint, BalanceHistoryRange, BalanceHistoryPeriod } from './service/instrument'
 export { fileService } from './service/file'
 export { categoryService } from './service/category'
 export { importService } from './service/import'
