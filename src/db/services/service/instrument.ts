@@ -11,6 +11,7 @@ import {
   queryInstrumentBalance,
   queryInstrumentHasLegs,
   queryInstrumentBalanceHistory,
+  queryInstrumentTransactionHistory,
   type BalanceHistoryRange,
   type BalanceHistoryPeriod,
 } from '../query/instrument'
@@ -49,6 +50,9 @@ async function getBalanceHistory(
   range: BalanceHistoryRange = '30d',
   period: BalanceHistoryPeriod = 'day',
 ) {
+  if (period === 'transaction') {
+    return queryInstrumentTransactionHistory(ctx.userId, instrumentId, range)
+  }
   return queryInstrumentBalanceHistory(ctx.userId, instrumentId, range, period)
 }
 

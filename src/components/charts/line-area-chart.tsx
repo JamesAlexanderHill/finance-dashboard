@@ -7,6 +7,7 @@ import { GridRows } from '@visx/grid'
 import { useTooltip, TooltipWithBounds } from '@visx/tooltip'
 import { localPoint } from '@visx/event'
 import { curveMonotoneX } from '@visx/curve'
+import type { CurveFactory } from '@visx/vendor/d3-shape'
 
 const MARGIN = { top: 8, right: 8, bottom: 20, left: 44 }
 
@@ -96,6 +97,8 @@ export type LineAreaChartProps<T> = {
   yTickFormat?: (value: number) => string
   /** Number of y-axis ticks to show (auto-spaced). Defaults to 4. */
   yNumTicks?: number
+  /** Line interpolation curve. Defaults to `curveMonotoneX` (smoothed). */
+  curve?: CurveFactory
 }
 
 /**
@@ -126,6 +129,7 @@ function Chart<T>({
   yMax: fixedYMax,
   yTickFormat,
   yNumTicks = 4,
+  curve = curveMonotoneX,
 }: LineAreaChartProps<T> & { width: number; height: number }) {
   const { tooltipData, tooltipLeft, tooltipTop, tooltipOpen, showTooltip, hideTooltip } =
     useTooltip<TooltipPoint<T>[]>()
@@ -227,7 +231,7 @@ function Chart<T>({
                 data={solidData}
                 x={(d) => xScale(x(d))}
                 y={(d) => yScale(y(d))}
-                curve={curveMonotoneX}
+                curve={curve}
                 fill="none"
                 strokeWidth={2}
                 className={colors.line}
@@ -237,7 +241,7 @@ function Chart<T>({
                   data={dashedData}
                   x={(d) => xScale(x(d))}
                   y={(d) => yScale(y(d))}
-                  curve={curveMonotoneX}
+                  curve={curve}
                   fill="none"
                   strokeWidth={2}
                   strokeDasharray="4 4"

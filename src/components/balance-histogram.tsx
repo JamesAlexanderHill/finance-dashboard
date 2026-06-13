@@ -9,6 +9,7 @@ import { instrumentService, createContext } from '~/db/services'
 import { formatBalance } from '~/lib/format'
 import { formatMajorAmount } from '~/lib/format-currency'
 import scaleUnit from '~/lib/scale-unit'
+import { curveLinear } from '@visx/curve'
 import { LineAreaChart, COLOR_CLASSES, type ChartColor, type ChartSeries, type TooltipPoint } from '~/components/charts'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -43,6 +44,7 @@ type ChartPoint = {
   balance: bigint
   value: number
   projected: boolean
+  description?: string
 }
 
 const DEFAULT_RANGE: BalanceHistoryRange = '30d'
@@ -59,6 +61,7 @@ const PERIOD_OPTIONS: { value: BalanceHistoryPeriod; label: string }[] = [
   { value: 'day', label: 'Daily' },
   { value: 'week', label: 'Weekly' },
   { value: 'month', label: 'Monthly' },
+  { value: 'transaction', label: 'Transactions' },
 ]
 
 // Lines are colored by the instrument's current balance: green when
@@ -106,6 +109,7 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
         balance: BigInt(point.balance),
         value: scaleUnit(point.balance, instrument.exponent) * rate,
         projected: point.projected,
+        description: point.description,
       }))
 
       return {
@@ -171,6 +175,7 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
             series={series}
             x={(d) => d.period}
             y={(d) => d.value}
+            curve={period === 'transaction' ? curveLinear : undefined}
             numTicks={6}
             yTickFormat={yTickFormat}
             tickFormat={(date) =>
@@ -221,6 +226,7 @@ function TooltipRow({
         <span className="text-gray-400 dark:text-gray-500">({formatMajorAmount(point.point.value, homeCurrencyCode)})</span>
       )}
       {point.point.projected && <span className="text-gray-400 dark:text-gray-500">(no activity)</span>}
+      {point.point.description && <span className="text-gray-400 dark:text-gray-500 truncate">— {point.point.description}</span>}
     </div>
   )
 }
