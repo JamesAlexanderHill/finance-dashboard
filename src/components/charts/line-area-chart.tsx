@@ -9,48 +9,81 @@ import { localPoint } from '@visx/event'
 import { curveMonotoneX } from '@visx/curve'
 import type { CurveFactory } from '@visx/vendor/d3-shape'
 
-const MARGIN = { top: 8, right: 8, bottom: 20, left: 44 }
+export const MARGIN = { top: 8, right: 8, bottom: 20, left: 44 }
 
 export const COLOR_CLASSES = {
-  blue: {
-    line: 'stroke-blue-500 dark:stroke-blue-400',
-    dot: 'fill-blue-500 dark:fill-blue-400',
-    bg: 'bg-blue-500 dark:bg-blue-400',
-  },
-  red: {
-    line: 'stroke-red-400',
-    dot: 'fill-red-400',
-    bg: 'bg-red-400',
-  },
+  // Positive-balance shades
   green: {
     line: 'stroke-green-500 dark:stroke-green-400',
     dot: 'fill-green-500 dark:fill-green-400',
     bg: 'bg-green-500 dark:bg-green-400',
   },
-  purple: {
-    line: 'stroke-purple-500 dark:stroke-purple-400',
-    dot: 'fill-purple-500 dark:fill-purple-400',
-    bg: 'bg-purple-500 dark:bg-purple-400',
-  },
-  orange: {
-    line: 'stroke-orange-500 dark:stroke-orange-400',
-    dot: 'fill-orange-500 dark:fill-orange-400',
-    bg: 'bg-orange-500 dark:bg-orange-400',
+  emerald: {
+    line: 'stroke-emerald-500 dark:stroke-emerald-400',
+    dot: 'fill-emerald-500 dark:fill-emerald-400',
+    bg: 'bg-emerald-500 dark:bg-emerald-400',
   },
   teal: {
     line: 'stroke-teal-500 dark:stroke-teal-400',
     dot: 'fill-teal-500 dark:fill-teal-400',
     bg: 'bg-teal-500 dark:bg-teal-400',
   },
-  pink: {
-    line: 'stroke-pink-500 dark:stroke-pink-400',
-    dot: 'fill-pink-500 dark:fill-pink-400',
-    bg: 'bg-pink-500 dark:bg-pink-400',
+  lime: {
+    line: 'stroke-lime-500 dark:stroke-lime-400',
+    dot: 'fill-lime-500 dark:fill-lime-400',
+    bg: 'bg-lime-500 dark:bg-lime-400',
   },
+  cyan: {
+    line: 'stroke-cyan-500 dark:stroke-cyan-400',
+    dot: 'fill-cyan-500 dark:fill-cyan-400',
+    bg: 'bg-cyan-500 dark:bg-cyan-400',
+  },
+  // Negative-balance shades
+  red: {
+    line: 'stroke-red-400',
+    dot: 'fill-red-400',
+    bg: 'bg-red-400',
+  },
+  rose: {
+    line: 'stroke-rose-400',
+    dot: 'fill-rose-400',
+    bg: 'bg-rose-400',
+  },
+  orange: {
+    line: 'stroke-orange-400',
+    dot: 'fill-orange-400',
+    bg: 'bg-orange-400',
+  },
+  amber: {
+    line: 'stroke-amber-400',
+    dot: 'fill-amber-400',
+    bg: 'bg-amber-400',
+  },
+  pink: {
+    line: 'stroke-pink-400',
+    dot: 'fill-pink-400',
+    bg: 'bg-pink-400',
+  },
+  // Zero-balance shades
   gray: {
     line: 'stroke-gray-400 dark:stroke-gray-500',
     dot: 'fill-gray-400 dark:fill-gray-500',
     bg: 'bg-gray-400 dark:bg-gray-500',
+  },
+  slate: {
+    line: 'stroke-slate-400 dark:stroke-slate-500',
+    dot: 'fill-slate-400 dark:fill-slate-500',
+    bg: 'bg-slate-400 dark:bg-slate-500',
+  },
+  zinc: {
+    line: 'stroke-zinc-400 dark:stroke-zinc-500',
+    dot: 'fill-zinc-400 dark:fill-zinc-500',
+    bg: 'bg-zinc-400 dark:bg-zinc-500',
+  },
+  stone: {
+    line: 'stroke-stone-400 dark:stroke-stone-500',
+    dot: 'fill-stone-400 dark:fill-stone-500',
+    bg: 'bg-stone-400 dark:bg-stone-500',
   },
 } as const
 

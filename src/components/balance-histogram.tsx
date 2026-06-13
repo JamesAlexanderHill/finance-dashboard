@@ -10,7 +10,17 @@ import { formatBalance } from '~/lib/format'
 import { formatMajorAmount } from '~/lib/format-currency'
 import scaleUnit from '~/lib/scale-unit'
 import { curveLinear } from '@visx/curve'
-import { LineAreaChart, COLOR_CLASSES, type ChartColor, type ChartSeries, type TooltipPoint } from '~/components/charts'
+import {
+  LineAreaChart,
+  StackedAreaChart,
+  COLOR_CLASSES,
+  type ChartColor,
+  type ChartSeries,
+  type TooltipPoint,
+  type StackedAreaDatum,
+  type StackedAreaKey,
+} from '~/components/charts'
+import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from '~/components/ui/select'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -64,13 +74,29 @@ const PERIOD_OPTIONS: { value: BalanceHistoryPeriod; label: string }[] = [
   { value: 'transaction', label: 'Transactions' },
 ]
 
-// Lines are colored by the instrument's current balance: green when
-// positive, red when negative (e.g. always-red for a credit card like Amex),
-// gray when exactly zero.
-function colorForBalance(balance: bigint): ChartColor {
-  if (balance > 0n) return 'green'
-  if (balance < 0n) return 'red'
-  return 'gray'
+/** How the balance history is visualized: separate lines per instrument, or a stacked area chart of their combined value. */
+type ChartViewType = 'line' | 'stacked'
+
+const DEFAULT_VIEW: ChartViewType = 'line'
+
+const VIEW_OPTIONS: { value: ChartViewType; label: string }[] = [
+  { value: 'line', label: 'Line' },
+  { value: 'stacked', label: 'Stacked Area' },
+]
+
+// Shade families, by the instrument's current balance sign: green shades for
+// positive (e.g. cash, holdings), red shades for negative (e.g. always-red for
+// a credit card like Amex), gray shades for exactly zero.
+const POSITIVE_SHADES: ChartColor[] = ['green', 'emerald', 'teal', 'lime', 'cyan']
+const NEGATIVE_SHADES: ChartColor[] = ['red', 'rose', 'orange', 'amber', 'pink']
+const ZERO_SHADES: ChartColor[] = ['gray', 'slate', 'zinc', 'stone']
+
+// Each instrument gets a distinct shade within its balance-sign family,
+// cycling by index so multi-instrument accounts (e.g. AUD/VHY/VAP/VAS/VDAL)
+// are visually distinguishable.
+function colorForInstrument(balance: bigint, index: number): ChartColor {
+  const shades = balance > 0n ? POSITIVE_SHADES : balance < 0n ? NEGATIVE_SHADES : ZERO_SHADES
+  return shades[index % shades.length]
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -78,6 +104,7 @@ function colorForBalance(balance: bigint): ChartColor {
 export default function BalanceHistogram({ instruments, defaultInstrumentId, initialData, rates, homeCurrencyCode }: BalanceHistogramProps) {
   const [range, setRange] = useState<BalanceHistoryRange>(DEFAULT_RANGE)
   const [period, setPeriod] = useState<BalanceHistoryPeriod>(DEFAULT_PERIOD)
+  const [view, setView] = useState<ChartViewType>(DEFAULT_VIEW)
   const [visible, setVisible] = useState<Set<string>>(() => new Set(instruments.map((i) => i.id)))
 
   const queries = useQueries({
@@ -115,13 +142,21 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
       return {
         id: instrument.id,
         data,
-        color: colorForBalance(BigInt(instrument.balance)),
+        color: colorForInstrument(BigInt(instrument.balance), index),
         isProjected: (d: ChartPoint) => d.projected,
       }
     })
     .filter((s): s is ChartSeries<ChartPoint> => s !== null)
 
   const yTickFormat = (value: number) => formatMajorAmount(value, homeCurrencyCode, { compact: true })
+
+  const tickFormat = (date: Date) =>
+    period === 'month'
+      ? date.toLocaleDateString('en-AU', { month: 'short', year: '2-digit' })
+      : date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+
+  const stackedKeys: StackedAreaKey[] = series.map((s) => ({ id: s.id, color: s.color }))
+  const stackedData: StackedAreaDatum[] = buildStackedData(series)
 
   function toggle(instrumentId: string) {
     setVisible((prev) => {
@@ -140,13 +175,25 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
         <div className="flex items-center gap-2">
           <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
           <SegmentedControl options={RANGE_OPTIONS} value={range} onChange={setRange} />
+          <Select items={VIEW_OPTIONS} value={view} onValueChange={(value) => setView(value as ChartViewType)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              {VIEW_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
         </div>
       </div>
 
       {instruments.length > 1 && (
         <div className="flex items-center gap-3 mb-4 flex-wrap">
-          {instruments.map((instrument) => {
-            const color = colorForBalance(BigInt(instrument.balance))
+          {instruments.map((instrument, index) => {
+            const color = colorForInstrument(BigInt(instrument.balance), index)
             const checked = visible.has(instrument.id)
             return (
               <label
@@ -171,29 +218,58 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
 
       <div className={isFetching ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
         {series.length > 0 ? (
-          <LineAreaChart
-            series={series}
-            x={(d) => d.period}
-            y={(d) => d.value}
-            curve={period === 'transaction' ? curveLinear : undefined}
-            numTicks={6}
-            yTickFormat={yTickFormat}
-            tickFormat={(date) =>
-              period === 'month'
-                ? date.toLocaleDateString('en-AU', { month: 'short', year: '2-digit' })
-                : date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
-            }
-            renderTooltip={(points) => (
-              <>
-                <div className="font-medium">
-                  {points[0].point.period.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </div>
-                {points.map((p) => (
-                  <TooltipRow key={p.seriesId} point={p} instruments={instruments} homeCurrencyCode={homeCurrencyCode} />
-                ))}
-              </>
-            )}
-          />
+          view === 'stacked' ? (
+            <StackedAreaChart
+              data={stackedData}
+              keys={stackedKeys}
+              numTicks={6}
+              yTickFormat={yTickFormat}
+              tickFormat={tickFormat}
+              renderTooltip={(datum) => (
+                <>
+                  <div className="font-medium">
+                    {datum.period.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </div>
+                  {stackedKeys.map((key) => {
+                    const instrument = instruments.find((i) => i.id === key.id)
+                    if (!instrument) return null
+                    return (
+                      <div key={key.id} className="flex items-center gap-1.5 tabular-nums">
+                        <span className={`inline-block w-2 h-2 rounded-full ${COLOR_CLASSES[key.color].bg}`} />
+                        <span>{instrument.ticker}</span>
+                        <span>{formatMajorAmount(datum.values[key.id] ?? 0, homeCurrencyCode)}</span>
+                      </div>
+                    )
+                  })}
+                  {stackedKeys.length > 1 && (
+                    <div className="font-medium tabular-nums border-t border-gray-200 dark:border-gray-700 mt-1 pt-1">
+                      Total: {formatMajorAmount(Object.values(datum.values).reduce((a, b) => a + b, 0), homeCurrencyCode)}
+                    </div>
+                  )}
+                </>
+              )}
+            />
+          ) : (
+            <LineAreaChart
+              series={series}
+              x={(d) => d.period}
+              y={(d) => d.value}
+              curve={period === 'transaction' ? curveLinear : undefined}
+              numTicks={6}
+              yTickFormat={yTickFormat}
+              tickFormat={tickFormat}
+              renderTooltip={(points) => (
+                <>
+                  <div className="font-medium">
+                    {points[0].point.period.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </div>
+                  {points.map((p) => (
+                    <TooltipRow key={p.seriesId} point={p} instruments={instruments} homeCurrencyCode={homeCurrencyCode} />
+                  ))}
+                </>
+              )}
+            />
+          )
         ) : (
           <p className="text-sm text-gray-500 dark:text-gray-400 py-8 text-center">
             Select an instrument above to show its balance history.
@@ -236,6 +312,31 @@ function TooltipRow({
 function rateFor(instrument: Instrument, homeCurrencyCode: string, rates: InstrumentRates): number {
   if (instrument.ticker === homeCurrencyCode) return 1
   return rates[instrument.id]?.rate ?? 1
+}
+
+// Merges per-instrument series (which may have different timestamps, e.g. for
+// 'all' range or 'transaction' granularity) onto a shared set of x-positions —
+// the union of every series' timestamps — carrying each series' last known
+// value forward into positions where it has no point of its own.
+function buildStackedData(series: ChartSeries<ChartPoint>[]): StackedAreaDatum[] {
+  const allTimes = new Set<number>()
+  for (const s of series) {
+    for (const d of s.data) allTimes.add(d.period.getTime())
+  }
+  const sortedTimes = [...allTimes].sort((a, b) => a - b)
+
+  return sortedTimes.map((time) => {
+    const values: Record<string, number> = {}
+    for (const s of series) {
+      let value = 0
+      for (const d of s.data) {
+        if (d.period.getTime() > time) break
+        value = d.value
+      }
+      values[s.id] = value
+    }
+    return { period: new Date(time), values }
+  })
 }
 
 function SegmentedControl<T extends string>({
