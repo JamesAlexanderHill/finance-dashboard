@@ -9,7 +9,7 @@ import { instrumentService, createContext } from '~/db/services'
 import { formatBalance } from '~/lib/format'
 import { formatMajorAmount } from '~/lib/format-currency'
 import scaleUnit from '~/lib/scale-unit'
-import { curveLinear } from '@visx/curve'
+import { defaultBalanceHistoryRange, rangesEqual, serializeRange, type DateRange } from '~/lib/date-range'
 import {
   LineAreaChart,
   StackedAreaChart,
@@ -21,6 +21,7 @@ import {
   type StackedAreaKey,
 } from '~/components/charts'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from '~/components/ui/select'
+import DateRangePicker from '~/components/ui/date-range-picker'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -54,24 +55,14 @@ type ChartPoint = {
   balance: bigint
   value: number
   projected: boolean
-  description?: string
 }
 
-const DEFAULT_RANGE: BalanceHistoryRange = '30d'
 const DEFAULT_PERIOD: BalanceHistoryPeriod = 'day'
-
-const RANGE_OPTIONS: { value: BalanceHistoryRange; label: string }[] = [
-  { value: '30d', label: '30D' },
-  { value: '90d', label: '90D' },
-  { value: '1y', label: '1Y' },
-  { value: 'all', label: 'All' },
-]
 
 const PERIOD_OPTIONS: { value: BalanceHistoryPeriod; label: string }[] = [
   { value: 'day', label: 'Daily' },
   { value: 'week', label: 'Weekly' },
   { value: 'month', label: 'Monthly' },
-  { value: 'transaction', label: 'Transactions' },
 ]
 
 /** How the balance history is visualized: separate lines per instrument, or a stacked area chart of their combined value. */
@@ -108,17 +99,19 @@ function colorForInstrument(instrument: Instrument, balance: bigint, index: numb
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function BalanceHistogram({ instruments, defaultInstrumentId, initialData, rates, homeCurrencyCode }: BalanceHistogramProps) {
-  const [range, setRange] = useState<BalanceHistoryRange>(DEFAULT_RANGE)
+  const [range, setRange] = useState<DateRange>(() => defaultBalanceHistoryRange())
   const [period, setPeriod] = useState<BalanceHistoryPeriod>(DEFAULT_PERIOD)
   const [view, setView] = useState<ChartViewType>(DEFAULT_VIEW)
   const [visible, setVisible] = useState<Set<string>>(() => new Set(instruments.map((i) => i.id)))
 
+  const serializedRange = serializeRange(range)
+
   const queries = useQueries({
     queries: instruments.map((instrument) => ({
-      queryKey: ['balance-history', instrument.id, range, period],
-      queryFn: () => getBalanceHistory({ data: { instrumentId: instrument.id, range, period } }),
+      queryKey: ['balance-history', instrument.id, serializedRange, period],
+      queryFn: () => getBalanceHistory({ data: { instrumentId: instrument.id, range: serializedRange, period } }),
       initialData:
-        instrument.id === defaultInstrumentId && range === DEFAULT_RANGE && period === DEFAULT_PERIOD
+        instrument.id === defaultInstrumentId && rangesEqual(range, defaultBalanceHistoryRange()) && period === DEFAULT_PERIOD
           ? initialData
           : undefined,
       placeholderData: (prev?: BalancePoint[]) => prev,
@@ -142,7 +135,6 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
         balance: BigInt(point.balance),
         value: scaleUnit(point.balance, instrument.exponent) * rate,
         projected: point.projected,
-        description: point.description,
       }))
 
       return {
@@ -180,7 +172,7 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
 
         <div className="flex items-center gap-2">
           <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
-          <SegmentedControl options={RANGE_OPTIONS} value={range} onChange={setRange} />
+          <DateRangePicker value={range} onChange={setRange} />
           <Select items={VIEW_OPTIONS} value={view} onValueChange={(value) => setView(value as ChartViewType)}>
             <SelectTrigger>
               <SelectValue />
@@ -260,7 +252,6 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
               series={series}
               x={(d) => d.period}
               y={(d) => d.value}
-              curve={period === 'transaction' ? curveLinear : undefined}
               numTicks={6}
               yTickFormat={yTickFormat}
               tickFormat={tickFormat}
@@ -308,7 +299,6 @@ function TooltipRow({
         <span className="text-gray-400 dark:text-gray-500">({formatMajorAmount(point.point.value, homeCurrencyCode)})</span>
       )}
       {point.point.projected && <span className="text-gray-400 dark:text-gray-500">(no activity)</span>}
-      {point.point.description && <span className="text-gray-400 dark:text-gray-500 truncate">— {point.point.description}</span>}
     </div>
   )
 }
@@ -320,10 +310,10 @@ function rateFor(instrument: Instrument, homeCurrencyCode: string, rates: Instru
   return rates[instrument.id]?.rate ?? 1
 }
 
-// Merges per-instrument series (which may have different timestamps, e.g. for
-// 'all' range or 'transaction' granularity) onto a shared set of x-positions —
-// the union of every series' timestamps — carrying each series' last known
-// value forward into positions where it has no point of its own.
+// Merges per-instrument series (which may have different timestamps, e.g. when
+// an instrument has no activity in part of the range) onto a shared set of
+// x-positions — the union of every series' timestamps — carrying each
+// series' last known value forward into positions where it has no point of its own.
 function buildStackedData(series: ChartSeries<ChartPoint>[]): StackedAreaDatum[] {
   const allTimes = new Set<number>()
   for (const s of series) {
