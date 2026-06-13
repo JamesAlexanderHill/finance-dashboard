@@ -21,8 +21,9 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import { createHash } from "node:crypto";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { csvEscape } from "./shared/csv";
+import { rowHash } from "./shared/hash";
 
 type Args = {
   inPaths: string[];
@@ -50,11 +51,6 @@ function printHelpAndExit(code: number): never {
     `CommBank PDF statement(s) -> event/leg CSV\n\nRequired:\n  --in <paths...>  Input statement PDF(s)\n  --out <path>     Output CSV`
   );
   process.exit(code);
-}
-
-function csvEscape(v: string): string {
-  if (/[,"\n\r]/.test(v)) return `"${v.replaceAll('"', '""')}"`;
-  return v;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -137,10 +133,6 @@ function parseBalance(rowText: string): number | null {
   }
   if (/\bNil\b/.test(rowText)) return 0;
   return null;
-}
-
-function rowHash(parts: string[]): string {
-  return createHash("sha256").update(parts.join("|"), "utf8").digest("hex").slice(0, 16);
 }
 
 async function extractRows(pdfPath: string): Promise<Row[]> {

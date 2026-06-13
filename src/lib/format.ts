@@ -1,26 +1,5 @@
 import { Instrument } from "~/db/schema"
-
-/**
- * Convert a bigint value representing an amount in minor units (e.g., cents) to a number in major units (e.g., dollars) based on the provided exponent.
- *
- * ⚠️ WARNING: This is for UI-only purposes and may lose precision at huge magnitudes
- * 
- * @param value - A value in minor units (eg cents for AUD)
- * @param exponent - The amount of decimal places e.g. 2 for AUD cents
- * @returns A number representing the value in major units (e.g. dollars for AUD)
- */
-function formatBigIntToNumber(value: bigint, exponent: number): number {
-  if (exponent === 0) return Number(value);
-
-  const s = value.toString();
-  const e = exponent;
-
-  const padded = s.length <= e ? "0".repeat(e + 1 - s.length) + s : s;
-  const intPart = padded.slice(0, padded.length - e);
-  const fracPart = padded.slice(padded.length - e);
-
-  return Number(`${intPart}.${fracPart}`);
-}
+import scaleUnit from "~/lib/scale-unit"
 
 type FormatBalanceOptions = {
     convertTo?: {
@@ -50,10 +29,10 @@ type FormatBalanceOptions = {
  */
 export function formatBalance(balance: bigint, instrument: Instrument, options?: FormatBalanceOptions): string {
     // split options
-    const {convertTo, ...numberFormatOptions} = options || {}
+    const {convertTo, numberFormatOptions = {}} = options || {}
 
     // UI-only: convert to Number for toFixed/adaptive rules
-    const major = formatBigIntToNumber(balance, instrument.exponent);
+    const major = scaleUnit(balance, instrument.exponent);
     // if needed, convert to another currency for display purposes (e.g. show VHY balance in AUD)
     const convertedMajor = major * (convertTo?.conversionRate || 1);
 

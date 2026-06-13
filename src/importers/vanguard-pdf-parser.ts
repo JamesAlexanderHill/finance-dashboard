@@ -29,8 +29,10 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import { createHash } from "node:crypto";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { csvEscape } from "./shared/csv";
+import { amountToCents } from "./shared/money";
+import { rowHash } from "./shared/hash";
 
 type Args = {
   inPaths: string[];
@@ -60,11 +62,6 @@ function printHelpAndExit(code: number): never {
   process.exit(code);
 }
 
-function csvEscape(v: string): string {
-  if (/[,"\n\r]/.test(v)) return `"${v.replaceAll('"', '""')}"`;
-  return v;
-}
-
 const MONTH: Record<string, string> = {
   Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
   Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
@@ -81,21 +78,6 @@ function dateToIsoZ(s: string): string {
   const mm = MONTH[mon];
   if (!mm) throw new Error(`Unknown month: ${mon}`);
   return `${yyyy}-${mm}-${dd.padStart(2, "0")}T00:00:00Z`;
-}
-
-function amountToCents(s: string): number {
-  const s0 = s.trim().replaceAll(",", "");
-  if (!s0 || isNaN(Number(s0))) return 0;
-  const sign = s0.startsWith("-") ? -1 : 1;
-  const abs = s0.replace(/^[+-]/, "");
-  const [dollarsRaw, centsRaw = ""] = abs.split(".");
-  const dollars = dollarsRaw.length ? parseInt(dollarsRaw, 10) : 0;
-  const cents = parseInt((centsRaw + "00").slice(0, 2), 10);
-  return sign * (dollars * 100 + cents);
-}
-
-function rowHash(parts: string[]): string {
-  return createHash("sha256").update(parts.join("|"), "utf8").digest("hex").slice(0, 16);
 }
 
 type PdfTextItem = { str: string; transform: number[] };

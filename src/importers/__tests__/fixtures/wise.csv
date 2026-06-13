@@ -1,0 +1,4 @@
+ID,Status,Direction,Created on,Finished on,Source amount (after fees),Source currency,Target name,Target amount (after fees),Target currency
+tx1,COMPLETED,OUT,2025-06-19 21:28:31,2025-06-19 21:30:00,50.00,AUD,Some Merchant,50.00,AUD
+tx2,COMPLETED,NEUTRAL,2025-06-20 10:00:00,2025-06-20 10:00:05,100.00,AUD,,108.50,NZD
+tx3,CANCELLED,OUT,2025-06-21 09:00:00,2025-06-21 09:00:00,10.00,AUD,Cancelled Merchant,10.00,AUD

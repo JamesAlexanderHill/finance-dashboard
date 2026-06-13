@@ -18,8 +18,12 @@
  *   bun commbank-to-eventlegs.ts --in commbank.csv --out out.csv --allow-fallback-ids
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { parseCsv } from "./shared/csv";
+import { amountToCents } from "./shared/money";
+import { ddmmyyyyToIsoZ } from "./shared/dates";
+import { rowHash } from "./shared/hash";
+import { writeCanonicalCsv, type CanonicalLeg } from "./shared/canonical";
 
 type Args = {
   inPath: string;
@@ -90,98 +94,8 @@ Examples:
   process.exit(code);
 }
 
-/**
- * Robust-enough CSV parser for standard bank exports:
- * - commas
- * - quoted fields
- * - double-quote escaping inside quoted fields
- */
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-
-    if (inQuotes) {
-      if (ch === '"') {
-        const next = text[i + 1];
-        if (next === '"') {
-          field += '"';
-          i++; // skip escaped quote
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += ch;
-      }
-      continue;
-    }
-
-    if (ch === '"') {
-      inQuotes = true;
-      continue;
-    }
-
-    if (ch === ",") {
-      row.push(field);
-      field = "";
-      continue;
-    }
-
-    if (ch === "\n") {
-      row.push(field);
-      field = "";
-      // ignore fully empty trailing line
-      if (!(row.length === 1 && row[0] === "")) rows.push(row);
-      row = [];
-      continue;
-    }
-
-    if (ch === "\r") continue; // handle CRLF
-
-    field += ch;
-  }
-
-  // last line (no trailing newline)
-  if (field.length > 0 || row.length > 0) {
-    row.push(field);
-    rows.push(row);
-  }
-
-  return rows;
-}
-
-function csvEscape(v: string): string {
-  // quote if contains comma, quote, or newline
-  if (/[,"\n\r]/.test(v)) return `"${v.replaceAll('"', '""')}"`;
-  return v;
-}
-
-function amountToCents(amountStr: string): number {
-  // examples: -63.75, +517.16, 1200.00
-  const s0 = amountStr.trim().replaceAll(",", "");
-  const sign = s0.startsWith("-") ? -1 : 1;
-  const s = s0.replace(/^[+-]/, "");
-  const [dollarsRaw, centsRaw = ""] = s.split(".");
-  const dollars = dollarsRaw.length ? parseInt(dollarsRaw, 10) : 0;
-  const cents = parseInt((centsRaw + "00").slice(0, 2), 10);
-  return sign * (dollars * 100 + cents);
-}
-
-function ddmmyyyyToIsoZ(dateStr: string): string {
-  // DD/MM/YYYY -> YYYY-MM-DDT00:00:00Z
-  const m = dateStr.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) throw new Error(`Invalid date: ${dateStr}`);
-  const [, dd, mm, yyyy] = m;
-  return `${yyyy}-${mm}-${dd}T00:00:00Z`;
-}
-
 function stableFallbackId(parts: string[]): string {
-  const h = createHash("sha256").update(parts.join("|"), "utf8").digest("hex").slice(0, 16);
-  return `cba-${h}`;
+  return `cba-${rowHash(parts, 16)}`;
 }
 
 function main() {
@@ -267,18 +181,7 @@ function main() {
   }
 
   // Build legs, group by eventGroup (== reference or fallback id)
-  type Leg = {
-    externalEventId: string;
-    eventGroup: string;
-    eventDescription: string; // filled after grouping
-    effectiveAt: string;
-    postedAt: string;
-    legDescription: string;
-    legTicker: string;
-    legUnitCount: number;
-  };
-
-  const legs: Leg[] = [];
+  const legs: CanonicalLeg[] = [];
 
   for (let r = 0; r < dataRows.length; r++) {
     const row = dataRows[r];
@@ -330,36 +233,7 @@ function main() {
     l.eventDescription = groupToEventDesc.get(l.eventGroup) ?? l.legDescription;
   }
 
-  // Write output
-  const outHeader = [
-    "externalEventId",
-    "eventGroup",
-    "eventDescription",
-    "effectiveAt",
-    "postedAt",
-    "legDescription",
-    "legTicker",
-    "legUnitCount",
-  ];
-
-  const outLines: string[] = [];
-  outLines.push(outHeader.join(","));
-
-  for (const l of legs) {
-    const line = [
-      csvEscape(l.externalEventId),
-      csvEscape(l.eventGroup),
-      csvEscape(l.eventDescription),
-      csvEscape(l.effectiveAt),
-      csvEscape(l.postedAt),
-      csvEscape(l.legDescription),
-      csvEscape(l.legTicker),
-      String(l.legUnitCount),
-    ].join(",");
-    outLines.push(line);
-  }
-
-  writeFileSync(args.outPath, outLines.join("\n") + "\n", "utf8");
+  writeCanonicalCsv(args.outPath, legs);
 }
 
 main();

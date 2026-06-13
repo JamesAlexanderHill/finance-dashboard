@@ -17,77 +17,12 @@
  * For Buy events the two legs share the same eventGroup (hash).
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
-
-type Args = { inPath: string; outPath: string };
-
-function parseArgs(argv: string[]): Args {
-  const out: Args = { inPath: "", outPath: "" };
-  for (let i = 2; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--in" && argv[i + 1]) out.inPath = argv[++i];
-    else if (a === "--out" && argv[i + 1]) out.outPath = argv[++i];
-    else if (a === "--help" || a === "-h") printHelpAndExit(0);
-  }
-  if (!out.inPath || !out.outPath) printHelpAndExit(1);
-  return out;
-}
-
-function printHelpAndExit(code: number): never {
-  console.error(
-    `Vanguard CSV -> event/leg CSV\n\nRequired:\n  --in <path>   Input Vanguard CSV\n  --out <path>  Output CSV`
-  );
-  process.exit(code);
-}
-
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; }
-        else inQuotes = false;
-      } else {
-        field += ch;
-      }
-      continue;
-    }
-    if (ch === '"') { inQuotes = true; continue; }
-    if (ch === ",") { row.push(field); field = ""; continue; }
-    if (ch === "\r") continue;
-    if (ch === "\n") {
-      row.push(field); field = "";
-      if (!(row.length === 1 && row[0] === "")) rows.push(row);
-      row = [];
-      continue;
-    }
-    field += ch;
-  }
-  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
-  return rows;
-}
-
-function csvEscape(v: string): string {
-  if (/[,"\n\r]/.test(v)) return `"${v.replaceAll('"', '""')}"`;
-  return v;
-}
-
-function amountToCents(s: string): number {
-  const s0 = s.trim().replaceAll(",", "");
-  if (!s0 || isNaN(Number(s0))) return 0;
-  const sign = s0.startsWith("-") ? -1 : 1;
-  const abs = s0.replace(/^[+-]/, "");
-  const [dollarsRaw, centsRaw = ""] = abs.split(".");
-  const dollars = dollarsRaw.length ? parseInt(dollarsRaw, 10) : 0;
-  const cents = parseInt((centsRaw + "00").slice(0, 2), 10);
-  return sign * (dollars * 100 + cents);
-}
+import { readFileSync } from "node:fs";
+import { parseInOutArgs } from "./shared/cli";
+import { parseCsv } from "./shared/csv";
+import { amountToCents } from "./shared/money";
+import { rowHash } from "./shared/hash";
+import { writeCanonicalCsv, type CanonicalLeg } from "./shared/canonical";
 
 const MONTH: Record<string, string> = {
   Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
@@ -104,23 +39,8 @@ function vanguardDateToIsoZ(s: string): string {
   return `${yyyy}-${mm}-${dd}T00:00:00Z`;
 }
 
-function rowHash(parts: string[]): string {
-  return createHash("sha256").update(parts.join("|"), "utf8").digest("hex").slice(0, 16);
-}
-
-type Leg = {
-  externalEventId: string;
-  eventGroup: string;
-  eventDescription: string;
-  effectiveAt: string;
-  postedAt: string;
-  legDescription: string;
-  legTicker: string;
-  legUnitCount: number;
-};
-
 function main() {
-  const args = parseArgs(process.argv);
+  const args = parseInOutArgs(process.argv, "Vanguard");
 
   const rows = parseCsv(readFileSync(args.inPath, "utf8"));
   if (rows.length === 0) throw new Error("Input CSV is empty.");
@@ -141,7 +61,7 @@ function main() {
   const idxUnits = col("Units");
   const idxTotal = col("Total");
 
-  const legs: Leg[] = [];
+  const legs: CanonicalLeg[] = [];
 
   for (let r = 0; r < dataRows.length; r++) {
     const row = dataRows[r];
@@ -216,33 +136,8 @@ function main() {
     }
   }
 
-  const outHeader = [
-    "externalEventId",
-    "eventGroup",
-    "eventDescription",
-    "effectiveAt",
-    "postedAt",
-    "legDescription",
-    "legTicker",
-    "legUnitCount",
-  ];
-
-  const outLines: string[] = [outHeader.join(",")];
-  for (const l of legs) {
-    outLines.push([
-      csvEscape(l.externalEventId),
-      csvEscape(l.eventGroup),
-      csvEscape(l.eventDescription),
-      csvEscape(l.effectiveAt),
-      csvEscape(l.postedAt),
-      csvEscape(l.legDescription),
-      csvEscape(l.legTicker),
-      String(l.legUnitCount),
-    ].join(","));
-  }
-
-  writeFileSync(args.outPath, outLines.join("\n") + "\n", "utf8");
-  console.log(`Wrote ${outLines.length - 1} rows to ${args.outPath}`);
+  writeCanonicalCsv(args.outPath, legs);
+  console.log(`Wrote ${legs.length} rows to ${args.outPath}`);
 }
 
 main();
