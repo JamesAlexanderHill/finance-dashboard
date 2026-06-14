@@ -1,23 +1,22 @@
 import * as React from 'react'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import cn from '~/lib/class-merge'
-import { addMonths, isSameDay, startOfMonth } from '~/lib/date-range'
+import { addMonths, isSameDay, startOfMonth, type DateRange } from '~/lib/date-range'
 
 const WEEKDAY_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
 
 type CalendarProps = {
-  /** The currently selected date, or null if none. */
-  value: Date | null
-  onChange: (date: Date) => void
+  /** The currently selected range. `start: null` means no range start is set (e.g. "All time"). */
+  range: DateRange
+  /** Called when a day is clicked — the caller decides whether this starts a new range or completes one. */
+  onDayClick: (date: Date) => void
   /** Dates after this are disabled. */
   maxDate?: Date
-  /** Dates before this are disabled. */
-  minDate?: Date
 }
 
-/** A single-month date picker grid (Monday-first, en-AU). */
-export default function Calendar({ value, onChange, maxDate, minDate }: CalendarProps) {
-  const [viewMonth, setViewMonth] = React.useState(() => startOfMonth(value ?? maxDate ?? new Date()))
+/** A single-month range-picker grid (Monday-first, en-AU). Highlights the days between `range.start` and `range.end`. */
+export default function Calendar({ range, onDayClick, maxDate }: CalendarProps) {
+  const [viewMonth, setViewMonth] = React.useState(() => startOfMonth(range.start ?? range.end))
 
   const days = React.useMemo(() => buildMonthGrid(viewMonth), [viewMonth])
 
@@ -49,25 +48,33 @@ export default function Calendar({ value, onChange, maxDate, minDate }: Calendar
           </span>
         ))}
         {days.map((day) => {
-          const disabled = (!!maxDate && day.getTime() > maxDate.getTime()) || (!!minDate && day.getTime() < minDate.getTime())
+          const disabled = !!maxDate && day.getTime() > maxDate.getTime()
           const inMonth = day.getUTCMonth() === viewMonth.getUTCMonth()
-          const selected = !!value && isSameDay(day, value)
+          const inRange = !!range.start && day.getTime() >= range.start.getTime() && day.getTime() <= range.end.getTime()
+          const isStart = !!range.start && isSameDay(day, range.start)
+          const isEnd = !!range.start && isSameDay(day, range.end)
+          const isEndpoint = isStart || isEnd
           return (
-            <button
+            <div
               key={day.toISOString()}
-              type="button"
-              disabled={disabled}
-              onClick={() => onChange(day)}
-              className={cn(
-                'text-xs rounded-md py-1 tabular-nums',
-                inMonth ? 'text-gray-700 dark:text-gray-300' : 'text-gray-300 dark:text-gray-600',
-                selected && 'bg-blue-600 text-white hover:bg-blue-600',
-                !selected && !disabled && 'hover:bg-gray-100 dark:hover:bg-gray-800',
-                disabled && 'opacity-30 cursor-not-allowed',
-              )}
+              className={cn(inRange && 'bg-blue-50 dark:bg-blue-950', isStart && 'rounded-l-full', isEnd && 'rounded-r-full')}
             >
-              {day.getUTCDate()}
-            </button>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => onDayClick(day)}
+                className={cn(
+                  'w-full text-xs rounded-full py-1 tabular-nums',
+                  inMonth ? 'text-gray-700 dark:text-gray-300' : 'text-gray-300 dark:text-gray-600',
+                  isEndpoint && 'bg-blue-600 text-white hover:bg-blue-600',
+                  !isEndpoint && inRange && 'text-blue-900 dark:text-blue-100',
+                  !isEndpoint && !disabled && 'hover:bg-gray-100 dark:hover:bg-gray-800',
+                  disabled && 'opacity-30 cursor-not-allowed',
+                )}
+              >
+                {day.getUTCDate()}
+              </button>
+            </div>
           )
         })}
       </div>

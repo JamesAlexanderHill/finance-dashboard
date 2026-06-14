@@ -10,18 +10,42 @@ type DateRangePickerProps = {
   onChange: (range: DateRange) => void
 }
 
-/** A Stripe-style date range picker: common presets alongside start/end calendars. */
+/** A Stripe-style date range picker: common presets alongside a single range-highlighting calendar. */
 export default function DateRangePicker({ value, onChange }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false)
   const [draft, setDraft] = React.useState<DateRange>(value)
+  // True once the user has clicked a start day and is now picking the end day.
+  const [selectingEnd, setSelectingEnd] = React.useState(false)
+  // Bumped whenever the calendar's visible month should jump to match `draft` (open, or a preset was picked).
+  const [calendarKey, setCalendarKey] = React.useState(0)
 
   React.useEffect(() => {
-    if (open) setDraft(value)
+    if (open) {
+      setDraft(value)
+      setSelectingEnd(false)
+      setCalendarKey((k) => k + 1)
+    }
   }, [open, value])
 
   function apply() {
     onChange(draft)
     setOpen(false)
+  }
+
+  function selectPreset(range: DateRange) {
+    setDraft(range)
+    setSelectingEnd(false)
+    setCalendarKey((k) => k + 1)
+  }
+
+  function handleDayClick(day: Date) {
+    if (!selectingEnd) {
+      setDraft({ start: day, end: day })
+      setSelectingEnd(true)
+      return
+    }
+    setDraft((prev) => (prev.start && day.getTime() < prev.start.getTime() ? { start: day, end: prev.end } : { start: prev.start, end: day }))
+    setSelectingEnd(false)
   }
 
   const activePreset = RANGE_PRESETS.find((preset) => rangesEqual(preset.range(), draft))
@@ -41,7 +65,7 @@ export default function DateRangePicker({ value, onChange }: DateRangePickerProp
                   <button
                     key={preset.label}
                     type="button"
-                    onClick={() => setDraft(preset.range())}
+                    onClick={() => selectPreset(preset.range())}
                     className={cn(
                       'text-left text-xs px-2 py-1.5 rounded-md transition-colors whitespace-nowrap',
                       activePreset?.label === preset.label
@@ -53,24 +77,9 @@ export default function DateRangePicker({ value, onChange }: DateRangePickerProp
                   </button>
                 ))}
               </div>
-              <div className="flex gap-4">
-                <div>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Start date</p>
-                  <Calendar
-                    value={draft.start}
-                    onChange={(date) => setDraft((prev) => ({ ...prev, start: date }))}
-                    maxDate={draft.end}
-                  />
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">End date</p>
-                  <Calendar
-                    value={draft.end}
-                    onChange={(date) => setDraft((prev) => ({ ...prev, end: date }))}
-                    minDate={draft.start ?? undefined}
-                    maxDate={todayUTC()}
-                  />
-                </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{formatRange(draft)}</p>
+                <Calendar key={calendarKey} range={draft} onDayClick={handleDayClick} maxDate={todayUTC()} />
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
