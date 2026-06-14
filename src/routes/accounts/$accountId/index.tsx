@@ -10,6 +10,7 @@ import BalanceHistogram, { type InstrumentRates } from '~/components/balance-his
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 import EventPreviewTable from '~/components/event/event-preview-table'
 import { accountService, eventService, fileService, instrumentService, rateService, createContext } from '~/db/services'
+import { defaultBalanceHistoryRange, serializeRange } from '~/lib/date-range'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ const getData = createServerFn({ method: 'GET' })
     const [recentAccountfiles, recentAccountEvents, balanceHistory, ratesMap] = await Promise.all([
       fileService.listByAccount(ctx, data.accountId, { limit: 5 }),
       eventService.listByAccount(ctx, data.accountId, { limit: 10 }),
-      chartInstrument ? instrumentService.getBalanceHistory(ctx, chartInstrument.id, '30d', 'day') : Promise.resolve([]),
+      chartInstrument ? instrumentService.getBalanceHistory(ctx, chartInstrument.id, serializeRange(defaultBalanceHistoryRange()), 'day') : Promise.resolve([]),
       rateService.getRates(ctx, accountInstruments.data.map((i) => i.id)),
     ]);
 
