@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import cn from '~/lib/class-merge'
-import { addMonths, isSameDay, startOfMonth, type DateRange } from '~/lib/date-range'
+import { addMonths, isSameDay, startOfMonth, toISODate, type DateRange } from '~/lib/date-range'
 
 const WEEKDAY_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
 
@@ -25,6 +25,7 @@ export default function Calendar({ range, onDayClick, maxDate }: CalendarProps) 
       <div className="flex items-center justify-between mb-2">
         <button
           type="button"
+          aria-label="Previous month"
           onClick={() => setViewMonth((m) => addMonths(m, -1))}
           className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
         >
@@ -35,6 +36,7 @@ export default function Calendar({ range, onDayClick, maxDate }: CalendarProps) 
         </span>
         <button
           type="button"
+          aria-label="Next month"
           onClick={() => setViewMonth((m) => addMonths(m, 1))}
           className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
         >
@@ -61,6 +63,7 @@ export default function Calendar({ range, onDayClick, maxDate }: CalendarProps) 
             >
               <button
                 type="button"
+                aria-label={toISODate(day)}
                 disabled={disabled}
                 onClick={() => onDayClick(day)}
                 className={cn(
