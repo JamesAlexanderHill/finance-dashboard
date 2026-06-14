@@ -1,6 +1,7 @@
 import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
 import { accounts } from '~/db/schema'
+import type { AccountColorName } from '~/lib/chart-colors'
 import type { RequestContext } from '../utils/context'
 import { buildPaginatedResult, type PaginationOptions } from '../utils/pagination'
 import { queryAccountsByUser, queryAccountById } from '../query/account'
@@ -26,14 +27,18 @@ async function create(ctx: RequestContext, data: { name: string }) {
 async function update(
   ctx: RequestContext,
   accountId: string,
-  data: { name: string; defaultInstrumentId: string | null },
+  data: { name: string; defaultInstrumentId: string | null; color?: AccountColorName | null },
 ) {
   const existing = await queryAccountById(ctx.userId, accountId)
   if (!existing) throw new Error(`Account not found: ${accountId}`)
 
   await db
     .update(accounts)
-    .set({ name: data.name.trim(), defaultInstrumentId: data.defaultInstrumentId || null })
+    .set({
+      name: data.name.trim(),
+      defaultInstrumentId: data.defaultInstrumentId || null,
+      color: data.color ?? null,
+    })
     .where(and(eq(accounts.id, accountId), eq(accounts.userId, ctx.userId)))
 }
 

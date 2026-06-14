@@ -8,7 +8,7 @@ import { useTooltip, TooltipWithBounds } from '@visx/tooltip'
 import { localPoint } from '@visx/event'
 import { curveMonotoneX } from '@visx/curve'
 import type { CurveFactory } from '@visx/vendor/d3-shape'
-import { MARGIN, COLOR_CLASSES, type ChartColor } from './line-area-chart'
+import { MARGIN, COLOR_CLASSES, DEFAULT_CHART_COLOR, type ChartColor } from './line-area-chart'
 
 /** One x-position's worth of stacked values, keyed by series id. */
 export type StackedAreaDatum = {
@@ -155,7 +155,7 @@ function Chart({
         >
           {({ stacks, path }) =>
             stacks.map((stack) => {
-              const color = keys.find((k) => k.id === stack.key)?.color ?? 'gray'
+              const color = keys.find((k) => k.id === stack.key)?.color ?? DEFAULT_CHART_COLOR
               const colors = COLOR_CLASSES[color]
               return (
                 <path

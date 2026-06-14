@@ -6,9 +6,7 @@ import { users } from '~/db/schema'
 import { formatCurrency, formatMajorAmount } from '~/lib/format-currency'
 import { balanceColorClass } from '~/lib/format'
 import scaleUnit from '~/lib/scale-unit'
-import { CHART_COLORS, type ChartColorName } from '~/lib/chart-colors'
 import Badge from '~/components/ui/badge'
-import { COLOR_CLASSES } from '~/components/charts'
 import { accountService, createContext, eventService, instrumentService, rateService } from '~/db/services'
 import EventTable from '~/components/event/event-table'
 
@@ -49,9 +47,6 @@ const updateInstrument = createServerFn({ method: 'POST' })
     instrumentId: string
     name: string
     exponent: number
-    positiveColor: ChartColorName | null
-    negativeColor: ChartColorName | null
-    neutralColor: ChartColorName | null
   })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
@@ -59,9 +54,6 @@ const updateInstrument = createServerFn({ method: 'POST' })
     await instrumentService.update(createContext(user.id), data.instrumentId, {
       name: data.name,
       exponent: data.exponent,
-      positiveColor: data.positiveColor,
-      negativeColor: data.negativeColor,
-      neutralColor: data.neutralColor,
     })
   })
 
@@ -100,41 +92,6 @@ function formatDate(d: Date | string) {
     month: 'short',
     year: 'numeric',
   })
-}
-
-/** A color <select> for one of an instrument's chart line colors, with a swatch preview. */
-function ChartColorSelect({
-  name,
-  label,
-  defaultValue,
-}: {
-  name: string
-  label: string
-  defaultValue: ChartColorName | null
-}) {
-  const [value, setValue] = React.useState<ChartColorName | ''>(defaultValue ?? '')
-
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{label}</label>
-      <div className="flex items-center gap-2">
-        {value && <span className={`inline-block w-3 h-3 rounded-full shrink-0 ${COLOR_CLASSES[value].bg}`} />}
-        <select
-          name={name}
-          value={value}
-          onChange={(e) => setValue(e.target.value as ChartColorName | '')}
-          className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Auto</option>
-          {CHART_COLORS.map((color) => (
-            <option key={color} value={color}>
-              {color}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
-  )
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -193,9 +150,6 @@ function InstrumentDetailPage() {
         instrumentId,
         name: String(fd.get('name')),
         exponent: parseInt(String(fd.get('exponent')), 10),
-        positiveColor: (String(fd.get('positiveColor')) || null) as ChartColorName | null,
-        negativeColor: (String(fd.get('negativeColor')) || null) as ChartColorName | null,
-        neutralColor: (String(fd.get('neutralColor')) || null) as ChartColorName | null,
       },
     })
     setEditing(false)
@@ -281,11 +235,6 @@ function InstrumentDetailPage() {
                 defaultValue={instrument.exponent}
                 className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <ChartColorSelect name="positiveColor" label="Positive color" defaultValue={instrument.positiveColor} />
-              <ChartColorSelect name="negativeColor" label="Negative color" defaultValue={instrument.negativeColor} />
-              <ChartColorSelect name="neutralColor" label="Neutral color" defaultValue={instrument.neutralColor} />
             </div>
             <div className="flex gap-2">
               <button
