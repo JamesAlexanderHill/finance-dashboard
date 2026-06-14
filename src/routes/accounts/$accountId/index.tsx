@@ -11,6 +11,8 @@ import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 import EventPreviewTable from '~/components/event/event-preview-table'
 import { accountService, eventService, fileService, instrumentService, rateService, createContext } from '~/db/services'
 import { defaultBalanceHistoryRange, serializeRange } from '~/lib/date-range'
+import AccountColorSelect from '~/components/ui/account-color-select'
+import type { AccountColorName } from '~/lib/chart-colors'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -45,13 +47,14 @@ const getData = createServerFn({ method: 'GET' })
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { id: string; name: string; defaultInstrumentId: string | null })
+  .inputValidator((data: unknown) => data as { id: string; name: string; defaultInstrumentId: string | null; color: AccountColorName | null })
   .handler(async ({ data }) => {
     const [user] = await db.select().from(users).limit(1)
     if (!user) throw new Error('No user found')
     await accountService.update(createContext(user.id), data.id, {
       name: data.name,
       defaultInstrumentId: data.defaultInstrumentId,
+      color: data.color,
     })
   })
 
@@ -116,6 +119,7 @@ function AccountDetailPage() {
         id: account!.id,
         name: String(fd.get('name')),
         defaultInstrumentId: String(fd.get('defaultInstrumentId')) || null,
+        color: (String(fd.get('color')) || null) as AccountColorName | null,
       },
     })
     setEditing(false)
@@ -222,6 +226,7 @@ function AccountDetailPage() {
                 ))}
               </select>
             </div>
+            <AccountColorSelect name="color" defaultValue={account.color} />
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -267,6 +272,7 @@ function AccountDetailPage() {
       {accountInstruments.data.length > 0 && (
         <BalanceHistogram
           instruments={accountInstruments.data}
+          accounts={[{ id: account.id, color: account.color }]}
           defaultInstrumentId={chartInstrument?.id ?? null}
           initialData={balanceHistory}
           rates={rates}
