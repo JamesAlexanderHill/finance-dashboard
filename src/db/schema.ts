@@ -14,7 +14,7 @@ import {
 import { relations } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { uuidv7 } from 'uuidv7'
-import { CHART_COLORS } from '~/lib/chart-colors'
+import { ACCOUNT_COLORS } from '~/lib/chart-colors'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ export const eventTypeEnum = pgEnum('event_type', [
 
 export const rateSourceEnum = pgEnum('rate_source', ['transaction', 'manual'])
 
-export const chartColorEnum = pgEnum('chart_color', CHART_COLORS)
+export const accountColorEnum = pgEnum('account_color', ACCOUNT_COLORS)
 
 export const workspaceMemberRoleEnum = pgEnum('workspace_member_role', ['owner', 'member'])
 
@@ -86,6 +86,8 @@ export const accounts = pgTable('accounts', {
   workspaceId: workspaceId().references(() => workspaces.id),
   name: text('name').notNull(),
   defaultInstrumentId: text('default_instrument_id').references((): AnyPgColumn => instruments.id),
+  // Base chart hue for this account's instruments. null = auto-assigned by account order.
+  color: accountColorEnum('color'),
   createdAt: createdAt(),
 })
 
@@ -100,10 +102,6 @@ export const instruments = pgTable('instruments', {
   name: text('name').notNull(),
   ticker: text('ticker').notNull(), // e.g. "USD", "VHY"
   exponent: integer('exponent').notNull(), // Number of decimal places (e.g. 2 for USD)
-  // Chart line colors for the balance graph. null = auto-assigned.
-  positiveColor: chartColorEnum('positive_color'),
-  negativeColor: chartColorEnum('negative_color'),
-  neutralColor: chartColorEnum('neutral_color'),
 });
 
 // ─── Categories ───────────────────────────────────────────────────────────────

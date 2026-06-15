@@ -7,7 +7,8 @@ import { instrumentService, getSession } from '~/db/services'
 import { formatBalance } from '~/lib/format'
 import { formatMajorAmount } from '~/lib/format-currency'
 import scaleUnit from '~/lib/scale-unit'
-import { curveLinear } from '@visx/curve'
+import { defaultBalanceHistoryRange, rangesEqual, serializeRange, type DateRange } from '~/lib/date-range'
+import { ACCOUNT_COLORS, resolveAccountColor, chartColorFor, type AccountColorName } from '~/lib/chart-colors'
 import {
   LineAreaChart,
   StackedAreaChart,
@@ -19,6 +20,7 @@ import {
   type StackedAreaKey,
 } from '~/components/charts'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from '~/components/ui/select'
+import DateRangePicker from '~/components/ui/date-range-picker'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -38,12 +40,20 @@ export type InstrumentRates = Record<string, { rate: number; asOf: string; sourc
 
 type BalanceHistogramProps = {
   instruments: (Instrument & { balance: string })[]
+  /** Accounts the instruments belong to, in display order — used to derive each account's base chart hue. */
+  accounts: { id: string; color: AccountColorName | null }[]
   defaultInstrumentId: string | null
   /** Pre-fetched 30D/daily history for `defaultInstrumentId`, from the route loader. */
   initialData: BalancePoint[]
   /** Current exchange/price rates, keyed by instrument id. */
   rates: InstrumentRates
   homeCurrencyCode: string
+  /** Section heading. Defaults to "Balance History". */
+  title?: string
+  /** Label shown in the per-instrument toggle row and stacked-area tooltip. Defaults to the instrument's ticker — pass this to disambiguate instruments that share a ticker across accounts. */
+  labelFor?: (instrument: Instrument) => string
+  /** Initial chart view. Defaults to "line". */
+  defaultView?: ChartViewType
 }
 
 type ChartPoint = {
@@ -51,24 +61,14 @@ type ChartPoint = {
   balance: bigint
   value: number
   projected: boolean
-  description?: string
 }
 
-const DEFAULT_RANGE: BalanceHistoryRange = '30d'
 const DEFAULT_PERIOD: BalanceHistoryPeriod = 'day'
-
-const RANGE_OPTIONS: { value: BalanceHistoryRange; label: string }[] = [
-  { value: '30d', label: '30D' },
-  { value: '90d', label: '90D' },
-  { value: '1y', label: '1Y' },
-  { value: 'all', label: 'All' },
-]
 
 const PERIOD_OPTIONS: { value: BalanceHistoryPeriod; label: string }[] = [
   { value: 'day', label: 'Daily' },
   { value: 'week', label: 'Weekly' },
   { value: 'month', label: 'Monthly' },
-  { value: 'transaction', label: 'Transactions' },
 ]
 
 /** How the balance history is visualized: separate lines per instrument, or a stacked area chart of their combined value. */
@@ -81,41 +81,51 @@ const VIEW_OPTIONS: { value: ChartViewType; label: string }[] = [
   { value: 'stacked', label: 'Stacked Area' },
 ]
 
-// Shade families, by the instrument's current balance sign: green shades for
-// positive (e.g. cash, holdings), red shades for negative (e.g. always-red for
-// a credit card like Amex), gray shades for exactly zero.
-const POSITIVE_SHADES: ChartColor[] = ['green', 'emerald', 'teal', 'lime', 'cyan']
-const NEGATIVE_SHADES: ChartColor[] = ['red', 'rose', 'orange', 'amber', 'pink']
-const ZERO_SHADES: ChartColor[] = ['gray', 'slate', 'zinc', 'stone']
-
-// Each instrument gets a distinct shade within its balance-sign family,
-// cycling by index so multi-instrument accounts (e.g. AUD/VHY/VAP/VAS/VDAL)
-// are visually distinguishable. An instrument with an explicit
-// positive/negative/neutral color set (see instrument detail page) uses that
-// instead, for the sign matching its current balance.
-function colorForInstrument(instrument: Instrument, balance: bigint, index: number): ChartColor {
-  if (balance > 0n && instrument.positiveColor) return instrument.positiveColor
-  if (balance < 0n && instrument.negativeColor) return instrument.negativeColor
-  if (balance === 0n && instrument.neutralColor) return instrument.neutralColor
-
-  const shades = balance > 0n ? POSITIVE_SHADES : balance < 0n ? NEGATIVE_SHADES : ZERO_SHADES
-  return shades[index % shades.length]
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function BalanceHistogram({ instruments, defaultInstrumentId, initialData, rates, homeCurrencyCode }: BalanceHistogramProps) {
-  const [range, setRange] = useState<BalanceHistoryRange>(DEFAULT_RANGE)
+export default function BalanceHistogram({
+  instruments,
+  accounts,
+  defaultInstrumentId,
+  initialData,
+  rates,
+  homeCurrencyCode,
+  title = 'Balance History',
+  labelFor = (instrument) => instrument.ticker,
+  defaultView = DEFAULT_VIEW,
+}: BalanceHistogramProps) {
+  const [range, setRange] = useState<DateRange>(() => defaultBalanceHistoryRange())
   const [period, setPeriod] = useState<BalanceHistoryPeriod>(DEFAULT_PERIOD)
-  const [view, setView] = useState<ChartViewType>(DEFAULT_VIEW)
+  const [view, setView] = useState<ChartViewType>(defaultView)
   const [visible, setVisible] = useState<Set<string>>(() => new Set(instruments.map((i) => i.id)))
+
+  // Each account gets one base hue (explicit or cycled by its position); each
+  // of its instruments gets a distinct shade of that hue, cycling by position
+  // within the account (e.g. AUD/VHY/VAP/VAS/VDAL for a Vanguard account).
+  const accountColorByAccountId = new Map<string, AccountColorName>()
+  accounts.forEach((account, index) => accountColorByAccountId.set(account.id, resolveAccountColor(account, index)))
+
+  const shadeIndexByInstrumentId = new Map<string, number>()
+  const nextShadeByAccountId = new Map<string, number>()
+  for (const instrument of instruments) {
+    const shade = nextShadeByAccountId.get(instrument.accountId) ?? 0
+    shadeIndexByInstrumentId.set(instrument.id, shade)
+    nextShadeByAccountId.set(instrument.accountId, shade + 1)
+  }
+
+  function colorForInstrument(instrument: Instrument): ChartColor {
+    const accountColor = accountColorByAccountId.get(instrument.accountId) ?? ACCOUNT_COLORS[0]
+    return chartColorFor(accountColor, shadeIndexByInstrumentId.get(instrument.id) ?? 0)
+  }
+
+  const serializedRange = serializeRange(range)
 
   const queries = useQueries({
     queries: instruments.map((instrument) => ({
-      queryKey: ['balance-history', instrument.id, range, period],
-      queryFn: () => getBalanceHistory({ data: { instrumentId: instrument.id, range, period } }),
+      queryKey: ['balance-history', instrument.id, serializedRange, period],
+      queryFn: () => getBalanceHistory({ data: { instrumentId: instrument.id, range: serializedRange, period } }),
       initialData:
-        instrument.id === defaultInstrumentId && range === DEFAULT_RANGE && period === DEFAULT_PERIOD
+        instrument.id === defaultInstrumentId && rangesEqual(range, defaultBalanceHistoryRange()) && period === DEFAULT_PERIOD
           ? initialData
           : undefined,
       placeholderData: (prev?: BalancePoint[]) => prev,
@@ -139,13 +149,12 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
         balance: BigInt(point.balance),
         value: scaleUnit(point.balance, instrument.exponent) * rate,
         projected: point.projected,
-        description: point.description,
       }))
 
       return {
         id: instrument.id,
         data,
-        color: colorForInstrument(instrument, BigInt(instrument.balance), index),
+        color: colorForInstrument(instrument),
         isProjected: (d: ChartPoint) => d.projected,
       }
     })
@@ -173,11 +182,11 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
   return (
     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
       <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Balance History</h2>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
 
         <div className="flex items-center gap-2">
           <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
-          <SegmentedControl options={RANGE_OPTIONS} value={range} onChange={setRange} />
+          <DateRangePicker value={range} onChange={setRange} />
           <Select items={VIEW_OPTIONS} value={view} onValueChange={(value) => setView(value as ChartViewType)}>
             <SelectTrigger>
               <SelectValue />
@@ -195,8 +204,8 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
 
       {instruments.length > 1 && (
         <div className="flex items-center gap-3 mb-4 flex-wrap">
-          {instruments.map((instrument, index) => {
-            const color = colorForInstrument(instrument, BigInt(instrument.balance), index)
+          {instruments.map((instrument) => {
+            const color = colorForInstrument(instrument)
             const checked = visible.has(instrument.id)
             return (
               <label
@@ -212,7 +221,7 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
                   className="sr-only"
                 />
                 <span className={`inline-block w-2.5 h-2.5 rounded-full ${checked ? COLOR_CLASSES[color].bg : 'bg-gray-300 dark:bg-gray-700'}`} />
-                {instrument.ticker}
+                {labelFor(instrument)}
               </label>
             )
           })}
@@ -239,7 +248,7 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
                     return (
                       <div key={key.id} className="flex items-center gap-1.5 tabular-nums">
                         <span className={`inline-block w-2 h-2 rounded-full ${COLOR_CLASSES[key.color].bg}`} />
-                        <span>{instrument.ticker}</span>
+                        <span>{labelFor(instrument)}</span>
                         <span>{formatMajorAmount(datum.values[key.id] ?? 0, homeCurrencyCode)}</span>
                       </div>
                     )
@@ -257,7 +266,6 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
               series={series}
               x={(d) => d.period}
               y={(d) => d.value}
-              curve={period === 'transaction' ? curveLinear : undefined}
               numTicks={6}
               yTickFormat={yTickFormat}
               tickFormat={tickFormat}
@@ -267,7 +275,7 @@ export default function BalanceHistogram({ instruments, defaultInstrumentId, ini
                     {points[0].point.period.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </div>
                   {points.map((p) => (
-                    <TooltipRow key={p.seriesId} point={p} instruments={instruments} homeCurrencyCode={homeCurrencyCode} />
+                    <TooltipRow key={p.seriesId} point={p} instruments={instruments} homeCurrencyCode={homeCurrencyCode} labelFor={labelFor} />
                   ))}
                 </>
               )}
@@ -289,23 +297,27 @@ function TooltipRow({
   point,
   instruments,
   homeCurrencyCode,
+  labelFor,
 }: {
   point: TooltipPoint<ChartPoint>
   instruments: Instrument[]
   homeCurrencyCode: string
+  labelFor: (instrument: Instrument) => string
 }) {
   const instrument = instruments.find((i) => i.id === point.seriesId)
   if (!instrument) return null
 
+  const label = labelFor(instrument)
+
   return (
     <div className="flex items-center gap-1.5 tabular-nums">
       <span className={`inline-block w-2 h-2 rounded-full ${COLOR_CLASSES[point.color].bg}`} />
+      {label !== instrument.ticker && <span className="text-gray-500 dark:text-gray-400">{label}</span>}
       <span>{formatBalance(point.point.balance, instrument)}</span>
       {instrument.ticker !== homeCurrencyCode && (
         <span className="text-gray-400 dark:text-gray-500">({formatMajorAmount(point.point.value, homeCurrencyCode)})</span>
       )}
       {point.point.projected && <span className="text-gray-400 dark:text-gray-500">(no activity)</span>}
-      {point.point.description && <span className="text-gray-400 dark:text-gray-500 truncate">— {point.point.description}</span>}
     </div>
   )
 }
@@ -317,10 +329,10 @@ function rateFor(instrument: Instrument, homeCurrencyCode: string, rates: Instru
   return rates[instrument.id]?.rate ?? 1
 }
 
-// Merges per-instrument series (which may have different timestamps, e.g. for
-// 'all' range or 'transaction' granularity) onto a shared set of x-positions —
-// the union of every series' timestamps — carrying each series' last known
-// value forward into positions where it has no point of its own.
+// Merges per-instrument series (which may have different timestamps, e.g. when
+// an instrument has no activity in part of the range) onto a shared set of
+// x-positions — the union of every series' timestamps — carrying each
+// series' last known value forward into positions where it has no point of its own.
 function buildStackedData(series: ChartSeries<ChartPoint>[]): StackedAreaDatum[] {
   const allTimes = new Set<number>()
   for (const s of series) {

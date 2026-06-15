@@ -16,7 +16,7 @@ export async function queryAccountsByWorkspace(workspaceId: string, opts: QueryA
   )
 
   const [data, [{ total }]] = await Promise.all([
-    db.query.accounts.findMany({ where, limit, offset, with: { instruments: true } }),
+    db.query.accounts.findMany({ where, limit, offset, orderBy: accounts.createdAt, with: { instruments: true } }),
     db.select({ total: count() }).from(accounts).where(where),
   ])
 

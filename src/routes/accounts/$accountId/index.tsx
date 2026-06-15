@@ -8,6 +8,9 @@ import BalanceHistogram, { type InstrumentRates } from '~/components/balance-his
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 import EventPreviewTable from '~/components/event/event-preview-table'
 import { accountService, eventService, fileService, instrumentService, rateService, getSession } from '~/db/services'
+import { defaultBalanceHistoryRange, serializeRange } from '~/lib/date-range'
+import AccountColorSelect from '~/components/ui/account-color-select'
+import type { AccountColorName } from '~/lib/chart-colors'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -30,7 +33,7 @@ const getData = createServerFn({ method: 'GET' })
     const [recentAccountfiles, recentAccountEvents, balanceHistory, ratesMap] = await Promise.all([
       fileService.listByAccount(ctx, data.accountId, { limit: 5 }),
       eventService.listByAccount(ctx, data.accountId, { limit: 10 }),
-      chartInstrument ? instrumentService.getBalanceHistory(ctx, chartInstrument.id, '30d', 'day') : Promise.resolve([]),
+      chartInstrument ? instrumentService.getBalanceHistory(ctx, chartInstrument.id, serializeRange(defaultBalanceHistoryRange()), 'day') : Promise.resolve([]),
       rateService.getRates(ctx, accountInstruments.data.map((i) => i.id)),
     ]);
 
@@ -42,13 +45,14 @@ const getData = createServerFn({ method: 'GET' })
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { id: string; name: string; defaultInstrumentId: string | null })
+  .inputValidator((data: unknown) => data as { id: string; name: string; defaultInstrumentId: string | null; color: AccountColorName | null })
   .handler(async ({ data }) => {
     const session = await getSession()
     if (!session) throw new Error('No user found')
     await accountService.update(session.ctx, data.id, {
       name: data.name,
       defaultInstrumentId: data.defaultInstrumentId,
+      color: data.color,
     })
   })
 
@@ -113,6 +117,7 @@ function AccountDetailPage() {
         id: account!.id,
         name: String(fd.get('name')),
         defaultInstrumentId: String(fd.get('defaultInstrumentId')) || null,
+        color: (String(fd.get('color')) || null) as AccountColorName | null,
       },
     })
     setEditing(false)
@@ -219,6 +224,7 @@ function AccountDetailPage() {
                 ))}
               </select>
             </div>
+            <AccountColorSelect name="color" defaultValue={account.color} />
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -264,6 +270,7 @@ function AccountDetailPage() {
       {accountInstruments.data.length > 0 && (
         <BalanceHistogram
           instruments={accountInstruments.data}
+          accounts={[{ id: account.id, color: account.color }]}
           defaultInstrumentId={chartInstrument?.id ?? null}
           initialData={balanceHistory}
           rates={rates}

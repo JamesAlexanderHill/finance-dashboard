@@ -1,19 +1,37 @@
 import * as React from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { instrumentService, getSession } from '~/db/services'
+import { accountService, instrumentService, rateService, getSession } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import { balanceColorClass } from '~/lib/format'
+import BalanceHistogram, { type InstrumentRates } from '~/components/balance-histogram'
+import type { AccountColorName } from '~/lib/chart-colors'
+
+type AccountSummary = { id: string; color: AccountColorName | null }
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
   const session = await getSession()
-  if (!session) return { user: null, workspace: null, balances: [] }
+  if (!session) return { user: null, workspace: null, balances: [], instruments: [], accounts: [] as AccountSummary[], accountNames: {} as Record<string, string>, rates: {} as InstrumentRates }
 
-  const balances = await instrumentService.getAccountBalances(session.ctx)
+  const { ctx, user, workspace } = session
 
-  return { user: session.user, workspace: session.workspace, balances }
+  const [balances, accountsResult, instrumentsResult] = await Promise.all([
+    instrumentService.getAccountBalances(ctx),
+    accountService.list(ctx),
+    instrumentService.list(ctx),
+  ])
+
+  const accountNames = Object.fromEntries(accountsResult.data.map((a) => [a.id, a.name]))
+  const accounts: AccountSummary[] = accountsResult.data.map((a) => ({ id: a.id, color: a.color }))
+
+  const ratesMap = await rateService.getRates(ctx, instrumentsResult.data.map((i) => i.id))
+  const rates: InstrumentRates = Object.fromEntries(
+    Array.from(ratesMap.entries()).map(([id, r]) => [id, { rate: r.rate, asOf: r.asOf.toISOString(), source: r.source }]),
+  )
+
+  return { user, workspace, balances, instruments: instrumentsResult.data, accounts, accountNames, rates }
 })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -26,7 +44,7 @@ export const Route = createFileRoute('/')({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function DashboardPage() {
-  const { user, workspace, balances } = Route.useLoaderData()
+  const { user, workspace, balances, instruments, accounts, accountNames, rates } = Route.useLoaderData()
 
   if (!user || !workspace) {
     return (
@@ -88,6 +106,26 @@ function DashboardPage() {
           {homeCurrency} fiat balances only — no cross-currency conversion
         </p>
       </div>
+
+      {/* Net worth history */}
+      {instruments.length > 0 && (
+        <div className="mb-6">
+          <BalanceHistogram
+            instruments={instruments}
+            accounts={accounts}
+            defaultInstrumentId={null}
+            initialData={[]}
+            rates={rates}
+            homeCurrencyCode={homeCurrency}
+            title="Net Worth History"
+            labelFor={(instrument) => {
+              const accountName = accountNames[instrument.accountId]
+              return accountName ? `${accountName} ${instrument.ticker}` : instrument.ticker
+            }}
+            defaultView="stacked"
+          />
+        </div>
+      )}
 
       {/* Account balance cards */}
       {balances.length === 0 ? (

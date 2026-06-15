@@ -1,4 +1,4 @@
-import { eq, and, inArray, isNull, count, desc, asc, gte, lt, lte, sql } from 'drizzle-orm'
+import { eq, and, inArray, isNull, count, desc, gte, lt, lte, sql } from 'drizzle-orm'
 import { db } from '~/db'
 import { instruments, legs, events, accounts, instrumentCheckpoints } from '~/db/schema'
 import type { PaginationOptions } from '../utils/pagination'
@@ -49,13 +49,11 @@ export async function queryInstrumentsWithBalance(workspaceId: string, opts: Que
         name: instruments.name,
         ticker: instruments.ticker,
         exponent: instruments.exponent,
-        positiveColor: instruments.positiveColor,
-        negativeColor: instruments.negativeColor,
-        neutralColor: instruments.neutralColor,
         balance: balanceSinceCheckpointExpr(workspaceId).as('balance'),
       })
       .from(instruments)
       .where(where)
+      .orderBy(instruments.id)
       .limit(limit)
       .offset(offset),
     db.select({ total: count() }).from(instruments).where(where),
@@ -162,28 +160,17 @@ export type BalancePoint = {
   balance: bigint
   /** True if this period is after the instrument's last transaction — the balance is carried forward, not observed. */
   projected: boolean
-  /** Event description — only populated for `'transaction'`-granularity points. */
-  description?: string
 }
 
-/** How far back the balance history window extends. */
-export type BalanceHistoryRange = '30d' | '90d' | '1y' | 'all'
+/** An explicit date window for the balance history chart. `start: null` means "from the beginning of history". */
+export type BalanceHistoryRange = { start: string | null; end: string }
 
-/** Granularity of each point in the balance history: a fixed period, or one point per transaction. */
-export type BalanceHistoryPeriod = 'day' | 'week' | 'month' | 'transaction'
-
-/** Periods handled by the period-aggregated history query (everything but `'transaction'`). */
-type AggregatePeriod = Exclude<BalanceHistoryPeriod, 'transaction'>
-
-const RANGE_DAYS: Record<Exclude<BalanceHistoryRange, 'all'>, number> = {
-  '30d': 30,
-  '90d': 90,
-  '1y': 365,
-}
+/** Granularity of each point in the balance history. */
+export type BalanceHistoryPeriod = 'day' | 'week' | 'month'
 
 // Truncate to the start (UTC midnight) of the period containing `date`.
 // Matches Postgres `date_trunc`: weeks start on Monday, months on the 1st.
-function truncateToPeriod(date: Date, period: AggregatePeriod): Date {
+function truncateToPeriod(date: Date, period: BalanceHistoryPeriod): Date {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
   if (period === 'month') return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
   if (period === 'week') {
@@ -193,7 +180,7 @@ function truncateToPeriod(date: Date, period: AggregatePeriod): Date {
   return d
 }
 
-function addPeriod(date: Date, period: AggregatePeriod): Date {
+function addPeriod(date: Date, period: BalanceHistoryPeriod): Date {
   const d = new Date(date)
   if (period === 'day') d.setUTCDate(d.getUTCDate() + 1)
   else if (period === 'week') d.setUTCDate(d.getUTCDate() + 7)
@@ -201,7 +188,7 @@ function addPeriod(date: Date, period: AggregatePeriod): Date {
   return d
 }
 
-function periodTruncExpr(period: AggregatePeriod) {
+function periodTruncExpr(period: BalanceHistoryPeriod) {
   switch (period) {
     case 'day': return sql<string>`date_trunc('day', ${events.effectiveAt})`
     case 'week': return sql<string>`date_trunc('week', ${events.effectiveAt})`
@@ -209,12 +196,10 @@ function periodTruncExpr(period: AggregatePeriod) {
   }
 }
 
-/** Computes the start of the history window for `range` (UTC midnight `RANGE_DAYS` days back, or the first event's date for `'all'`). */
-function rangeStartFor(range: BalanceHistoryRange, today: Date, earliest: string | null): Date {
-  if (range === 'all') return earliest ? new Date(earliest) : today
-  const start = new Date(today)
-  start.setUTCDate(start.getUTCDate() - (RANGE_DAYS[range] - 1))
-  return start
+/** Computes the start of the history window for `range` (its explicit `start`, or the first event's date for "from the beginning"). */
+function rangeStartFor(range: BalanceHistoryRange, earliest: string | null): Date {
+  if (range.start) return new Date(range.start)
+  return earliest ? new Date(earliest) : new Date(range.end)
 }
 
 /**
@@ -252,18 +237,17 @@ async function balanceAsOf(workspaceId: string, instrumentId: string, windowStar
 }
 
 /**
- * Balance history for an instrument: one point per `period` covering the
- * trailing `range` (or since the first event, for `'all'`), including today.
+ * Balance history for an instrument: one point per `period` covering `range`
+ * (its explicit `start`/`end`, or from the first event if `start` is null).
  * Each point's `balance` is the instrument's balance as of the end of that period.
  */
 export async function queryInstrumentBalanceHistory(
   workspaceId: string,
   instrumentId: string,
-  range: BalanceHistoryRange = '30d',
-  period: AggregatePeriod = 'day',
+  range: BalanceHistoryRange,
+  period: BalanceHistoryPeriod = 'day',
 ): Promise<BalancePoint[]> {
-  const now = new Date()
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+  const endDate = new Date(range.end)
 
   const [{ earliest, latest }] = await db
     .select({
@@ -274,7 +258,7 @@ export async function queryInstrumentBalanceHistory(
     .innerJoin(events, eq(legs.eventId, events.id))
     .where(and(eq(legs.instrumentId, instrumentId), eq(legs.workspaceId, workspaceId), isNull(events.deletedAt)))
 
-  const rangeStart = rangeStartFor(range, today, earliest)
+  const rangeStart = rangeStartFor(range, earliest)
   const periodStart = truncateToPeriod(rangeStart, period)
 
   // Balance as of the start of the window: latest checkpoint at or before it,
@@ -294,6 +278,7 @@ export async function queryInstrumentBalanceHistory(
       eq(legs.workspaceId, workspaceId),
       isNull(events.deletedAt),
       gte(events.effectiveAt, periodStart),
+      lte(events.effectiveAt, endDate),
     ))
     .groupBy(periodTruncExpr(period))
 
@@ -307,7 +292,7 @@ export async function queryInstrumentBalanceHistory(
   const points: BalancePoint[] = []
   let running = startBalance
   let cursor = new Date(periodStart)
-  while (cursor.getTime() <= today.getTime()) {
+  while (cursor.getTime() <= endDate.getTime()) {
     running += changeByPeriod.get(cursor.getTime()) ?? BigInt(0)
     points.push({
       period: new Date(cursor),
@@ -315,61 +300,6 @@ export async function queryInstrumentBalanceHistory(
       projected: lastActivity !== null && cursor.getTime() > lastActivity,
     })
     cursor = addPeriod(cursor, period)
-  }
-
-  return points
-}
-
-/**
- * One point per leg (transaction) affecting this instrument within the trailing `range`
- * (or since the first event, for `'all'`), each carrying the running balance immediately
- * after that transaction and the event's description.
- *
- * Points sharing an `effectiveAt` (multiple transactions on the same day, e.g. a deposit
- * followed by a purchase) are nudged forward by 1ms each so they remain distinct,
- * strictly-increasing x-values for the chart's time scale.
- */
-export async function queryInstrumentTransactionHistory(
-  workspaceId: string,
-  instrumentId: string,
-  range: BalanceHistoryRange = '30d',
-): Promise<BalancePoint[]> {
-  const now = new Date()
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-
-  const [{ earliest }] = await db
-    .select({ earliest: sql<string | null>`MIN(${events.effectiveAt})` })
-    .from(legs)
-    .innerJoin(events, eq(legs.eventId, events.id))
-    .where(and(eq(legs.instrumentId, instrumentId), eq(legs.workspaceId, workspaceId), isNull(events.deletedAt)))
-
-  const rangeStart = rangeStartFor(range, today, earliest)
-  const startBalance = await balanceAsOf(workspaceId, instrumentId, rangeStart)
-
-  const transactions = await db
-    .select({
-      effectiveAt: events.effectiveAt,
-      description: events.description,
-      unitCount: legs.unitCount,
-    })
-    .from(legs)
-    .innerJoin(events, eq(legs.eventId, events.id))
-    .where(and(
-      eq(legs.instrumentId, instrumentId),
-      eq(legs.workspaceId, workspaceId),
-      isNull(events.deletedAt),
-      gte(events.effectiveAt, rangeStart),
-    ))
-    .orderBy(asc(events.effectiveAt), asc(events.id))
-
-  const points: BalancePoint[] = []
-  let running = startBalance
-  let lastTime = -Infinity
-  for (const txn of transactions) {
-    running += BigInt(txn.unitCount)
-    const time = Math.max(txn.effectiveAt.getTime(), lastTime + 1)
-    lastTime = time
-    points.push({ period: new Date(time), balance: running, projected: false, description: txn.description })
   }
 
   return points

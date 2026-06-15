@@ -8,87 +8,65 @@ import { useTooltip, TooltipWithBounds } from '@visx/tooltip'
 import { localPoint } from '@visx/event'
 import { curveMonotoneX } from '@visx/curve'
 import type { CurveFactory } from '@visx/vendor/d3-shape'
-import type { ChartColorName } from '~/lib/chart-colors'
+import type { ChartColor } from '~/lib/chart-colors'
 
 export const MARGIN = { top: 8, right: 8, bottom: 20, left: 44 }
 
+// Each account hue gets 5 shades (light shade N -> dark shade N-100), so
+// distinct instruments within an account are visually related but distinguishable.
 export const COLOR_CLASSES = {
-  // Positive-balance shades
-  green: {
-    line: 'stroke-green-500 dark:stroke-green-400',
-    dot: 'fill-green-500 dark:fill-green-400',
-    bg: 'bg-green-500 dark:bg-green-400',
-  },
-  emerald: {
-    line: 'stroke-emerald-500 dark:stroke-emerald-400',
-    dot: 'fill-emerald-500 dark:fill-emerald-400',
-    bg: 'bg-emerald-500 dark:bg-emerald-400',
-  },
-  teal: {
-    line: 'stroke-teal-500 dark:stroke-teal-400',
-    dot: 'fill-teal-500 dark:fill-teal-400',
-    bg: 'bg-teal-500 dark:bg-teal-400',
-  },
-  lime: {
-    line: 'stroke-lime-500 dark:stroke-lime-400',
-    dot: 'fill-lime-500 dark:fill-lime-400',
-    bg: 'bg-lime-500 dark:bg-lime-400',
-  },
-  cyan: {
-    line: 'stroke-cyan-500 dark:stroke-cyan-400',
-    dot: 'fill-cyan-500 dark:fill-cyan-400',
-    bg: 'bg-cyan-500 dark:bg-cyan-400',
-  },
-  // Negative-balance shades
-  red: {
-    line: 'stroke-red-400',
-    dot: 'fill-red-400',
-    bg: 'bg-red-400',
-  },
-  rose: {
-    line: 'stroke-rose-400',
-    dot: 'fill-rose-400',
-    bg: 'bg-rose-400',
-  },
-  orange: {
-    line: 'stroke-orange-400',
-    dot: 'fill-orange-400',
-    bg: 'bg-orange-400',
-  },
-  amber: {
-    line: 'stroke-amber-400',
-    dot: 'fill-amber-400',
-    bg: 'bg-amber-400',
-  },
-  pink: {
-    line: 'stroke-pink-400',
-    dot: 'fill-pink-400',
-    bg: 'bg-pink-400',
-  },
-  // Zero-balance shades
-  gray: {
-    line: 'stroke-gray-400 dark:stroke-gray-500',
-    dot: 'fill-gray-400 dark:fill-gray-500',
-    bg: 'bg-gray-400 dark:bg-gray-500',
-  },
-  slate: {
-    line: 'stroke-slate-400 dark:stroke-slate-500',
-    dot: 'fill-slate-400 dark:fill-slate-500',
-    bg: 'bg-slate-400 dark:bg-slate-500',
-  },
-  zinc: {
-    line: 'stroke-zinc-400 dark:stroke-zinc-500',
-    dot: 'fill-zinc-400 dark:fill-zinc-500',
-    bg: 'bg-zinc-400 dark:bg-zinc-500',
-  },
-  stone: {
-    line: 'stroke-stone-400 dark:stroke-stone-500',
-    dot: 'fill-stone-400 dark:fill-stone-500',
-    bg: 'bg-stone-400 dark:bg-stone-500',
-  },
-} as const satisfies Record<ChartColorName, { line: string; dot: string; bg: string }>
+  'blue-0': { line: 'stroke-blue-400 dark:stroke-blue-300', dot: 'fill-blue-400 dark:fill-blue-300', bg: 'bg-blue-400 dark:bg-blue-300' },
+  'blue-1': { line: 'stroke-blue-500 dark:stroke-blue-400', dot: 'fill-blue-500 dark:fill-blue-400', bg: 'bg-blue-500 dark:bg-blue-400' },
+  'blue-2': { line: 'stroke-blue-600 dark:stroke-blue-500', dot: 'fill-blue-600 dark:fill-blue-500', bg: 'bg-blue-600 dark:bg-blue-500' },
+  'blue-3': { line: 'stroke-blue-700 dark:stroke-blue-600', dot: 'fill-blue-700 dark:fill-blue-600', bg: 'bg-blue-700 dark:bg-blue-600' },
+  'blue-4': { line: 'stroke-blue-800 dark:stroke-blue-700', dot: 'fill-blue-800 dark:fill-blue-700', bg: 'bg-blue-800 dark:bg-blue-700' },
 
-export type ChartColor = ChartColorName
+  'emerald-0': { line: 'stroke-emerald-400 dark:stroke-emerald-300', dot: 'fill-emerald-400 dark:fill-emerald-300', bg: 'bg-emerald-400 dark:bg-emerald-300' },
+  'emerald-1': { line: 'stroke-emerald-500 dark:stroke-emerald-400', dot: 'fill-emerald-500 dark:fill-emerald-400', bg: 'bg-emerald-500 dark:bg-emerald-400' },
+  'emerald-2': { line: 'stroke-emerald-600 dark:stroke-emerald-500', dot: 'fill-emerald-600 dark:fill-emerald-500', bg: 'bg-emerald-600 dark:bg-emerald-500' },
+  'emerald-3': { line: 'stroke-emerald-700 dark:stroke-emerald-600', dot: 'fill-emerald-700 dark:fill-emerald-600', bg: 'bg-emerald-700 dark:bg-emerald-600' },
+  'emerald-4': { line: 'stroke-emerald-800 dark:stroke-emerald-700', dot: 'fill-emerald-800 dark:fill-emerald-700', bg: 'bg-emerald-800 dark:bg-emerald-700' },
+
+  'amber-0': { line: 'stroke-amber-400 dark:stroke-amber-300', dot: 'fill-amber-400 dark:fill-amber-300', bg: 'bg-amber-400 dark:bg-amber-300' },
+  'amber-1': { line: 'stroke-amber-500 dark:stroke-amber-400', dot: 'fill-amber-500 dark:fill-amber-400', bg: 'bg-amber-500 dark:bg-amber-400' },
+  'amber-2': { line: 'stroke-amber-600 dark:stroke-amber-500', dot: 'fill-amber-600 dark:fill-amber-500', bg: 'bg-amber-600 dark:bg-amber-500' },
+  'amber-3': { line: 'stroke-amber-700 dark:stroke-amber-600', dot: 'fill-amber-700 dark:fill-amber-600', bg: 'bg-amber-700 dark:bg-amber-600' },
+  'amber-4': { line: 'stroke-amber-800 dark:stroke-amber-700', dot: 'fill-amber-800 dark:fill-amber-700', bg: 'bg-amber-800 dark:bg-amber-700' },
+
+  'rose-0': { line: 'stroke-rose-400 dark:stroke-rose-300', dot: 'fill-rose-400 dark:fill-rose-300', bg: 'bg-rose-400 dark:bg-rose-300' },
+  'rose-1': { line: 'stroke-rose-500 dark:stroke-rose-400', dot: 'fill-rose-500 dark:fill-rose-400', bg: 'bg-rose-500 dark:bg-rose-400' },
+  'rose-2': { line: 'stroke-rose-600 dark:stroke-rose-500', dot: 'fill-rose-600 dark:fill-rose-500', bg: 'bg-rose-600 dark:bg-rose-500' },
+  'rose-3': { line: 'stroke-rose-700 dark:stroke-rose-600', dot: 'fill-rose-700 dark:fill-rose-600', bg: 'bg-rose-700 dark:bg-rose-600' },
+  'rose-4': { line: 'stroke-rose-800 dark:stroke-rose-700', dot: 'fill-rose-800 dark:fill-rose-700', bg: 'bg-rose-800 dark:bg-rose-700' },
+
+  'violet-0': { line: 'stroke-violet-400 dark:stroke-violet-300', dot: 'fill-violet-400 dark:fill-violet-300', bg: 'bg-violet-400 dark:bg-violet-300' },
+  'violet-1': { line: 'stroke-violet-500 dark:stroke-violet-400', dot: 'fill-violet-500 dark:fill-violet-400', bg: 'bg-violet-500 dark:bg-violet-400' },
+  'violet-2': { line: 'stroke-violet-600 dark:stroke-violet-500', dot: 'fill-violet-600 dark:fill-violet-500', bg: 'bg-violet-600 dark:bg-violet-500' },
+  'violet-3': { line: 'stroke-violet-700 dark:stroke-violet-600', dot: 'fill-violet-700 dark:fill-violet-600', bg: 'bg-violet-700 dark:bg-violet-600' },
+  'violet-4': { line: 'stroke-violet-800 dark:stroke-violet-700', dot: 'fill-violet-800 dark:fill-violet-700', bg: 'bg-violet-800 dark:bg-violet-700' },
+
+  'cyan-0': { line: 'stroke-cyan-400 dark:stroke-cyan-300', dot: 'fill-cyan-400 dark:fill-cyan-300', bg: 'bg-cyan-400 dark:bg-cyan-300' },
+  'cyan-1': { line: 'stroke-cyan-500 dark:stroke-cyan-400', dot: 'fill-cyan-500 dark:fill-cyan-400', bg: 'bg-cyan-500 dark:bg-cyan-400' },
+  'cyan-2': { line: 'stroke-cyan-600 dark:stroke-cyan-500', dot: 'fill-cyan-600 dark:fill-cyan-500', bg: 'bg-cyan-600 dark:bg-cyan-500' },
+  'cyan-3': { line: 'stroke-cyan-700 dark:stroke-cyan-600', dot: 'fill-cyan-700 dark:fill-cyan-600', bg: 'bg-cyan-700 dark:bg-cyan-600' },
+  'cyan-4': { line: 'stroke-cyan-800 dark:stroke-cyan-700', dot: 'fill-cyan-800 dark:fill-cyan-700', bg: 'bg-cyan-800 dark:bg-cyan-700' },
+
+  'orange-0': { line: 'stroke-orange-400 dark:stroke-orange-300', dot: 'fill-orange-400 dark:fill-orange-300', bg: 'bg-orange-400 dark:bg-orange-300' },
+  'orange-1': { line: 'stroke-orange-500 dark:stroke-orange-400', dot: 'fill-orange-500 dark:fill-orange-400', bg: 'bg-orange-500 dark:bg-orange-400' },
+  'orange-2': { line: 'stroke-orange-600 dark:stroke-orange-500', dot: 'fill-orange-600 dark:fill-orange-500', bg: 'bg-orange-600 dark:bg-orange-500' },
+  'orange-3': { line: 'stroke-orange-700 dark:stroke-orange-600', dot: 'fill-orange-700 dark:fill-orange-600', bg: 'bg-orange-700 dark:bg-orange-600' },
+  'orange-4': { line: 'stroke-orange-800 dark:stroke-orange-700', dot: 'fill-orange-800 dark:fill-orange-700', bg: 'bg-orange-800 dark:bg-orange-700' },
+
+  'fuchsia-0': { line: 'stroke-fuchsia-400 dark:stroke-fuchsia-300', dot: 'fill-fuchsia-400 dark:fill-fuchsia-300', bg: 'bg-fuchsia-400 dark:bg-fuchsia-300' },
+  'fuchsia-1': { line: 'stroke-fuchsia-500 dark:stroke-fuchsia-400', dot: 'fill-fuchsia-500 dark:fill-fuchsia-400', bg: 'bg-fuchsia-500 dark:bg-fuchsia-400' },
+  'fuchsia-2': { line: 'stroke-fuchsia-600 dark:stroke-fuchsia-500', dot: 'fill-fuchsia-600 dark:fill-fuchsia-500', bg: 'bg-fuchsia-600 dark:bg-fuchsia-500' },
+  'fuchsia-3': { line: 'stroke-fuchsia-700 dark:stroke-fuchsia-600', dot: 'fill-fuchsia-700 dark:fill-fuchsia-600', bg: 'bg-fuchsia-700 dark:bg-fuchsia-600' },
+  'fuchsia-4': { line: 'stroke-fuchsia-800 dark:stroke-fuchsia-700', dot: 'fill-fuchsia-800 dark:fill-fuchsia-700', bg: 'bg-fuchsia-800 dark:bg-fuchsia-700' },
+} as const satisfies Record<ChartColor, { line: string; dot: string; bg: string }>
+
+export const DEFAULT_CHART_COLOR: ChartColor = 'blue-2'
+
+export type { ChartColor }
 
 export type ChartSeries<T> = {
   /** Unique identifier for this series, e.g. an instrument id. */

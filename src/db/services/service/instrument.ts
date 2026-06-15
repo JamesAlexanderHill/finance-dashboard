@@ -1,7 +1,6 @@
 import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
 import { instruments, instrumentCheckpoints, instrumentRates } from '~/db/schema'
-import type { ChartColorName } from '~/lib/chart-colors'
 import type { RequestContext } from '../utils/context'
 import { buildPaginatedResult, type PaginationOptions } from '../utils/pagination'
 import {
@@ -12,7 +11,6 @@ import {
   queryInstrumentBalance,
   queryInstrumentHasLegs,
   queryInstrumentBalanceHistory,
-  queryInstrumentTransactionHistory,
   type BalanceHistoryRange,
   type BalanceHistoryPeriod,
 } from '../query/instrument'
@@ -48,12 +46,9 @@ async function getBalance(ctx: RequestContext, instrumentId: string): Promise<bi
 async function getBalanceHistory(
   ctx: RequestContext,
   instrumentId: string,
-  range: BalanceHistoryRange = '30d',
+  range: BalanceHistoryRange,
   period: BalanceHistoryPeriod = 'day',
 ) {
-  if (period === 'transaction') {
-    return queryInstrumentTransactionHistory(ctx.workspaceId, instrumentId, range)
-  }
   return queryInstrumentBalanceHistory(ctx.workspaceId, instrumentId, range, period)
 }
 
@@ -77,13 +72,7 @@ async function create(
 async function update(
   ctx: RequestContext,
   instrumentId: string,
-  data: {
-    name: string
-    exponent: number
-    positiveColor?: ChartColorName | null
-    negativeColor?: ChartColorName | null
-    neutralColor?: ChartColorName | null
-  },
+  data: { name: string; exponent: number },
 ) {
   const existing = await queryInstrumentById(ctx.workspaceId, instrumentId)
   if (!existing) throw new Error(`Instrument not found: ${instrumentId}`)
@@ -93,9 +82,6 @@ async function update(
     .set({
       name: data.name.trim(),
       exponent: data.exponent,
-      ...(data.positiveColor !== undefined ? { positiveColor: data.positiveColor } : {}),
-      ...(data.negativeColor !== undefined ? { negativeColor: data.negativeColor } : {}),
-      ...(data.neutralColor !== undefined ? { neutralColor: data.neutralColor } : {}),
     })
     .where(and(eq(instruments.id, instrumentId), eq(instruments.workspaceId, ctx.workspaceId)))
 }
