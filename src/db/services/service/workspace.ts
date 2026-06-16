@@ -7,6 +7,7 @@ import {
   queryWorkspaceMembership,
   queryWorkspaceMembers,
   queryUserByEmail,
+  queryPersonalWorkspace,
 } from '../query/workspace'
 
 async function list(ctx: RequestContext) {
@@ -114,6 +115,34 @@ export async function createUserWithPersonalWorkspace(data: {
     await tx.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: 'owner' })
 
     return { user, workspace }
+  })
+}
+
+/**
+ * Ensure a user has a personal workspace, creating one (plus the owner
+ * membership) if missing. Idempotent — used by the Better Auth `user.create`
+ * hook, where the user row already exists. Returns the personal workspace.
+ */
+export async function ensurePersonalWorkspace(user: { id: string; name: string; email: string }) {
+  const existing = await queryPersonalWorkspace(user.id)
+  if (existing) return existing
+
+  const name = user.name?.trim() || user.email.split('@')[0]
+
+  return db.transaction(async (tx) => {
+    const [workspace] = await tx
+      .insert(workspaces)
+      .values({
+        name: `${name}'s Workspace`,
+        homeCurrencyCode: 'USD',
+        isPersonal: true,
+        ownerId: user.id,
+      })
+      .returning()
+
+    await tx.insert(workspaceMembers).values({ workspaceId: workspace.id, userId: user.id, role: 'owner' })
+
+    return workspace
   })
 }
 

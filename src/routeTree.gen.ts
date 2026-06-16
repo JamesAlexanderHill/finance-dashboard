@@ -10,6 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspacesRouteImport } from './routes/workspaces'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as DevRouteImport } from './routes/dev'
 import { Route as CategoriesRouteImport } from './routes/categories'
 import { Route as EventsRouteRouteImport } from './routes/events/route'
@@ -19,6 +21,7 @@ import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as AccountsIndexRouteImport } from './routes/accounts/index'
 import { Route as AccountsAccountIdRouteRouteImport } from './routes/accounts/$accountId/route'
 import { Route as AccountsAccountIdIndexRouteImport } from './routes/accounts/$accountId/index'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AccountsAccountIdInstrumentsRouteRouteImport } from './routes/accounts/$accountId/instruments/route'
 import { Route as AccountsAccountIdFilesRouteRouteImport } from './routes/accounts/$accountId/files/route'
 import { Route as AccountsAccountIdEventsRouteRouteImport } from './routes/accounts/$accountId/events/route'
@@ -31,6 +34,16 @@ import { Route as AccountsAccountIdFilesFileIdRouteImport } from './routes/accou
 const WorkspacesRoute = WorkspacesRouteImport.update({
   id: '/workspaces',
   path: '/workspaces',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DevRoute = DevRouteImport.update({
@@ -77,6 +90,11 @@ const AccountsAccountIdIndexRoute = AccountsAccountIdIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AccountsAccountIdRouteRoute,
+} as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AccountsAccountIdInstrumentsRouteRoute =
   AccountsAccountIdInstrumentsRouteRouteImport.update({
@@ -133,6 +151,8 @@ export interface FileRoutesByFullPath {
   '/events': typeof EventsRouteRouteWithChildren
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
+  '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
   '/workspaces': typeof WorkspacesRoute
   '/accounts/$accountId': typeof AccountsAccountIdRouteRouteWithChildren
   '/accounts/': typeof AccountsIndexRoute
@@ -140,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/accounts/$accountId/events': typeof AccountsAccountIdEventsRouteRouteWithChildren
   '/accounts/$accountId/files': typeof AccountsAccountIdFilesRouteRouteWithChildren
   '/accounts/$accountId/instruments': typeof AccountsAccountIdInstrumentsRouteRouteWithChildren
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/accounts/$accountId/': typeof AccountsAccountIdIndexRoute
   '/accounts/$accountId/files/$fileId': typeof AccountsAccountIdFilesFileIdRoute
   '/accounts/$accountId/instruments/$instrumentId': typeof AccountsAccountIdInstrumentsInstrumentIdRoute
@@ -151,9 +172,12 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
+  '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
   '/workspaces': typeof WorkspacesRoute
   '/accounts': typeof AccountsIndexRoute
   '/events': typeof EventsIndexRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/accounts/$accountId': typeof AccountsAccountIdIndexRoute
   '/accounts/$accountId/files/$fileId': typeof AccountsAccountIdFilesFileIdRoute
   '/accounts/$accountId/instruments/$instrumentId': typeof AccountsAccountIdInstrumentsInstrumentIdRoute
@@ -168,6 +192,8 @@ export interface FileRoutesById {
   '/events': typeof EventsRouteRouteWithChildren
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
+  '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
   '/workspaces': typeof WorkspacesRoute
   '/accounts/$accountId': typeof AccountsAccountIdRouteRouteWithChildren
   '/accounts/': typeof AccountsIndexRoute
@@ -175,6 +201,7 @@ export interface FileRoutesById {
   '/accounts/$accountId/events': typeof AccountsAccountIdEventsRouteRouteWithChildren
   '/accounts/$accountId/files': typeof AccountsAccountIdFilesRouteRouteWithChildren
   '/accounts/$accountId/instruments': typeof AccountsAccountIdInstrumentsRouteRouteWithChildren
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/accounts/$accountId/': typeof AccountsAccountIdIndexRoute
   '/accounts/$accountId/files/$fileId': typeof AccountsAccountIdFilesFileIdRoute
   '/accounts/$accountId/instruments/$instrumentId': typeof AccountsAccountIdInstrumentsInstrumentIdRoute
@@ -190,6 +217,8 @@ export interface FileRouteTypes {
     | '/events'
     | '/categories'
     | '/dev'
+    | '/login'
+    | '/settings'
     | '/workspaces'
     | '/accounts/$accountId'
     | '/accounts/'
@@ -197,6 +226,7 @@ export interface FileRouteTypes {
     | '/accounts/$accountId/events'
     | '/accounts/$accountId/files'
     | '/accounts/$accountId/instruments'
+    | '/api/auth/$'
     | '/accounts/$accountId/'
     | '/accounts/$accountId/files/$fileId'
     | '/accounts/$accountId/instruments/$instrumentId'
@@ -208,9 +238,12 @@ export interface FileRouteTypes {
     | '/'
     | '/categories'
     | '/dev'
+    | '/login'
+    | '/settings'
     | '/workspaces'
     | '/accounts'
     | '/events'
+    | '/api/auth/$'
     | '/accounts/$accountId'
     | '/accounts/$accountId/files/$fileId'
     | '/accounts/$accountId/instruments/$instrumentId'
@@ -224,6 +257,8 @@ export interface FileRouteTypes {
     | '/events'
     | '/categories'
     | '/dev'
+    | '/login'
+    | '/settings'
     | '/workspaces'
     | '/accounts/$accountId'
     | '/accounts/'
@@ -231,6 +266,7 @@ export interface FileRouteTypes {
     | '/accounts/$accountId/events'
     | '/accounts/$accountId/files'
     | '/accounts/$accountId/instruments'
+    | '/api/auth/$'
     | '/accounts/$accountId/'
     | '/accounts/$accountId/files/$fileId'
     | '/accounts/$accountId/instruments/$instrumentId'
@@ -245,7 +281,10 @@ export interface RootRouteChildren {
   EventsRouteRoute: typeof EventsRouteRouteWithChildren
   CategoriesRoute: typeof CategoriesRoute
   DevRoute: typeof DevRoute
+  LoginRoute: typeof LoginRoute
+  SettingsRoute: typeof SettingsRoute
   WorkspacesRoute: typeof WorkspacesRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -255,6 +294,20 @@ declare module '@tanstack/react-router' {
       path: '/workspaces'
       fullPath: '/workspaces'
       preLoaderRoute: typeof WorkspacesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dev': {
@@ -319,6 +372,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/accounts/$accountId/'
       preLoaderRoute: typeof AccountsAccountIdIndexRouteImport
       parentRoute: typeof AccountsAccountIdRouteRoute
+    }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/accounts/$accountId/instruments': {
       id: '/accounts/$accountId/instruments'
@@ -482,7 +542,10 @@ const rootRouteChildren: RootRouteChildren = {
   EventsRouteRoute: EventsRouteRouteWithChildren,
   CategoriesRoute: CategoriesRoute,
   DevRoute: DevRoute,
+  LoginRoute: LoginRoute,
+  SettingsRoute: SettingsRoute,
   WorkspacesRoute: WorkspacesRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

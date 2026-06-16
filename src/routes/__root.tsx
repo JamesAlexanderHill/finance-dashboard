@@ -5,23 +5,27 @@ import {
   Outlet,
   Scripts,
   createRootRouteWithContext,
+  redirect,
   useNavigate,
   useRouter,
+  useRouterState,
   useSearch,
 } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
+import { LogOut, Settings, ChevronsUpDown } from 'lucide-react'
 import * as React from 'react'
 import type { QueryClient } from '@tanstack/react-query'
-import { db } from '~/db'
-import { users } from '~/db/schema'
-import { workspaceService, getSession, setCurrentUserId, setCurrentWorkspaceId } from '~/db/services'
+import { workspaceService, getSession, setCurrentWorkspaceId } from '~/db/services'
+import { fetchAuthUser } from '~/lib/auth-guard'
+import { authClient } from '~/lib/auth-client'
 import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
 import { NotFound } from '~/components/NotFound'
 import { EventDrawer } from '~/components/event/event-drawer'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from '~/components/ui/select'
+import { Menu, MenuTrigger, MenuPopup, MenuItem, MenuSeparator } from '~/components/ui/menu'
 import appCss from '~/styles/app.css?url'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -30,24 +34,14 @@ const getSidebarData = createServerFn({ method: 'GET' }).handler(async () => {
   const session = await getSession()
   if (!session) return null
 
-  const [allUsers, workspaces] = await Promise.all([
-    db.select({ id: users.id, name: users.name, email: users.email }).from(users).orderBy(users.name),
-    workspaceService.list(session.ctx),
-  ])
+  const workspaces = await workspaceService.list(session.ctx)
 
   return {
     user: { id: session.user.id, name: session.user.name, email: session.user.email },
     workspace: { id: session.workspace.id, name: session.workspace.name, isPersonal: session.workspace.isPersonal },
-    users: allUsers,
     workspaces,
   }
 })
-
-const switchUser = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { userId: string })
-  .handler(async ({ data }) => {
-    setCurrentUserId(data.userId)
-  })
 
 const switchWorkspace = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => data as { workspaceId: string })
@@ -65,6 +59,14 @@ export const Route = createRootRouteWithContext<{
   validateSearch: (search: Record<string, unknown>): RootSearch => ({
     viewEvent: typeof search.viewEvent === 'string' ? search.viewEvent : undefined,
   }),
+  // Gate the whole app behind authentication. Unauthenticated visitors are
+  // redirected to /login (which is itself excluded from the check).
+  beforeLoad: async ({ location }) => {
+    if (location.pathname === '/login') return
+    const user = await fetchAuthUser()
+    if (!user) throw redirect({ to: '/login' })
+    return { user }
+  },
   head: () => ({
     meta: [
       { charSet: 'utf-8' },
@@ -126,12 +128,6 @@ function Sidebar() {
     await router.invalidate()
   }
 
-  async function handleUserChange(userId: string) {
-    if (userId === data?.user.id) return
-    await switchUser({ data: { userId } })
-    await refresh()
-  }
-
   async function handleWorkspaceChange(workspaceId: string) {
     if (workspaceId === data?.workspace.id) return
     await switchWorkspace({ data: { workspaceId } })
@@ -147,26 +143,9 @@ function Sidebar() {
         </span>
       </div>
 
-      {/* User / workspace switchers */}
+      {/* Workspace switcher */}
       {data && (
-        <div className="px-2 py-2 space-y-1.5 border-b border-gray-200 dark:border-gray-800">
-          <Select
-            items={data.users.map((u) => ({ value: u.id, label: u.name }))}
-            value={data.user.id}
-            onValueChange={(value) => handleUserChange(value as string)}
-          >
-            <SelectTrigger className="w-full justify-between">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectPopup>
-              {data.users.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
-
+        <div className="px-2 py-2 border-b border-gray-200 dark:border-gray-800">
           <Select
             items={data.workspaces.map((w) => ({ value: w.id, label: w.name }))}
             value={data.workspace.id}
@@ -204,21 +183,73 @@ function Sidebar() {
           </Link>
         ))}
       </nav>
+
+      {/* User quick actions */}
+      {data && <UserMenu name={data.user.name} email={data.user.email} />}
     </aside>
+  )
+}
+
+// ─── User menu ──────────────────────────────────────────────────────────────
+
+function UserMenu({ name, email }: { name: string; email: string }) {
+  const router = useRouter()
+  const queryClient = useQueryClient()
+  const initials = name.trim().slice(0, 2).toUpperCase() || '?'
+
+  async function handleLogout() {
+    await authClient.signOut()
+    queryClient.clear()
+    router.navigate({ to: '/login' })
+  }
+
+  return (
+    <div className="px-2 py-2 border-t border-gray-200 dark:border-gray-800">
+      <Menu>
+        <MenuTrigger className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors outline-none">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-950 text-xs font-medium text-blue-700 dark:text-blue-300">
+            {initials}
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">{name}</span>
+            <span className="block truncate text-xs text-gray-500 dark:text-gray-400">{email}</span>
+          </span>
+          <ChevronsUpDown className="size-4 shrink-0 text-gray-400" />
+        </MenuTrigger>
+        <MenuPopup className="w-52">
+          <MenuItem onClick={() => router.navigate({ to: '/settings' })}>
+            <Settings className="size-4" />
+            Account settings
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem
+            onClick={handleLogout}
+            className="text-red-600 dark:text-red-400 data-highlighted:bg-red-50 dark:data-highlighted:bg-red-950/40"
+          >
+            <LogOut className="size-4" />
+            Logout
+          </MenuItem>
+        </MenuPopup>
+      </Menu>
+    </div>
   )
 }
 
 // ─── Root document ────────────────────────────────────────────────────────────
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  // The login page renders standalone, without the app sidebar/chrome.
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const showChrome = pathname !== '/login'
+
   return (
     <html lang="en">
       <head>
         <HeadContent />
       </head>
       <body className="bg-gray-50 dark:bg-gray-950">
-        <Sidebar />
-        <main className="ml-56 min-h-screen p-6">{children}</main>
+        {showChrome && <Sidebar />}
+        <main className={showChrome ? 'ml-56 min-h-screen p-6' : 'min-h-screen'}>{children}</main>
         {import.meta.env.DEV && (
           <>
             <TanStackRouterDevtools position="bottom-right" />

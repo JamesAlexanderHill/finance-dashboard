@@ -46,7 +46,58 @@ export const users = pgTable('users', {
   id: id(),
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
+  // Managed by Better Auth. Property names must match Better Auth's `user`
+  // model fields (emailVerified, image, createdAt, updatedAt).
+  emailVerified: boolean('email_verified').notNull().default(false),
+  image: text('image'),
   createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// ─── Auth (Better Auth) ───────────────────────────────────────────────────────
+// These tables back Better Auth's core models. The `account` model is mapped to
+// `auth_accounts` so it doesn't collide with the app's financial `accounts`
+// table. Property names mirror Better Auth field names so the drizzle adapter
+// can map them without extra field config.
+
+export const sessions = pgTable('sessions', {
+  id: id(),
+  token: text('token').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const authAccounts = pgTable('auth_accounts', {
+  id: id(),
+  accountId: text('account_id').notNull(),
+  providerId: text('provider_id').notNull(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  accessToken: text('access_token'),
+  refreshToken: text('refresh_token'),
+  idToken: text('id_token'),
+  accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+  refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+  scope: text('scope'),
+  password: text('password'),
+  createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const verifications = pgTable('verifications', {
+  id: id(),
+  identifier: text('identifier').notNull(),
+  value: text('value').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 // ─── Workspaces ───────────────────────────────────────────────────────────────
@@ -344,6 +395,9 @@ export const eventRelationRelations = relations(eventRelations, ({ one }) => ({
 // ─── Type exports ─────────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect
+export type AuthSession = typeof sessions.$inferSelect
+export type AuthAccount = typeof authAccounts.$inferSelect
+export type Verification = typeof verifications.$inferSelect
 export type Workspace = typeof workspaces.$inferSelect
 export type WorkspaceMember = typeof workspaceMembers.$inferSelect
 export type WorkspaceMemberRole = (typeof workspaceMemberRoleEnum.enumValues)[number]
