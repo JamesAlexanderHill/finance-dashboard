@@ -147,26 +147,9 @@ function Sidebar() {
         </span>
       </div>
 
-      {/* User / workspace switchers */}
+      {/* Workspace switcher */}
       {data && (
-        <div className="px-2 py-2 space-y-1.5 border-b border-gray-200 dark:border-gray-800">
-          <Select
-            items={data.users.map((u) => ({ value: u.id, label: u.name }))}
-            value={data.user.id}
-            onValueChange={(value) => handleUserChange(value as string)}
-          >
-            <SelectTrigger className="w-full justify-between">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectPopup>
-              {data.users.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
-
+        <div className="px-2 py-2 border-b border-gray-200 dark:border-gray-800">
           <Select
             items={data.workspaces.map((w) => ({ value: w.id, label: w.name }))}
             value={data.workspace.id}
@@ -204,6 +187,28 @@ function Sidebar() {
           </Link>
         ))}
       </nav>
+
+      {/* User switcher */}
+      {data && (
+        <div className="px-2 py-2 border-t border-gray-200 dark:border-gray-800">
+          <Select
+            items={data.users.map((u) => ({ value: u.id, label: u.name }))}
+            value={data.user.id}
+            onValueChange={(value) => handleUserChange(value as string)}
+          >
+            <SelectTrigger className="w-full justify-between">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              {data.users.map((u) => (
+                <SelectItem key={u.id} value={u.id}>
+                  {u.name}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </div>
+      )}
     </aside>
   )
 }
