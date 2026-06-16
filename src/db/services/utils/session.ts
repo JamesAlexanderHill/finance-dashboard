@@ -1,4 +1,4 @@
-import { getCookie, setCookie } from '@tanstack/react-start/server'
+import { getCookie, setCookie, getRequest } from '@tanstack/react-start/server'
 import { createServerOnlyFn } from '@tanstack/react-start'
 import type { User, Workspace } from '~/db/schema'
 import { createContext, type RequestContext } from './context'
@@ -21,8 +21,9 @@ export type Session = {
  * bundle. Only ever called from within server functions / server routes.
  */
 const getAuthUserId = createServerOnlyFn(async (): Promise<string | null> => {
+  // Only `~/lib/auth` must be imported lazily — that's what keeps Better Auth
+  // (and its Node/Postgres deps) out of the client bundle.
   const { auth } = await import('~/lib/auth')
-  const { getRequest } = await import('@tanstack/react-start/server')
   const session = await auth.api.getSession({ headers: getRequest().headers })
   return session?.user?.id ?? null
 })

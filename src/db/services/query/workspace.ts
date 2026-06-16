@@ -66,7 +66,3 @@ export async function queryUserById(userId: string) {
   const [row] = await db.select().from(users).where(eq(users.id, userId))
   return row ?? null
 }
-
-export async function queryAllUsers() {
-  return db.select().from(users).orderBy(users.name)
-}

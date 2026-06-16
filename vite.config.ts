@@ -28,6 +28,6 @@ export default defineConfig({
   },
   ssr: {
     // In the SSR/server environment, use the real pg package (not the alias).
-    external: ['pg', 'drizzle-orm', 'drizzle-orm/node-postgres', 'uuidv7', 'better-auth'],
+    external: ['pg', 'drizzle-orm', 'drizzle-orm/node-postgres', 'uuidv7', 'better-auth', '@better-auth/passkey'],
   },
 })

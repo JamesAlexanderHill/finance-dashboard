@@ -20,9 +20,23 @@ export default defineConfig({
     env: {
       ...process.env,
       DATABASE_URL: TEST_DATABASE_URL,
+      // Auth must point at the test server's own origin so magic-link URLs and
+      // passkey (WebAuthn) origin/rpID validation line up with the browser.
+      BETTER_AUTH_URL: `http://localhost:${PORT}`,
+      BETTER_AUTH_SECRET:
+        process.env.BETTER_AUTH_SECRET ?? 'test-secret-please-change-at-least-32-chars',
+      PASSKEY_RP_ID: 'localhost',
     },
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'setup', testMatch: /global\.setup\.ts/ },
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: { args: ['--no-sandbox'] },
+      },
+      dependencies: ['setup'],
+    },
   ],
 })

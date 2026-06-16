@@ -1,9 +1,10 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { magicLink } from 'better-auth/plugins'
+import { passkey } from '@better-auth/passkey'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import { db } from '~/db'
-import { users, sessions, authAccounts, verifications } from '~/db/schema'
+import { users, sessions, authAccounts, verifications, passkeys } from '~/db/schema'
 // Imported from the concrete module (not the `~/db/services` barrel) to avoid a
 // circular import: the services barrel pulls in session.ts, which imports this
 // file.
@@ -24,6 +25,7 @@ export const auth = betterAuth({
       session: sessions,
       account: authAccounts,
       verification: verifications,
+      passkey: passkeys,
     },
   }),
 
@@ -39,6 +41,13 @@ export const auth = betterAuth({
         console.log(`\n🔗 Magic link for ${email}:\n   ${url}\n`)
       },
     }),
+    // WebAuthn passkeys. rpID is the host (no port/scheme); origin is the full
+    // app URL. In production set PASSKEY_RP_ID / BETTER_AUTH_URL accordingly.
+    passkey({
+      rpID: process.env.PASSKEY_RP_ID ?? 'localhost',
+      rpName: 'Finance Dashboard',
+      origin: process.env.BETTER_AUTH_URL ?? 'http://localhost:3000',
+    }),
     // Persists Better Auth cookies set from within TanStack Start server
     // functions / server routes.
     tanstackStartCookies(),
@@ -47,11 +56,13 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        // Magic-link sign-up may not include a name; the `name` column is NOT
-        // NULL, so fall back to the email's local part.
+        // Normalize the email (lower-case) so it matches the app's email
+        // lookups, and default a name (the NOT NULL `name` column) from the
+        // email local-part when magic-link sign-up doesn't provide one.
         before: async (user) => {
-          const name = (user.name ?? '').trim() || user.email.split('@')[0]
-          return { data: { ...user, name } }
+          const email = user.email.trim().toLowerCase()
+          const name = (user.name ?? '').trim() || email.split('@')[0]
+          return { data: { ...user, email, name } }
         },
         // The app expects every user to have a personal workspace.
         after: async (user) => {

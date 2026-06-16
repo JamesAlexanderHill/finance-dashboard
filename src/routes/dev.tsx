@@ -17,12 +17,22 @@ import { clearAllData, seedBase, seedSampleEvents } from '~/lib/seed'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
+// Dev tools mutate/wipe data, so guard them behind an authenticated session —
+// the server functions are callable directly, not just from the (gated) page.
+async function requireDevSession() {
+  const session = await getSession()
+  if (!session) throw new Error('Unauthorized')
+  return session
+}
+
 const devClearAll = createServerFn({ method: 'POST' }).handler(async () => {
+  await requireDevSession()
   await clearAllData()
   return { ok: true }
 })
 
 const devSeedBase = createServerFn({ method: 'POST' }).handler(async () => {
+  await requireDevSession()
   const [existingUser] = await db.select().from(users).limit(1)
   if (existingUser) return { ok: false, message: 'Users already exist. Clear data first.' }
   await seedBase()
@@ -30,6 +40,7 @@ const devSeedBase = createServerFn({ method: 'POST' }).handler(async () => {
 })
 
 const devSeedSampleEvents = createServerFn({ method: 'POST' }).handler(async () => {
+  await requireDevSession()
   const [sharedWorkspace] = await db
     .select()
     .from(workspaces)
@@ -89,6 +100,7 @@ const devRecomputeRates = createServerFn({ method: 'POST' }).handler(async () =>
 const devCreateAdditionalUser = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => data as { name: string; email: string; homeCurrencyCode: string })
   .handler(async ({ data }) => {
+    await requireDevSession()
     try {
       const { user, workspace } = await createUserWithPersonalWorkspace({
         name: data.name,

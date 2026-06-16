@@ -100,6 +100,24 @@ export const verifications = pgTable('verifications', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+// WebAuthn passkeys (Better Auth passkey plugin). Property names mirror the
+// plugin's field names (publicKey, credentialID, deviceType, backedUp, …).
+export const passkeys = pgTable('passkeys', {
+  id: id(),
+  name: text('name'),
+  publicKey: text('public_key').notNull(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  credentialID: text('credential_id').notNull(),
+  counter: integer('counter').notNull(),
+  deviceType: text('device_type').notNull(),
+  backedUp: boolean('backed_up').notNull(),
+  transports: text('transports'),
+  aaguid: text('aaguid'),
+  createdAt: createdAt(),
+})
+
 // ─── Workspaces ───────────────────────────────────────────────────────────────
 
 export const workspaces = pgTable('workspaces', {
@@ -398,6 +416,7 @@ export type User = typeof users.$inferSelect
 export type AuthSession = typeof sessions.$inferSelect
 export type AuthAccount = typeof authAccounts.$inferSelect
 export type Verification = typeof verifications.$inferSelect
+export type Passkey = typeof passkeys.$inferSelect
 export type Workspace = typeof workspaces.$inferSelect
 export type WorkspaceMember = typeof workspaceMembers.$inferSelect
 export type WorkspaceMemberRole = (typeof workspaceMemberRoleEnum.enumValues)[number]

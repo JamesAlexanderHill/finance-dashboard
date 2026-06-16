@@ -3,40 +3,30 @@ import { test, expect } from '@playwright/test'
 /**
  * End-to-end smoke tests covering the core navigation and data flows.
  *
- * Runs against a dedicated `db_test` Postgres database (see playwright.config.ts)
- * so "Clear all data" / "Seed base" on /dev never touch real data. Tests run
- * serially because each step depends on the database state left by the previous one.
+ * Runs authenticated as the seeded "Demo User A" (see global.setup.ts) against a
+ * dedicated `db_test` Postgres database, viewing the shared "Joint Finances"
+ * workspace that holds the sample data. Tests run serially.
  */
 test.describe.configure({ mode: 'serial' })
 
+// Reuse the authenticated, seeded browser state produced by the setup project.
+test.use({ storageState: 'e2e/.auth/demo-user.json' })
+
 test.describe('core flows', () => {
-  test('dev tools: clear and seed demo data', async ({ page }) => {
+  test('dev tools page loads for an authenticated user', async ({ page }) => {
     await page.goto('/dev')
     await expect(page.getByRole('heading', { name: 'Dev Tools' })).toBeVisible()
-    await page.waitForLoadState('networkidle')
-
-    const clearRow = page.locator('div', { has: page.getByRole('button', { name: 'Clear all data' }) }).last()
-    await clearRow.getByRole('button', { name: 'Clear all data' }).click()
-    await expect(clearRow.getByText('Done!')).toBeVisible()
-
-    const seedBaseRow = page.locator('div', { has: page.getByRole('button', { name: 'Seed base' }) }).last()
-    await seedBaseRow.getByRole('button', { name: 'Seed base' }).click()
-    await expect(seedBaseRow.getByText('Done!')).toBeVisible()
-
-    const seedEventsRow = page.locator('div', { has: page.getByRole('button', { name: 'Seed sample events' }) }).last()
-    await seedEventsRow.getByRole('button', { name: 'Seed sample events' }).click()
-    await expect(seedEventsRow.getByText('Done!')).toBeVisible()
-
-    await page.reload()
-    await expect(page.getByText('Demo User', { exact: true })).toBeVisible()
   })
 
   test('dashboard shows net worth and account balance cards', async ({ page }) => {
     await page.goto('/')
 
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
-    await expect(page.getByText(/Net Worth/)).toBeVisible()
-    await expect(page.getByText('CommBank')).toBeVisible()
+    // The net-worth card label, e.g. "Net Worth (AUD)" — distinct from the
+    // "Net Worth History" chart heading.
+    await expect(page.getByText(/Net Worth \(/)).toBeVisible()
+    // CommBank appears as both an account card and a chart series — assert ≥1.
+    await expect(page.getByText('CommBank').first()).toBeVisible()
   })
 
   test('account detail page shows instruments and recent events', async ({ page }) => {
