@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WorkspacesRouteImport } from './routes/workspaces'
 import { Route as DevRouteImport } from './routes/dev'
 import { Route as CategoriesRouteImport } from './routes/categories'
 import { Route as EventsRouteRouteImport } from './routes/events/route'
@@ -27,6 +28,11 @@ import { Route as AccountsAccountIdEventsIndexRouteImport } from './routes/accou
 import { Route as AccountsAccountIdInstrumentsInstrumentIdRouteImport } from './routes/accounts/$accountId/instruments/$instrumentId'
 import { Route as AccountsAccountIdFilesFileIdRouteImport } from './routes/accounts/$accountId/files/$fileId'
 
+const WorkspacesRoute = WorkspacesRouteImport.update({
+  id: '/workspaces',
+  path: '/workspaces',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DevRoute = DevRouteImport.update({
   id: '/dev',
   path: '/dev',
@@ -127,6 +133,7 @@ export interface FileRoutesByFullPath {
   '/events': typeof EventsRouteRouteWithChildren
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
+  '/workspaces': typeof WorkspacesRoute
   '/accounts/$accountId': typeof AccountsAccountIdRouteRouteWithChildren
   '/accounts/': typeof AccountsIndexRoute
   '/events/': typeof EventsIndexRoute
@@ -144,6 +151,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
+  '/workspaces': typeof WorkspacesRoute
   '/accounts': typeof AccountsIndexRoute
   '/events': typeof EventsIndexRoute
   '/accounts/$accountId': typeof AccountsAccountIdIndexRoute
@@ -160,6 +168,7 @@ export interface FileRoutesById {
   '/events': typeof EventsRouteRouteWithChildren
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
+  '/workspaces': typeof WorkspacesRoute
   '/accounts/$accountId': typeof AccountsAccountIdRouteRouteWithChildren
   '/accounts/': typeof AccountsIndexRoute
   '/events/': typeof EventsIndexRoute
@@ -181,6 +190,7 @@ export interface FileRouteTypes {
     | '/events'
     | '/categories'
     | '/dev'
+    | '/workspaces'
     | '/accounts/$accountId'
     | '/accounts/'
     | '/events/'
@@ -198,6 +208,7 @@ export interface FileRouteTypes {
     | '/'
     | '/categories'
     | '/dev'
+    | '/workspaces'
     | '/accounts'
     | '/events'
     | '/accounts/$accountId'
@@ -213,6 +224,7 @@ export interface FileRouteTypes {
     | '/events'
     | '/categories'
     | '/dev'
+    | '/workspaces'
     | '/accounts/$accountId'
     | '/accounts/'
     | '/events/'
@@ -233,10 +245,18 @@ export interface RootRouteChildren {
   EventsRouteRoute: typeof EventsRouteRouteWithChildren
   CategoriesRoute: typeof CategoriesRoute
   DevRoute: typeof DevRoute
+  WorkspacesRoute: typeof WorkspacesRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/workspaces': {
+      id: '/workspaces'
+      path: '/workspaces'
+      fullPath: '/workspaces'
+      preLoaderRoute: typeof WorkspacesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dev': {
       id: '/dev'
       path: '/dev'
@@ -462,6 +482,7 @@ const rootRouteChildren: RootRouteChildren = {
   EventsRouteRoute: EventsRouteRouteWithChildren,
   CategoriesRoute: CategoriesRoute,
   DevRoute: DevRoute,
+  WorkspacesRoute: WorkspacesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

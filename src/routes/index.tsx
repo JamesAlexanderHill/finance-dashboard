@@ -1,9 +1,7 @@
 import * as React from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { db } from '~/db'
-import { users } from '~/db/schema'
-import { accountService, instrumentService, rateService, createContext } from '~/db/services'
+import { accountService, instrumentService, rateService, getSession } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import { balanceColorClass } from '~/lib/format'
 import BalanceHistogram, { type InstrumentRates } from '~/components/balance-histogram'
@@ -14,10 +12,10 @@ type AccountSummary = { id: string; color: AccountColorName | null }
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
-  const [user] = await db.select().from(users).limit(1)
-  if (!user) return { user: null, balances: [], instruments: [], accounts: [] as AccountSummary[], accountNames: {} as Record<string, string>, rates: {} as InstrumentRates }
+  const session = await getSession()
+  if (!session) return { user: null, workspace: null, balances: [], instruments: [], accounts: [] as AccountSummary[], accountNames: {} as Record<string, string>, rates: {} as InstrumentRates }
 
-  const ctx = createContext(user.id)
+  const { ctx, user, workspace } = session
 
   const [balances, accountsResult, instrumentsResult] = await Promise.all([
     instrumentService.getAccountBalances(ctx),
@@ -33,7 +31,7 @@ const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
     Array.from(ratesMap.entries()).map(([id, r]) => [id, { rate: r.rate, asOf: r.asOf.toISOString(), source: r.source }]),
   )
 
-  return { user, balances, instruments: instrumentsResult.data, accounts, accountNames, rates }
+  return { user, workspace, balances, instruments: instrumentsResult.data, accounts, accountNames, rates }
 })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -46,9 +44,9 @@ export const Route = createFileRoute('/')({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function DashboardPage() {
-  const { user, balances, instruments, accounts, accountNames, rates } = Route.useLoaderData()
+  const { user, workspace, balances, instruments, accounts, accountNames, rates } = Route.useLoaderData()
 
-  if (!user) {
+  if (!user || !workspace) {
     return (
       <div className="max-w-lg mx-auto mt-16 text-center">
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
@@ -72,8 +70,8 @@ function DashboardPage() {
     byAccount.get(b.accountId)!.push(b)
   }
 
-  // Net worth: sum fiat balances in the user's home currency only
-  const homeCurrency = user.homeCurrencyCode
+  // Net worth: sum fiat balances in the workspace's home currency only
+  const homeCurrency = workspace.homeCurrencyCode
   const homeBalances = balances.filter(
     (b) => b.instrumentTicker === homeCurrency,
   )

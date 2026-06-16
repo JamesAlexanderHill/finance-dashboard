@@ -7,7 +7,7 @@ import type { ParsedEvent } from '~/importers/canonical'
 import type { RequestContext } from '../utils/context'
 import { queryAccountById } from '../query/account'
 import { queryEventByDedupeKey } from '../query/event'
-import { queryCategoriesByUser } from '../query/category'
+import { queryCategoriesByWorkspace } from '../query/category'
 import { checkpointService } from './checkpoint'
 import { rateService } from './rate'
 
@@ -74,17 +74,17 @@ function netAmount(event: ParsedEvent): bigint {
 }
 
 function resolveCategoryPath(
-  userId: string,
+  workspaceId: string,
   path: string,
-  userCategories: Category[],
+  workspaceCategories: Category[],
 ): string | null {
   if (!path) return null
   const parts = path.toLowerCase().split(':')
   let parentId: string | null = null
 
   for (const part of parts) {
-    const match = userCategories.find(
-      (c) => c.name.toLowerCase() === part && c.parentId === parentId && c.userId === userId,
+    const match = workspaceCategories.find(
+      (c) => c.name.toLowerCase() === part && c.parentId === parentId && c.workspaceId === workspaceId,
     )
     if (!match) return null
     parentId = match.id
@@ -98,7 +98,7 @@ async function resolveInstruments(
   accountId: string,
   drafts: InstrumentDraft[],
 ): Promise<Map<string, string>> {
-  const { userId } = ctx
+  const { workspaceId } = ctx
   const instrumentMap = new Map<string, string>()
 
   for (const draft of drafts) {
@@ -109,7 +109,7 @@ async function resolveInstruments(
       const [created] = await db
         .insert(instruments)
         .values({
-          userId,
+          workspaceId,
           accountId,
           ticker: draft.ticker,
           exponent: draft.exponent,
@@ -132,14 +132,14 @@ async function commitEventsForFile(
   instrumentMap: Map<string, string>,
   categoryAssignments: Record<string, string | null>,
   restoreDeletedChosen: boolean,
-  userCategories: Category[],
+  workspaceCategories: Category[],
 ): Promise<FileImportResult> {
-  const { userId } = ctx
+  const { workspaceId } = ctx
 
   const [file] = await db
     .insert(files)
     .values({
-      userId,
+      workspaceId,
       accountId,
       filename,
       importedCount: 0,
@@ -195,7 +195,7 @@ async function commitEventsForFile(
         const [newEvent] = await tx
           .insert(events)
           .values({
-            userId,
+            workspaceId,
             accountId,
             fileId,
             effectiveAt: parsed.effectiveAt,
@@ -212,10 +212,10 @@ async function commitEventsForFile(
 
           const catKey = `${parsed.eventGroup}_${legIdx}`
           const catPath = categoryAssignments[catKey] ?? null
-          const categoryId = catPath ? resolveCategoryPath(userId, catPath, userCategories) : null
+          const categoryId = catPath ? resolveCategoryPath(workspaceId, catPath, workspaceCategories) : null
 
           await tx.insert(legs).values({
-            userId,
+            workspaceId,
             eventId: newEvent.id,
             instrumentId,
             unitCount: leg.amountMinor,
@@ -241,13 +241,13 @@ async function commitEventsForFile(
 
 async function commitImport(ctx: RequestContext, params: CommitImportParams): Promise<string> {
   const { accountId, filename, restoreDeletedChosen } = params
-  const { userId } = ctx
+  const { workspaceId } = ctx
 
-  const account = await queryAccountById(userId, accountId)
+  const account = await queryAccountById(workspaceId, accountId)
   if (!account) throw new Error(`Account not found: ${accountId}`)
 
   const instrumentMap = await resolveInstruments(ctx, accountId, params.instrumentDrafts)
-  const userCategories = await queryCategoriesByUser(userId)
+  const workspaceCategories = await queryCategoriesByWorkspace(workspaceId)
 
   const result = await commitEventsForFile(
     ctx,
@@ -257,7 +257,7 @@ async function commitImport(ctx: RequestContext, params: CommitImportParams): Pr
     instrumentMap,
     params.categoryAssignments,
     restoreDeletedChosen,
-    userCategories,
+    workspaceCategories,
   )
 
   for (const instrumentId of new Set(instrumentMap.values())) {
@@ -271,13 +271,13 @@ async function commitImport(ctx: RequestContext, params: CommitImportParams): Pr
 /** Commit several canonical CSV files in one run, sharing a single instrument resolution pass. */
 async function commitBulkImport(ctx: RequestContext, params: CommitBulkImportParams): Promise<FileImportResult[]> {
   const { accountId, restoreDeletedChosen } = params
-  const { userId } = ctx
+  const { workspaceId } = ctx
 
-  const account = await queryAccountById(userId, accountId)
+  const account = await queryAccountById(workspaceId, accountId)
   if (!account) throw new Error(`Account not found: ${accountId}`)
 
   const instrumentMap = await resolveInstruments(ctx, accountId, params.instrumentDrafts)
-  const userCategories = await queryCategoriesByUser(userId)
+  const workspaceCategories = await queryCategoriesByWorkspace(workspaceId)
 
   const results: FileImportResult[] = []
   for (const file of params.files) {
@@ -289,7 +289,7 @@ async function commitBulkImport(ctx: RequestContext, params: CommitBulkImportPar
       instrumentMap,
       {},
       restoreDeletedChosen,
-      userCategories,
+      workspaceCategories,
     )
     results.push(result)
   }

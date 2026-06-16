@@ -16,27 +16,27 @@ const instrumentIdRef = sql.raw('"instruments"."id"')
  * Balance for an instrument as of now: latest completed-month checkpoint
  * (if any) plus the sum of non-deleted legs since that checkpoint's period.
  */
-function balanceSinceCheckpointExpr(userId: string) {
+function balanceSinceCheckpointExpr(workspaceId: string) {
   return sql<string>`(
     coalesce((select c.balance from instrument_checkpoints c
-      where c.instrument_id = ${instrumentIdRef} and c.user_id = ${userId}
+      where c.instrument_id = ${instrumentIdRef} and c.workspace_id = ${workspaceId}
       order by c.period_end desc limit 1), 0)
     + coalesce((select sum(l.unit_count) from legs l
       inner join events e on e.id = l.event_id
-      where l.instrument_id = ${instrumentIdRef} and l.user_id = ${userId}
+      where l.instrument_id = ${instrumentIdRef} and l.workspace_id = ${workspaceId}
         and e.deleted_at is null
         and e.effective_at >= coalesce((select c2.period_end from instrument_checkpoints c2
-          where c2.instrument_id = ${instrumentIdRef} and c2.user_id = ${userId}
+          where c2.instrument_id = ${instrumentIdRef} and c2.workspace_id = ${workspaceId}
           order by c2.period_end desc limit 1), '-infinity'::timestamptz)
       ), 0)
   )`
 }
 
-export async function queryInstrumentsWithBalance(userId: string, opts: QueryInstrumentsOpts = {}) {
+export async function queryInstrumentsWithBalance(workspaceId: string, opts: QueryInstrumentsOpts = {}) {
   const { limit = 1000, offset = 0, accountIds } = opts
 
   const where = and(
-    eq(instruments.userId, userId),
+    eq(instruments.workspaceId, workspaceId),
     accountIds?.length ? inArray(instruments.accountId, accountIds) : undefined,
   )
 
@@ -44,12 +44,12 @@ export async function queryInstrumentsWithBalance(userId: string, opts: QueryIns
     db
       .select({
         id: instruments.id,
-        userId: instruments.userId,
+        workspaceId: instruments.workspaceId,
         accountId: instruments.accountId,
         name: instruments.name,
         ticker: instruments.ticker,
         exponent: instruments.exponent,
-        balance: balanceSinceCheckpointExpr(userId).as('balance'),
+        balance: balanceSinceCheckpointExpr(workspaceId).as('balance'),
       })
       .from(instruments)
       .where(where)
@@ -62,10 +62,10 @@ export async function queryInstrumentsWithBalance(userId: string, opts: QueryIns
   return { data, total }
 }
 
-export async function queryInstrumentBalances(userId: string, accountIds?: string[]) {
+export async function queryInstrumentBalances(workspaceId: string, accountIds?: string[]) {
   const where = accountIds?.length
-    ? and(eq(legs.userId, userId), inArray(events.accountId, accountIds))
-    : eq(legs.userId, userId)
+    ? and(eq(legs.workspaceId, workspaceId), inArray(events.accountId, accountIds))
+    : eq(legs.workspaceId, workspaceId)
 
   return db
     .select({
@@ -89,7 +89,7 @@ export async function queryInstrumentBalances(userId: string, accountIds?: strin
     )
 }
 
-export async function queryAccountBalances(userId: string) {
+export async function queryAccountBalances(workspaceId: string) {
   const rows = await db
     .select({
       accountId: instruments.accountId,
@@ -97,23 +97,23 @@ export async function queryAccountBalances(userId: string) {
       instrumentId: instruments.id,
       instrumentTicker: instruments.ticker,
       instrumentExponent: instruments.exponent,
-      unitCount: balanceSinceCheckpointExpr(userId),
+      unitCount: balanceSinceCheckpointExpr(workspaceId),
     })
     .from(instruments)
     .innerJoin(accounts, eq(instruments.accountId, accounts.id))
     .where(and(
-      eq(instruments.userId, userId),
-      sql`exists (select 1 from legs l inner join events e on e.id = l.event_id where l.instrument_id = ${instrumentIdRef} and l.user_id = ${userId} and e.deleted_at is null)`,
+      eq(instruments.workspaceId, workspaceId),
+      sql`exists (select 1 from legs l inner join events e on e.id = l.event_id where l.instrument_id = ${instrumentIdRef} and l.workspace_id = ${workspaceId} and e.deleted_at is null)`,
     ))
 
   return rows.map((r) => ({ ...r, unitCount: BigInt(r.unitCount) }))
 }
 
-export async function queryInstrumentById(userId: string, instrumentId: string) {
+export async function queryInstrumentById(workspaceId: string, instrumentId: string) {
   const [instrument] = await db
     .select()
     .from(instruments)
-    .where(and(eq(instruments.id, instrumentId), eq(instruments.userId, userId)))
+    .where(and(eq(instruments.id, instrumentId), eq(instruments.workspaceId, workspaceId)))
 
   return instrument ?? null
 }
@@ -131,11 +131,11 @@ export interface AccountBalance {
  * Balance for a single instrument, excluding soft-deleted events: latest
  * completed-month checkpoint (if any) plus the sum of legs since then.
  */
-export async function queryInstrumentBalance(userId: string, instrumentId: string): Promise<bigint> {
+export async function queryInstrumentBalance(workspaceId: string, instrumentId: string): Promise<bigint> {
   const [checkpoint] = await db
     .select({ periodEnd: instrumentCheckpoints.periodEnd, balance: instrumentCheckpoints.balance })
     .from(instrumentCheckpoints)
-    .where(and(eq(instrumentCheckpoints.userId, userId), eq(instrumentCheckpoints.instrumentId, instrumentId)))
+    .where(and(eq(instrumentCheckpoints.workspaceId, workspaceId), eq(instrumentCheckpoints.instrumentId, instrumentId)))
     .orderBy(desc(instrumentCheckpoints.periodEnd))
     .limit(1)
 
@@ -146,7 +146,7 @@ export async function queryInstrumentBalance(userId: string, instrumentId: strin
     .where(
       and(
         eq(legs.instrumentId, instrumentId),
-        eq(legs.userId, userId),
+        eq(legs.workspaceId, workspaceId),
         isNull(events.deletedAt),
         checkpoint ? gte(events.effectiveAt, checkpoint.periodEnd) : undefined,
       ),
@@ -206,12 +206,12 @@ function rangeStartFor(range: BalanceHistoryRange, earliest: string | null): Dat
  * The instrument's balance as of `windowStart`: the latest completed-month checkpoint at or
  * before it, plus the sum of non-deleted legs between that checkpoint and `windowStart`.
  */
-async function balanceAsOf(userId: string, instrumentId: string, windowStart: Date): Promise<bigint> {
+async function balanceAsOf(workspaceId: string, instrumentId: string, windowStart: Date): Promise<bigint> {
   const [checkpoint] = await db
     .select({ periodEnd: instrumentCheckpoints.periodEnd, balance: instrumentCheckpoints.balance })
     .from(instrumentCheckpoints)
     .where(and(
-      eq(instrumentCheckpoints.userId, userId),
+      eq(instrumentCheckpoints.workspaceId, workspaceId),
       eq(instrumentCheckpoints.instrumentId, instrumentId),
       lte(instrumentCheckpoints.periodEnd, windowStart),
     ))
@@ -227,7 +227,7 @@ async function balanceAsOf(userId: string, instrumentId: string, windowStart: Da
     .innerJoin(events, eq(legs.eventId, events.id))
     .where(and(
       eq(legs.instrumentId, instrumentId),
-      eq(legs.userId, userId),
+      eq(legs.workspaceId, workspaceId),
       isNull(events.deletedAt),
       gte(events.effectiveAt, checkpointEnd),
       lt(events.effectiveAt, windowStart),
@@ -242,7 +242,7 @@ async function balanceAsOf(userId: string, instrumentId: string, windowStart: Da
  * Each point's `balance` is the instrument's balance as of the end of that period.
  */
 export async function queryInstrumentBalanceHistory(
-  userId: string,
+  workspaceId: string,
   instrumentId: string,
   range: BalanceHistoryRange,
   period: BalanceHistoryPeriod = 'day',
@@ -256,14 +256,14 @@ export async function queryInstrumentBalanceHistory(
     })
     .from(legs)
     .innerJoin(events, eq(legs.eventId, events.id))
-    .where(and(eq(legs.instrumentId, instrumentId), eq(legs.userId, userId), isNull(events.deletedAt)))
+    .where(and(eq(legs.instrumentId, instrumentId), eq(legs.workspaceId, workspaceId), isNull(events.deletedAt)))
 
   const rangeStart = rangeStartFor(range, earliest)
   const periodStart = truncateToPeriod(rangeStart, period)
 
   // Balance as of the start of the window: latest checkpoint at or before it,
   // plus any legs between that checkpoint and the window start.
-  const startBalance = await balanceAsOf(userId, instrumentId, periodStart)
+  const startBalance = await balanceAsOf(workspaceId, instrumentId, periodStart)
 
   // Net change per period within the window.
   const windowSums = await db
@@ -275,7 +275,7 @@ export async function queryInstrumentBalanceHistory(
     .innerJoin(events, eq(legs.eventId, events.id))
     .where(and(
       eq(legs.instrumentId, instrumentId),
-      eq(legs.userId, userId),
+      eq(legs.workspaceId, workspaceId),
       isNull(events.deletedAt),
       gte(events.effectiveAt, periodStart),
       lte(events.effectiveAt, endDate),

@@ -21,7 +21,7 @@ async function refresh(ctx: RequestContext, instrumentId: string): Promise<void>
     .innerJoin(events, eq(legs.eventId, events.id))
     .where(and(
       eq(legs.instrumentId, instrumentId),
-      eq(legs.userId, ctx.userId),
+      eq(legs.workspaceId, ctx.workspaceId),
       isNull(events.deletedAt),
       lt(events.effectiveAt, currentMonthStart),
     ))
@@ -33,28 +33,28 @@ async function refresh(ctx: RequestContext, instrumentId: string): Promise<void>
     running += BigInt(row.total)
     const monthStart = new Date(row.month)
     const periodEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1))
-    return { userId: ctx.userId, instrumentId, periodEnd, balance: running }
+    return { workspaceId: ctx.workspaceId, instrumentId, periodEnd, balance: running }
   })
 
   await db.transaction(async (tx) => {
     await tx.delete(instrumentCheckpoints).where(and(
-      eq(instrumentCheckpoints.userId, ctx.userId),
+      eq(instrumentCheckpoints.workspaceId, ctx.workspaceId),
       eq(instrumentCheckpoints.instrumentId, instrumentId),
     ))
     if (rows.length > 0) await tx.insert(instrumentCheckpoints).values(rows)
   })
 }
 
-/** Refresh checkpoints for every instrument owned by the user. */
+/** Refresh checkpoints for every instrument in the workspace. */
 async function refreshAll(ctx: RequestContext): Promise<number> {
-  const userInstruments = await db
+  const workspaceInstruments = await db
     .select({ id: instruments.id })
     .from(instruments)
-    .where(eq(instruments.userId, ctx.userId))
+    .where(eq(instruments.workspaceId, ctx.workspaceId))
 
-  for (const { id } of userInstruments) await refresh(ctx, id)
+  for (const { id } of workspaceInstruments) await refresh(ctx, id)
 
-  return userInstruments.length
+  return workspaceInstruments.length
 }
 
 export const checkpointService = { refresh, refreshAll }

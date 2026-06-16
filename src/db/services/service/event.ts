@@ -9,19 +9,19 @@ import {
 
 async function listByAccount(ctx: RequestContext, accountId: string, opts: PaginationOptions = {}) {
   const { limit = 20, offset = 0 } = opts
-  const { data, total } = await queryEventsByAccount(ctx.userId, accountId, opts)
+  const { data, total } = await queryEventsByAccount(ctx.workspaceId, accountId, opts)
   return buildPaginatedResult(data, total, limit, offset)
 }
 
 async function listByFile(ctx: RequestContext, fileId: string, opts: PaginationOptions = {}) {
   const { limit = 20, offset = 0 } = opts
-  const { data, total } = await queryEventsByFile(ctx.userId, fileId, opts)
+  const { data, total } = await queryEventsByFile(ctx.workspaceId, fileId, opts)
   return buildPaginatedResult(data, total, limit, offset)
 }
 
 async function listByInstrument(ctx: RequestContext, instrumentId: string, opts: PaginationOptions = {}) {
   const { limit = 20, offset = 0 } = opts
-  const { data, total } = await queryEventsByInstrument(ctx.userId, instrumentId, opts)
+  const { data, total } = await queryEventsByInstrument(ctx.workspaceId, instrumentId, opts)
   return buildPaginatedResult(data, total, limit, offset)
 }
 
@@ -30,7 +30,7 @@ async function listAll(
   opts: PaginationOptions & { accountId?: string } = {},
 ) {
   const { limit = 20, offset = 0 } = opts
-  const { data, total } = await queryAllEvents(ctx.userId, opts)
+  const { data, total } = await queryAllEvents(ctx.workspaceId, opts)
   return buildPaginatedResult(data, total, limit, offset)
 }
 

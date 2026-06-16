@@ -4,7 +4,7 @@ import { files, events, legs } from '~/db/schema'
 import type { RequestContext } from '../utils/context'
 import { buildPaginatedResult, type PaginationOptions } from '../utils/pagination'
 import {
-  queryFilesByUser,
+  queryFilesByWorkspace,
   queryFilesByAccount,
   queryFileById,
   queryFileCountsByAccount,
@@ -13,18 +13,18 @@ import { checkpointService } from './checkpoint'
 import { rateService } from './rate'
 
 async function getById(ctx: RequestContext, fileId: string) {
-  return queryFileById(ctx.userId, fileId)
+  return queryFileById(ctx.workspaceId, fileId)
 }
 
 async function listByUser(ctx: RequestContext, opts: PaginationOptions = {}) {
   const { limit = 20, offset = 0 } = opts
-  const { data, total } = await queryFilesByUser(ctx.userId, opts)
+  const { data, total } = await queryFilesByWorkspace(ctx.workspaceId, opts)
   return buildPaginatedResult(data, total, limit, offset)
 }
 
 async function listByAccount(ctx: RequestContext, accountId: string, opts: PaginationOptions = {}) {
   const { limit = 20, offset = 0 } = opts
-  const { data, total } = await queryFilesByAccount(ctx.userId, accountId, opts)
+  const { data, total } = await queryFilesByAccount(ctx.workspaceId, accountId, opts)
   return buildPaginatedResult(data, total, limit, offset)
 }
 
@@ -32,18 +32,18 @@ async function countsByAccount(
   ctx: RequestContext,
   accountIds: string[],
 ): Promise<{ accountId: string; count: number }[]> {
-  return queryFileCountsByAccount(ctx.userId, accountIds)
+  return queryFileCountsByAccount(ctx.workspaceId, accountIds)
 }
 
 async function remove(ctx: RequestContext, fileId: string) {
-  const file = await queryFileById(ctx.userId, fileId)
+  const file = await queryFileById(ctx.workspaceId, fileId)
   if (!file) throw new Error(`File not found: ${fileId}`)
 
   const affectedInstrumentIds = await db.transaction(async (tx) => {
     const fileEvents = await tx
       .select({ id: events.id })
       .from(events)
-      .where(and(eq(events.fileId, fileId), eq(events.userId, ctx.userId)))
+      .where(and(eq(events.fileId, fileId), eq(events.workspaceId, ctx.workspaceId)))
 
     let instrumentIds: string[] = []
     if (fileEvents.length > 0) {

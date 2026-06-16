@@ -19,7 +19,7 @@ import { ACCOUNT_COLORS } from '~/lib/chart-colors'
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const id = () => text('id').primaryKey().$defaultFn(() => uuidv7())
-const userId = () => text('user_id').notNull()
+const workspaceId = () => text('workspace_id').notNull()
 const createdAt = () =>
   timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 
@@ -38,20 +38,52 @@ export const rateSourceEnum = pgEnum('rate_source', ['transaction', 'manual'])
 
 export const accountColorEnum = pgEnum('account_color', ACCOUNT_COLORS)
 
+export const workspaceMemberRoleEnum = pgEnum('workspace_member_role', ['owner', 'member'])
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 export const users = pgTable('users', {
   id: id(),
   name: text('name').notNull(),
-  homeCurrencyCode: text('home_currency_code').notNull(),
+  email: text('email').notNull().unique(),
   createdAt: createdAt(),
 })
+
+// ─── Workspaces ───────────────────────────────────────────────────────────────
+
+export const workspaces = pgTable('workspaces', {
+  id: id(),
+  name: text('name').notNull(),
+  homeCurrencyCode: text('home_currency_code').notNull(),
+  // Every user gets exactly one personal workspace, created alongside their
+  // account. Personal workspaces can't have members added/removed.
+  isPersonal: boolean('is_personal').notNull().default(false),
+  ownerId: text('owner_id').notNull().references(() => users.id),
+  createdAt: createdAt(),
+})
+
+// ─── Workspace Members ────────────────────────────────────────────────────────
+
+export const workspaceMembers = pgTable(
+  'workspace_members',
+  {
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    role: workspaceMemberRoleEnum('role').notNull().default('member'),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.userId] })],
+)
 
 // ─── Accounts ─────────────────────────────────────────────────────────────────
 
 export const accounts = pgTable('accounts', {
   id: id(),
-  userId: userId().references(() => users.id),
+  workspaceId: workspaceId().references(() => workspaces.id),
   name: text('name').notNull(),
   defaultInstrumentId: text('default_instrument_id').references((): AnyPgColumn => instruments.id),
   // Base chart hue for this account's instruments. null = auto-assigned by account order.
@@ -63,7 +95,7 @@ export const accounts = pgTable('accounts', {
 
 export const instruments = pgTable('instruments', {
   id: id(),
-  userId: userId().references(() => users.id),
+  workspaceId: workspaceId().references(() => workspaces.id),
   accountId: text('account_id')
     .notNull()
     .references(() => accounts.id),
@@ -76,7 +108,7 @@ export const instruments = pgTable('instruments', {
 
 export const categories = pgTable('categories', {
   id: id(),
-  userId: userId().references(() => users.id),
+  workspaceId: workspaceId().references(() => workspaces.id),
   parentId: text('parent_id').references((): AnyPgColumn => categories.id),
   name: text('name').notNull(),
 });
@@ -85,7 +117,7 @@ export const categories = pgTable('categories', {
 
 export const files = pgTable('files', {
   id: id(),
-  userId: userId().references(() => users.id),
+  workspaceId: workspaceId().references(() => workspaces.id),
   accountId: text('account_id')
     .notNull()
     .references(() => accounts.id),
@@ -106,7 +138,7 @@ export const files = pgTable('files', {
 
 export const events = pgTable('events', {
   id: id(),
-  userId: userId().references(() => users.id),
+  workspaceId: workspaceId().references(() => workspaces.id),
   accountId: text('account_id')
     .notNull()
     .references(() => accounts.id),
@@ -125,7 +157,7 @@ export const events = pgTable('events', {
 
 export const legs = pgTable('legs', {
   id: id(),
-  userId: userId().references(() => users.id),
+  workspaceId: workspaceId().references(() => workspaces.id),
   eventId: text('event_id')
     .notNull()
     .references(() => events.id),
@@ -145,7 +177,7 @@ export const instrumentCheckpoints = pgTable(
   'instrument_checkpoints',
   {
     id: id(),
-    userId: userId().references(() => users.id),
+    workspaceId: workspaceId().references(() => workspaces.id),
     instrumentId: text('instrument_id')
       .notNull()
       .references(() => instruments.id),
@@ -160,14 +192,14 @@ export const instrumentCheckpoints = pgTable(
 
 // ─── Instrument Rates ─────────────────────────────────────────────────────────
 
-// 1 unit of `instrumentId` = `rate` units of the user's home currency
-// (users.homeCurrencyCode). Instruments whose ticker === homeCurrencyCode have
-// no row (implicit rate = 1).
+// 1 unit of `instrumentId` = `rate` units of the workspace's home currency
+// (workspaces.homeCurrencyCode). Instruments whose ticker === homeCurrencyCode
+// have no row (implicit rate = 1).
 export const instrumentRates = pgTable(
   'instrument_rates',
   {
     id: id(),
-    userId: userId().references(() => users.id),
+    workspaceId: workspaceId().references(() => workspaces.id),
     instrumentId: text('instrument_id')
       .notNull()
       .references(() => instruments.id),
@@ -183,7 +215,7 @@ export const instrumentRates = pgTable(
 
 export const lineItems = pgTable('line_items', {
   id: id(),
-  userId: userId().references(() => users.id),
+  workspaceId: workspaceId().references(() => workspaces.id),
   legId: text('leg_id')
     .notNull()
     .references(() => legs.id),
@@ -209,6 +241,26 @@ export const eventRelations = pgTable(
 )
 
 // ─── Relations ────────────────────────────────────────────────────────────────
+
+export const usersRelations = relations(users, ({ many }) => ({
+  workspaceMembers: many(workspaceMembers),
+  ownedWorkspaces: many(workspaces, { relationName: 'workspaceOwner' }),
+}))
+
+export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
+  owner: one(users, {
+    fields: [workspaces.ownerId],
+    references: [users.id],
+    relationName: 'workspaceOwner',
+  }),
+  members: many(workspaceMembers),
+}))
+
+export const workspaceMembersRelations = relations(workspaceMembers, ({ one }) => ({
+  workspace: one(workspaces, { fields: [workspaceMembers.workspaceId], references: [workspaces.id] }),
+  user: one(users, { fields: [workspaceMembers.userId], references: [users.id] }),
+}))
+
 export const accountsRelations = relations(accounts, ({ one, many }) => ({// account -> instruments (via instruments.accountId)
   instruments: many(instruments, { relationName: 'accountInstruments' }),
 
@@ -218,7 +270,7 @@ export const accountsRelations = relations(accounts, ({ one, many }) => ({// acc
     relationName: 'defaultInstrument',
   }),
 
-  user: one(users, { fields: [accounts.userId], references: [users.id] }),
+  workspace: one(workspaces, { fields: [accounts.workspaceId], references: [workspaces.id] }),
 }))
 
 export const instrumentsRelations = relations(instruments, ({ one, many }) => ({
@@ -235,7 +287,7 @@ export const instrumentsRelations = relations(instruments, ({ one, many }) => ({
   }),
 
   // optional but usually useful
-  user: one(users, { fields: [instruments.userId], references: [users.id] }),
+  workspace: one(workspaces, { fields: [instruments.workspaceId], references: [workspaces.id] }),
 
   checkpoints: many(instrumentCheckpoints),
   rates: many(instrumentRates),
@@ -292,6 +344,9 @@ export const eventRelationRelations = relations(eventRelations, ({ one }) => ({
 // ─── Type exports ─────────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect
+export type Workspace = typeof workspaces.$inferSelect
+export type WorkspaceMember = typeof workspaceMembers.$inferSelect
+export type WorkspaceMemberRole = (typeof workspaceMemberRoleEnum.enumValues)[number]
 export type Account = typeof accounts.$inferSelect
 export type Instrument = typeof instruments.$inferSelect
 // export type View = typeof views.$inferSelect
