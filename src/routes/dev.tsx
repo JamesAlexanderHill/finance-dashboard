@@ -3,7 +3,15 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { eq, count } from 'drizzle-orm'
 import { db } from '~/db'
-import { users, accounts, instruments, categories, events, legs, instrumentCheckpoints, instrumentRates } from '~/db/schema'
+import {
+  users,
+  workspaces,
+  accounts,
+  events,
+  legs,
+  instrumentCheckpoints,
+  instrumentRates,
+} from '~/db/schema'
 import { checkpointService, rateService, createUserWithPersonalWorkspace, getSession } from '~/db/services'
 import { clearAllData, seedBase, seedSampleEvents } from '~/lib/seed'
 
@@ -16,61 +24,23 @@ const devClearAll = createServerFn({ method: 'POST' }).handler(async () => {
 
 const devSeedBase = createServerFn({ method: 'POST' }).handler(async () => {
   const [existingUser] = await db.select().from(users).limit(1)
-  if (existingUser) return { ok: false, message: 'User already exists. Clear data first.' }
-  const result = await seedBase()
-  return { ok: true, userId: result.userId }
+  if (existingUser) return { ok: false, message: 'Users already exist. Clear data first.' }
+  await seedBase()
+  return { ok: true, message: 'Created Demo User A, Demo User B, and shared workspace "Joint Finances".' }
 })
 
 const devSeedSampleEvents = createServerFn({ method: 'POST' }).handler(async () => {
-  const session = await getSession()
-  if (!session) return { ok: false, message: 'No user found. Seed base data first.' }
+  const [sharedWorkspace] = await db
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.isPersonal, false))
+    .limit(1)
+  if (!sharedWorkspace) return { ok: false, message: 'No shared workspace found. Run "Seed Base" first.' }
 
-  const { workspace } = session
-  const [accs, instrs, cats] = await Promise.all([
-    db.select().from(accounts).where(eq(accounts.workspaceId, workspace.id)),
-    db.select().from(instruments).where(eq(instruments.workspaceId, workspace.id)),
-    db.select().from(categories).where(eq(categories.workspaceId, workspace.id)),
-  ])
+  const [{ n: eventCount }] = await db.select({ n: count() }).from(events).where(eq(events.workspaceId, sharedWorkspace.id))
+  if (Number(eventCount) > 0) return { ok: false, message: 'Events already exist. Clear data and re-seed.' }
 
-  // Map to the keys used by seedSampleEvents (matching seedBase's SeedResult shape)
-  const commbank = accs.find((a) => a.name === 'CommBank')
-  const amex = accs.find((a) => a.name === 'AMEX')
-  const wise = accs.find((a) => a.name === 'Wise')
-  const vanguard = accs.find((a) => a.name === 'Vanguard')
-
-  if (!commbank || !amex || !wise || !vanguard) {
-    return { ok: false, message: 'Expected accounts not found. Run "Seed Base" first.' }
-  }
-
-  const commbankAud = instrs.find((i) => i.accountId === commbank.id && i.ticker === 'AUD')
-  const amexAud = instrs.find((i) => i.accountId === amex.id && i.ticker === 'AUD')
-  const wiseAud = instrs.find((i) => i.accountId === wise.id && i.ticker === 'AUD')
-  const wiseNzd = instrs.find((i) => i.accountId === wise.id && i.ticker === 'NZD')
-  const vanguardAud = instrs.find((i) => i.accountId === vanguard.id && i.ticker === 'AUD')
-  const vanguardVhy = instrs.find((i) => i.accountId === vanguard.id && i.ticker === 'VHY')
-
-  if (!commbankAud || !amexAud || !wiseAud || !wiseNzd || !vanguardAud || !vanguardVhy) {
-    return { ok: false, message: 'Expected instruments not found. Run "Seed Base" first.' }
-  }
-
-  const groceries = cats.find((c) => c.name === 'Groceries')
-
-  const mappedSeedResult = {
-    userId: session.user.id,
-    workspaceId: workspace.id,
-    accountIds: { commbank: commbank.id, amex: amex.id, wise: wise.id, vanguard: vanguard.id },
-    instrumentIds: {
-      commbankAud: commbankAud.id,
-      amexAud: amexAud.id,
-      wiseAud: wiseAud.id,
-      wiseNzd: wiseNzd.id,
-      vanguardAud: vanguardAud.id,
-      vanguardVhy: vanguardVhy.id,
-    },
-    categoryIds: { groceries: groceries?.id ?? '' },
-  }
-
-  await seedSampleEvents(mappedSeedResult)
+  await seedSampleEvents(sharedWorkspace.id)
   return { ok: true }
 })
 
@@ -162,7 +132,6 @@ function useAction(fn: () => Promise<{ ok: boolean; message?: string }>) {
       setState('error')
       setMessage(String(err))
     }
-    // Reset after 3s
     setTimeout(() => setState('idle'), 3000)
   }
 
@@ -186,13 +155,13 @@ function DevPage() {
   const seedBaseAction = useAction(async () => {
     const r = await devSeedBase()
     router.invalidate()
-    return r as any
+    return r
   })
 
   const seedEventsAction = useAction(async () => {
     const r = await devSeedSampleEvents()
     router.invalidate()
-    return r as any
+    return r
   })
 
   const recomputeCheckpointsAction = useAction(async () => {
@@ -223,18 +192,18 @@ function DevPage() {
   const actions = [
     {
       label: 'Clear all data',
-      description: 'Delete all users, workspaces, accounts, events, legs, etc.',
+      description: 'Delete everything — users, workspaces, accounts, events, legs, files, checkpoints — in dependency order.',
       action: clearAction,
       danger: true,
     },
     {
       label: 'Seed base',
-      description: 'Create demo user with personal workspace, 5 accounts, instruments, 8 categories, 2 views.',
+      description: 'Create Demo User A & B, each with a personal workspace, plus a shared "Joint Finances" workspace (A as owner, B as member).',
       action: seedBaseAction,
     },
     {
       label: 'Seed sample events',
-      description: 'Add purchase, transfer pair, exchange, and VDAL trade (requires base seed).',
+      description: 'Create 4 accounts (CommBank, AMEX, Wise, Vanguard), 7 instruments, 12 categories, and ~30 events spanning Aug 2025–May 2026. Covers all 6 event types, legs with categories & descriptions, lineItems, 3 transfer pairs, and a simulated import file.',
       action: seedEventsAction,
     },
     {
@@ -284,7 +253,7 @@ function DevPage() {
           )}
         </div>
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Data counts</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Data counts (current workspace)</p>
           <div className="flex gap-4">
             <Stat label="Accounts" value={status.accountCount} />
             <Stat label="Events" value={status.eventCount} />
@@ -337,7 +306,7 @@ function DevPage() {
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
           <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Create additional user</p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
-            Create a new user with their own personal workspace, for testing shared workspaces.
+            Create a new user with their own personal workspace. Use this to test scenarios beyond the two demo users seeded by "Seed Base".
           </p>
           <div className="flex flex-wrap gap-2">
             <input
