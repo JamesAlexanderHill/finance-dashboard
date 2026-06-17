@@ -167,7 +167,7 @@ function InstrumentDetailPage() {
     router.invalidate()
   }
 
-  const isHomeCurrency = instrument.ticker === workspace.homeCurrencyCode
+  const isHomeCurrency = instrument.ticker === user!.homeCurrencyCode
   const effectiveRate = rate?.rate ?? 1
 
   return (
@@ -290,7 +290,7 @@ function InstrumentDetailPage() {
             <form onSubmit={handleUpdateRate} className="space-y-3 max-w-sm">
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  1 {instrument.ticker} = ? {workspace.homeCurrencyCode}
+                  1 {instrument.ticker} = ? {user!.homeCurrencyCode}
                 </label>
                 <input
                   name="rate"
@@ -322,13 +322,13 @@ function InstrumentDetailPage() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-2xl font-bold tabular-nums text-gray-900 dark:text-gray-100">
-                  {formatMajorAmount(scaleUnit(balance, instrument.exponent) * effectiveRate, workspace.homeCurrencyCode)}
+                  {formatMajorAmount(scaleUnit(balance, instrument.exponent) * effectiveRate, user!.homeCurrencyCode)}
                   <span className="text-base font-normal text-gray-500 dark:text-gray-400 ml-2">
                     current value
                   </span>
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  1 {instrument.ticker} = {effectiveRate} {workspace.homeCurrencyCode}
+                  1 {instrument.ticker} = {effectiveRate} {user!.homeCurrencyCode}
                   {rate && (
                     <span className="text-gray-400 dark:text-gray-500">
                       {' '}({rate.source === 'manual' ? 'manually set' : 'from transactions'}, as of {formatDate(rate.asOf)})

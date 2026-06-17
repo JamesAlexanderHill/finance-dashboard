@@ -1,9 +1,9 @@
-import { getCookie, setCookie, deleteCookie } from '@tanstack/react-start/server'
+import { getCookie, setCookie, getRequest } from '@tanstack/react-start/server'
+import { createServerOnlyFn } from '@tanstack/react-start'
 import type { User, Workspace } from '~/db/schema'
 import { createContext, type RequestContext } from './context'
-import { queryUserById, queryAllUsers, queryWorkspaceMembership, queryPersonalWorkspace } from '../query/workspace'
+import { queryUserById, queryWorkspaceMembership, queryFirstWorkspace } from '../query/workspace'
 
-const USER_COOKIE = 'fd_user_id'
 const WORKSPACE_COOKIE = 'fd_workspace_id'
 const COOKIE_OPTS = { path: '/', sameSite: 'lax' as const, maxAge: 60 * 60 * 24 * 365 }
 
@@ -14,20 +14,25 @@ export type Session = {
 }
 
 /**
- * Resolves the "logged in" user. There's no real authentication — the
- * current user is whichever id is in the `fd_user_id` cookie (set via the
- * dev-only user switcher), falling back to the first user in the database so
- * the app keeps working out of the box / in tests that never switch users.
+ * Resolves the authenticated user's id from the Better Auth session cookie.
+ *
+ * Wrapped in `createServerOnlyFn` and using a dynamic import so the Better Auth
+ * instance (and its Node/Postgres dependencies) are never pulled into the client
+ * bundle. Only ever called from within server functions / server routes.
  */
-async function getCurrentUser(): Promise<User | null> {
-  const cookieUserId = getCookie(USER_COOKIE)
-  if (cookieUserId) {
-    const user = await queryUserById(cookieUserId)
-    if (user) return user
-  }
+const getAuthUserId = createServerOnlyFn(async (): Promise<string | null> => {
+  // Only `~/lib/auth` must be imported lazily — that's what keeps Better Auth
+  // (and its Node/Postgres deps) out of the client bundle.
+  const { auth } = await import('~/lib/auth')
+  const session = await auth.api.getSession({ headers: getRequest().headers })
+  return session?.user?.id ?? null
+})
 
-  const [firstUser] = await queryAllUsers()
-  return firstUser ?? null
+/** Resolves the currently authenticated user, or `null` if signed out. */
+async function getCurrentUser(): Promise<User | null> {
+  const userId = await getAuthUserId()
+  if (!userId) return null
+  return queryUserById(userId)
 }
 
 /**
@@ -42,10 +47,10 @@ async function getCurrentWorkspace(userId: string): Promise<Workspace | null> {
     if (membership) return membership.workspace
   }
 
-  return queryPersonalWorkspace(userId)
+  return queryFirstWorkspace(userId)
 }
 
-/** Resolves the current user, workspace, and a `RequestContext` for service calls. Returns `null` if no user exists yet. */
+/** Resolves the current user, workspace, and a `RequestContext` for service calls. Returns `null` if not authenticated. */
 export async function getSession(): Promise<Session | null> {
   const user = await getCurrentUser()
   if (!user) return null
@@ -54,12 +59,6 @@ export async function getSession(): Promise<Session | null> {
   if (!workspace) return null
 
   return { user, workspace, ctx: createContext(user.id, workspace.id) }
-}
-
-/** Switch the acting user (dev-only user switcher). Resets the workspace selection to the new user's personal workspace. */
-export function setCurrentUserId(userId: string): void {
-  setCookie(USER_COOKIE, userId, COOKIE_OPTS)
-  deleteCookie(WORKSPACE_COOKIE, { path: '/' })
 }
 
 /** Switch the current workspace. */

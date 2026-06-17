@@ -46,6 +46,78 @@ export const users = pgTable('users', {
   id: id(),
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
+  // Currency used to display converted balances (e.g. net worth). Each user
+  // sets their own preference; not a workspace-level setting.
+  homeCurrencyCode: text('home_currency_code').notNull().default('AUD'),
+  // Managed by Better Auth. Property names must match Better Auth's `user`
+  // model fields (emailVerified, image, createdAt, updatedAt).
+  emailVerified: boolean('email_verified').notNull().default(false),
+  image: text('image'),
+  createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// ─── Auth (Better Auth) ───────────────────────────────────────────────────────
+// These tables back Better Auth's core models. The `account` model is mapped to
+// `auth_accounts` so it doesn't collide with the app's financial `accounts`
+// table. Property names mirror Better Auth field names so the drizzle adapter
+// can map them without extra field config.
+
+export const sessions = pgTable('sessions', {
+  id: id(),
+  token: text('token').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const authAccounts = pgTable('auth_accounts', {
+  id: id(),
+  accountId: text('account_id').notNull(),
+  providerId: text('provider_id').notNull(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  accessToken: text('access_token'),
+  refreshToken: text('refresh_token'),
+  idToken: text('id_token'),
+  accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+  refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+  scope: text('scope'),
+  password: text('password'),
+  createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const verifications = pgTable('verifications', {
+  id: id(),
+  identifier: text('identifier').notNull(),
+  value: text('value').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// WebAuthn passkeys (Better Auth passkey plugin). Property names mirror the
+// plugin's field names (publicKey, credentialID, deviceType, backedUp, …).
+export const passkeys = pgTable('passkeys', {
+  id: id(),
+  name: text('name'),
+  publicKey: text('public_key').notNull(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  credentialID: text('credential_id').notNull(),
+  counter: integer('counter').notNull(),
+  deviceType: text('device_type').notNull(),
+  backedUp: boolean('backed_up').notNull(),
+  transports: text('transports'),
+  aaguid: text('aaguid'),
   createdAt: createdAt(),
 })
 
@@ -54,9 +126,6 @@ export const users = pgTable('users', {
 export const workspaces = pgTable('workspaces', {
   id: id(),
   name: text('name').notNull(),
-  homeCurrencyCode: text('home_currency_code').notNull(),
-  // Every user gets exactly one personal workspace, created alongside their
-  // account. Personal workspaces can't have members added/removed.
   isPersonal: boolean('is_personal').notNull().default(false),
   ownerId: text('owner_id').notNull().references(() => users.id),
   createdAt: createdAt(),
@@ -192,8 +261,8 @@ export const instrumentCheckpoints = pgTable(
 
 // ─── Instrument Rates ─────────────────────────────────────────────────────────
 
-// 1 unit of `instrumentId` = `rate` units of the workspace's home currency
-// (workspaces.homeCurrencyCode). Instruments whose ticker === homeCurrencyCode
+// 1 unit of `instrumentId` = `rate` units of the user's home currency
+// (users.homeCurrencyCode). Instruments whose ticker === homeCurrencyCode
 // have no row (implicit rate = 1).
 export const instrumentRates = pgTable(
   'instrument_rates',
@@ -344,6 +413,10 @@ export const eventRelationRelations = relations(eventRelations, ({ one }) => ({
 // ─── Type exports ─────────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect
+export type AuthSession = typeof sessions.$inferSelect
+export type AuthAccount = typeof authAccounts.$inferSelect
+export type Verification = typeof verifications.$inferSelect
+export type Passkey = typeof passkeys.$inferSelect
 export type Workspace = typeof workspaces.$inferSelect
 export type WorkspaceMember = typeof workspaceMembers.$inferSelect
 export type WorkspaceMemberRole = (typeof workspaceMemberRoleEnum.enumValues)[number]

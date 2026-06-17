@@ -71,10 +71,13 @@ const softDeleteEvent = createServerFn({ method: 'POST' })
 const updateLegCategory = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => data as { legId: string; categoryId: string | null })
   .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    // Scope to the caller's workspace so one tenant can't edit another's legs.
     await db
       .update(legs)
       .set({ categoryId: data.categoryId })
-      .where(eq(legs.id, data.legId))
+      .where(and(eq(legs.id, data.legId), eq(legs.workspaceId, session.workspace.id)))
   })
 
 const upsertLineItems = createServerFn({ method: 'POST' })
@@ -82,16 +85,26 @@ const upsertLineItems = createServerFn({ method: 'POST' })
     (data: unknown) =>
       data as {
         legId: string
-        workspaceId: string
         items: Array<{ id?: string; unitCount: string; categoryId: string | null; description: string }>
       },
   )
   .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    // Verify the leg belongs to the caller's workspace before mutating; stamp
+    // new rows with the session workspace (never a caller-supplied id).
+    const [leg] = await db
+      .select({ id: legs.id })
+      .from(legs)
+      .where(and(eq(legs.id, data.legId), eq(legs.workspaceId, session.workspace.id)))
+      .limit(1)
+    if (!leg) throw new Error('Leg not found')
+
     await db.delete(lineItems).where(eq(lineItems.legId, data.legId))
     if (data.items.length > 0) {
       await db.insert(lineItems).values(
         data.items.map((item) => ({
-          workspaceId: data.workspaceId,
+          workspaceId: session.workspace.id,
           legId: data.legId,
           unitCount: BigInt(item.unitCount),
           categoryId: item.categoryId,
@@ -268,12 +281,11 @@ export function EventDrawer({ eventId, onClose }: EventDrawerProps) {
                         {isExpanded && (
                           <LineItemEditor
                             leg={leg}
-                            workspaceId={data.workspaceId}
                             userCategories={data.userCategories}
                             buildCategoryLabel={buildCategoryLabel}
                             onSave={async (items) => {
                               await upsertLineItems({
-                                data: { legId: leg.id, workspaceId: data.workspaceId, items },
+                                data: { legId: leg.id, items },
                               })
                               queryClient.invalidateQueries({ queryKey: ['event-drawer', eventId] })
                             }}
@@ -335,13 +347,11 @@ type LineItemDraft = {
 
 function LineItemEditor({
   leg,
-  workspaceId,
   userCategories,
   buildCategoryLabel,
   onSave,
 }: {
   leg: any
-  workspaceId: string
   userCategories: any[]
   buildCategoryLabel: (id: string) => string
   onSave: (items: LineItemDraft[]) => Promise<void>

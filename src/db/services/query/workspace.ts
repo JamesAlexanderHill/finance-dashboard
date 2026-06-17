@@ -1,4 +1,4 @@
-import { eq, and, desc } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
 import { users, workspaces, workspaceMembers } from '~/db/schema'
 
@@ -7,8 +7,6 @@ export async function queryWorkspacesByUser(userId: string) {
     .select({
       id: workspaces.id,
       name: workspaces.name,
-      homeCurrencyCode: workspaces.homeCurrencyCode,
-      isPersonal: workspaces.isPersonal,
       ownerId: workspaces.ownerId,
       createdAt: workspaces.createdAt,
       role: workspaceMembers.role,
@@ -16,7 +14,7 @@ export async function queryWorkspacesByUser(userId: string) {
     .from(workspaceMembers)
     .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
     .where(eq(workspaceMembers.userId, userId))
-    .orderBy(desc(workspaces.isPersonal), workspaces.name)
+    .orderBy(workspaces.name)
 }
 
 export async function queryWorkspaceMembership(workspaceId: string, userId: string) {
@@ -29,13 +27,17 @@ export async function queryWorkspaceMembership(workspaceId: string, userId: stri
   return row ?? null
 }
 
-export async function queryPersonalWorkspace(userId: string) {
+/** Returns the oldest workspace the user belongs to — used as a fallback when no workspace cookie is set. */
+export async function queryFirstWorkspace(userId: string) {
   const [row] = await db
-    .select()
-    .from(workspaces)
-    .where(and(eq(workspaces.ownerId, userId), eq(workspaces.isPersonal, true)))
+    .select({ workspace: workspaces })
+    .from(workspaceMembers)
+    .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
+    .where(eq(workspaceMembers.userId, userId))
+    .orderBy(workspaceMembers.createdAt)
+    .limit(1)
 
-  return row ?? null
+  return row?.workspace ?? null
 }
 
 export async function queryWorkspaceMembers(workspaceId: string) {
@@ -65,8 +67,4 @@ export async function queryUserByEmail(email: string) {
 export async function queryUserById(userId: string) {
   const [row] = await db.select().from(users).where(eq(users.id, userId))
   return row ?? null
-}
-
-export async function queryAllUsers() {
-  return db.select().from(users).orderBy(users.name)
 }

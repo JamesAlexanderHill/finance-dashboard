@@ -1,6 +1,6 @@
 import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
-import { workspaces, instruments, instrumentRates } from '~/db/schema'
+import { users, instruments, instrumentRates } from '~/db/schema'
 import type { InstrumentRate, RateSource } from '~/db/schema'
 import type { RequestContext } from '../utils/context'
 import { queryInstrumentById } from '../query/instrument'
@@ -25,15 +25,15 @@ async function refresh(ctx: RequestContext, instrumentId: string): Promise<void>
   const instrument = await queryInstrumentById(ctx.workspaceId, instrumentId)
   if (!instrument) return
 
-  const [workspace] = await db
-    .select({ homeCurrencyCode: workspaces.homeCurrencyCode })
-    .from(workspaces)
-    .where(eq(workspaces.id, ctx.workspaceId))
-  if (!workspace) return
+  const [user] = await db
+    .select({ homeCurrencyCode: users.homeCurrencyCode })
+    .from(users)
+    .where(eq(users.id, ctx.userId))
+  if (!user) return
 
-  const latest = instrument.ticker === workspace.homeCurrencyCode
+  const latest = instrument.ticker === user.homeCurrencyCode
     ? null
-    : await queryLatestExchangeRate(ctx.workspaceId, instrumentId, workspace.homeCurrencyCode)
+    : await queryLatestExchangeRate(ctx.workspaceId, instrumentId, user.homeCurrencyCode)
 
   await db.transaction(async (tx) => {
     await tx.delete(instrumentRates).where(and(

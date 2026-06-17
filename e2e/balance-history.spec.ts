@@ -23,25 +23,10 @@ function chartSection(page: Page) {
   return page.locator('section', { has: page.getByRole('heading', { name: 'Balance History' }) })
 }
 
+// Authenticated as the seeded demo user, viewing the shared workspace data.
+test.use({ storageState: 'e2e/.auth/demo-user.json' })
+
 test.describe('balance history chart controls', () => {
-  test('dev tools: seed demo data', async ({ page }) => {
-    await page.goto('/dev')
-    await expect(page.getByRole('heading', { name: 'Dev Tools' })).toBeVisible()
-    await page.waitForLoadState('networkidle')
-
-    const clearRow = page.locator('div', { has: page.getByRole('button', { name: 'Clear all data' }) }).last()
-    await clearRow.getByRole('button', { name: 'Clear all data' }).click()
-    await expect(clearRow.getByText('Done!')).toBeVisible()
-
-    const seedBaseRow = page.locator('div', { has: page.getByRole('button', { name: 'Seed base' }) }).last()
-    await seedBaseRow.getByRole('button', { name: 'Seed base' }).click()
-    await expect(seedBaseRow.getByText('Done!')).toBeVisible()
-
-    const seedEventsRow = page.locator('div', { has: page.getByRole('button', { name: 'Seed sample events' }) }).last()
-    await seedEventsRow.getByRole('button', { name: 'Seed sample events' }).click()
-    await expect(seedEventsRow.getByText('Done!')).toBeVisible()
-  })
-
   test('period selector offers Daily/Weekly/Monthly, no "Transactions" option', async ({ page }) => {
     await gotoAccount(page, 'CommBank')
     const chart = chartSection(page)

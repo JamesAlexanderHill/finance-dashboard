@@ -62,7 +62,7 @@ export async function seedBase(): Promise<SeedResult> {
 
   const [shared] = await db
     .insert(workspaces)
-    .values({ name: 'Joint Finances', homeCurrencyCode: 'AUD', isPersonal: false, ownerId: userA.id })
+    .values({ name: 'Joint Finances', isPersonal: false, ownerId: userA.id })
     .returning()
 
   await db.insert(workspaceMembers).values([
