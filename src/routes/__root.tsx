@@ -15,7 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
-import { LogOut, Settings, ChevronsUpDown } from 'lucide-react'
+import { LogOut, Settings, ChevronsUpDown, Building2 } from 'lucide-react'
 import * as React from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { workspaceService, getSession, setCurrentWorkspaceId } from '~/db/services'
@@ -38,7 +38,7 @@ const getSidebarData = createServerFn({ method: 'GET' }).handler(async () => {
 
   return {
     user: { id: session.user.id, name: session.user.name, email: session.user.email },
-    workspace: { id: session.workspace.id, name: session.workspace.name, isPersonal: session.workspace.isPersonal },
+    workspace: { id: session.workspace.id, name: session.workspace.name },
     workspaces,
   }
 })
@@ -110,7 +110,6 @@ const NAV_LINKS = [
   { to: '/accounts', label: 'Accounts', exact: false },
   { to: '/events', label: 'Events', exact: false },
   { to: '/categories', label: 'Categories', exact: false },
-  { to: '/workspaces', label: 'Workspaces', exact: false },
 ] as const
 
 const DEV_LINK = { to: '/dev', label: 'Dev Tools', exact: false } as const
@@ -158,7 +157,6 @@ function Sidebar() {
               {data.workspaces.map((w) => (
                 <SelectItem key={w.id} value={w.id}>
                   {w.name}
-                  {w.isPersonal ? ' (Personal)' : ''}
                 </SelectItem>
               ))}
             </SelectPopup>
@@ -220,6 +218,10 @@ function UserMenu({ name, email }: { name: string; email: string }) {
           <MenuItem onClick={() => router.navigate({ to: '/settings' })}>
             <Settings className="size-4" />
             Account settings
+          </MenuItem>
+          <MenuItem onClick={() => router.navigate({ to: '/workspaces' })}>
+            <Building2 className="size-4" />
+            Workspaces
           </MenuItem>
           <MenuSeparator />
           <MenuItem

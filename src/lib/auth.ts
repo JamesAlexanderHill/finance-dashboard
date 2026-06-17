@@ -8,7 +8,7 @@ import { users, sessions, authAccounts, verifications, passkeys } from '~/db/sch
 // Imported from the concrete module (not the `~/db/services` barrel) to avoid a
 // circular import: the services barrel pulls in session.ts, which imports this
 // file.
-import { ensurePersonalWorkspace } from '~/db/services/service/workspace'
+import { ensureDefaultWorkspace } from '~/db/services/service/workspace'
 
 export const auth = betterAuth({
   // Falls back to BETTER_AUTH_URL / BETTER_AUTH_SECRET env vars when undefined.
@@ -66,7 +66,7 @@ export const auth = betterAuth({
         },
         // The app expects every user to have a personal workspace.
         after: async (user) => {
-          await ensurePersonalWorkspace({ id: user.id, name: user.name, email: user.email })
+          await ensureDefaultWorkspace({ id: user.id, name: user.name, email: user.email })
         },
       },
     },

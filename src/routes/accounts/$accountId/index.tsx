@@ -274,7 +274,7 @@ function AccountDetailPage() {
           defaultInstrumentId={chartInstrument?.id ?? null}
           initialData={balanceHistory}
           rates={rates}
-          homeCurrencyCode={workspace.homeCurrencyCode}
+          homeCurrencyCode={user!.homeCurrencyCode}
         />
       )}
 
@@ -310,7 +310,7 @@ function AccountDetailPage() {
                   balance={amountMinor}
                   isDefault={isDefault}
                   rate={rates[instrument.id]?.rate ?? 1}
-                  homeCurrencyCode={workspace.homeCurrencyCode}
+                  homeCurrencyCode={user!.homeCurrencyCode}
                 />
               )
             })}

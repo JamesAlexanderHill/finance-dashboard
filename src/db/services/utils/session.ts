@@ -2,7 +2,7 @@ import { getCookie, setCookie, getRequest } from '@tanstack/react-start/server'
 import { createServerOnlyFn } from '@tanstack/react-start'
 import type { User, Workspace } from '~/db/schema'
 import { createContext, type RequestContext } from './context'
-import { queryUserById, queryWorkspaceMembership, queryPersonalWorkspace } from '../query/workspace'
+import { queryUserById, queryWorkspaceMembership, queryFirstWorkspace } from '../query/workspace'
 
 const WORKSPACE_COOKIE = 'fd_workspace_id'
 const COOKIE_OPTS = { path: '/', sameSite: 'lax' as const, maxAge: 60 * 60 * 24 * 365 }
@@ -47,7 +47,7 @@ async function getCurrentWorkspace(userId: string): Promise<Workspace | null> {
     if (membership) return membership.workspace
   }
 
-  return queryPersonalWorkspace(userId)
+  return queryFirstWorkspace(userId)
 }
 
 /** Resolves the current user, workspace, and a `RequestContext` for service calls. Returns `null` if not authenticated. */

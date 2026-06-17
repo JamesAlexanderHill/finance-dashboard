@@ -70,8 +70,8 @@ function DashboardPage() {
     byAccount.get(b.accountId)!.push(b)
   }
 
-  // Net worth: sum fiat balances in the workspace's home currency only
-  const homeCurrency = workspace.homeCurrencyCode
+  // Net worth: sum fiat balances in the user's home currency only
+  const homeCurrency = user.homeCurrencyCode
   const homeBalances = balances.filter(
     (b) => b.instrumentTicker === homeCurrency,
   )

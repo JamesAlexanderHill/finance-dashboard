@@ -46,6 +46,9 @@ export const users = pgTable('users', {
   id: id(),
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
+  // Currency used to display converted balances (e.g. net worth). Each user
+  // sets their own preference; not a workspace-level setting.
+  homeCurrencyCode: text('home_currency_code').notNull().default('AUD'),
   // Managed by Better Auth. Property names must match Better Auth's `user`
   // model fields (emailVerified, image, createdAt, updatedAt).
   emailVerified: boolean('email_verified').notNull().default(false),
@@ -123,9 +126,6 @@ export const passkeys = pgTable('passkeys', {
 export const workspaces = pgTable('workspaces', {
   id: id(),
   name: text('name').notNull(),
-  homeCurrencyCode: text('home_currency_code').notNull(),
-  // Every user gets exactly one personal workspace, created alongside their
-  // account. Personal workspaces can't have members added/removed.
   isPersonal: boolean('is_personal').notNull().default(false),
   ownerId: text('owner_id').notNull().references(() => users.id),
   createdAt: createdAt(),
@@ -261,8 +261,8 @@ export const instrumentCheckpoints = pgTable(
 
 // ─── Instrument Rates ─────────────────────────────────────────────────────────
 
-// 1 unit of `instrumentId` = `rate` units of the workspace's home currency
-// (workspaces.homeCurrencyCode). Instruments whose ticker === homeCurrencyCode
+// 1 unit of `instrumentId` = `rate` units of the user's home currency
+// (users.homeCurrencyCode). Instruments whose ticker === homeCurrencyCode
 // have no row (implicit rate = 1).
 export const instrumentRates = pgTable(
   'instrument_rates',

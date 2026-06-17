@@ -15,7 +15,7 @@ export type {
 export { checkpointService } from './service/checkpoint'
 export { rateService } from './service/rate'
 export type { CurrentRate } from './service/rate'
-export { workspaceService, createUserWithPersonalWorkspace, ensurePersonalWorkspace } from './service/workspace'
+export { workspaceService, createUserWithPersonalWorkspace, ensureDefaultWorkspace } from './service/workspace'
 export { createContext } from './utils/context'
 export type { RequestContext } from './utils/context'
 export type { PaginationOptions, PaginatedResult } from './utils/pagination'
