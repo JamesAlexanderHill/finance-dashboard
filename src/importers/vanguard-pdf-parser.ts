@@ -409,6 +409,15 @@ async function main() {
 
   allRows.sort((a, b) => a.effectiveAt.localeCompare(b.effectiveAt));
 
+  // Group legs by eventGroup (preserving sort order) so multi-leg events like
+  // Buy stay together. Deduplication is applied at the event level — not the
+  // leg level — so both legs of the same trade always share the same ID.
+  const eventGroups = new Map<string, OutRow[]>();
+  for (const row of allRows) {
+    if (!eventGroups.has(row.eventGroup)) eventGroups.set(row.eventGroup, []);
+    eventGroups.get(row.eventGroup)!.push(row);
+  }
+
   const outHeader = [
     "externalEventId",
     "eventGroup",
@@ -422,24 +431,25 @@ async function main() {
   const outLines: string[] = [outHeader.join(",")];
 
   const seen = new Map<string, number>();
-  for (const row of allRows) {
-    let id = row.externalEventId;
-    const count = seen.get(id) ?? 0;
-    seen.set(id, count + 1);
-    if (count > 0) id = rowHash([id, String(count)]);
+  for (const [originalGroup, rows] of eventGroups) {
+    const count = seen.get(originalGroup) ?? 0;
+    seen.set(originalGroup, count + 1);
+    const id = count > 0 ? rowHash([originalGroup, String(count)]) : originalGroup;
 
-    outLines.push(
-      [
-        csvEscape(id),
-        csvEscape(row.eventGroup === row.externalEventId ? id : row.eventGroup),
-        csvEscape(row.eventDescription),
-        csvEscape(row.effectiveAt),
-        csvEscape(row.postedAt),
-        csvEscape(row.legDescription),
-        csvEscape(row.legTicker),
-        String(row.legUnitCount),
-      ].join(",")
-    );
+    for (const row of rows) {
+      outLines.push(
+        [
+          csvEscape(id),
+          csvEscape(id),
+          csvEscape(row.eventDescription),
+          csvEscape(row.effectiveAt),
+          csvEscape(row.postedAt),
+          csvEscape(row.legDescription),
+          csvEscape(row.legTicker),
+          String(row.legUnitCount),
+        ].join(",")
+      );
+    }
   }
 
   writeFileSync(args.outPath, outLines.join("\n") + "\n", "utf8");
