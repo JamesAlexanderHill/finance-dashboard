@@ -7,7 +7,9 @@ import InstrumentCard from '~/components/instrument-card'
 import BalanceHistogram, { type InstrumentRates } from '~/components/balance-histogram'
 import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
 import EventPreviewTable from '~/components/event/event-preview-table'
-import { accountService, eventService, fileService, instrumentService, rateService, getSession } from '~/db/services'
+import { accountService, annotationService, eventService, fileService, instrumentService, rateService, getSession } from '~/db/services'
+import type { TimelineAnnotation } from '~/db/schema'
+import type { RecurrenceRule } from '~/lib/timeline-annotations'
 import { defaultBalanceHistoryRange, serializeRange } from '~/lib/date-range'
 import AccountColorSelect from '~/components/ui/account-color-select'
 import type { AccountColorName } from '~/lib/chart-colors'
@@ -30,18 +32,19 @@ const getData = createServerFn({ method: 'GET' })
     const chartInstrument =
       accountInstruments.data.find((i) => i.id === account.defaultInstrumentId) ?? accountInstruments.data[0] ?? null
 
-    const [recentAccountfiles, recentAccountEvents, balanceHistory, ratesMap] = await Promise.all([
+    const [recentAccountfiles, recentAccountEvents, balanceHistory, ratesMap, annotations] = await Promise.all([
       fileService.listByAccount(ctx, data.accountId, { limit: 5 }),
       eventService.listByAccount(ctx, data.accountId, { limit: 10 }),
       chartInstrument ? instrumentService.getBalanceHistory(ctx, chartInstrument.id, serializeRange(defaultBalanceHistoryRange()), 'day') : Promise.resolve([]),
       rateService.getRates(ctx, accountInstruments.data.map((i) => i.id)),
+      annotationService.listByAccount(ctx, data.accountId),
     ]);
 
     const rates: InstrumentRates = Object.fromEntries(
       Array.from(ratesMap.entries()).map(([id, r]) => [id, { rate: r.rate, asOf: r.asOf.toISOString(), source: r.source }]),
     )
 
-    return { user, workspace, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument, rates }
+    return { user, workspace, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument, rates, annotations }
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
@@ -54,6 +57,39 @@ const updateAccount = createServerFn({ method: 'POST' })
       defaultInstrumentId: data.defaultInstrumentId,
       color: data.color,
     })
+  })
+
+const createAnnotation = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { accountId: string; label: string; date: string; recurrence: RecurrenceRule | null })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    await annotationService.create(session.ctx, {
+      accountId: data.accountId,
+      label: data.label,
+      date: new Date(data.date),
+      recurrence: data.recurrence,
+    })
+  })
+
+const updateAnnotation = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { id: string; label: string; date: string; recurrence: RecurrenceRule | null })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    await annotationService.update(session.ctx, data.id, {
+      label: data.label,
+      date: new Date(data.date),
+      recurrence: data.recurrence,
+    })
+  })
+
+const deleteAnnotation = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { id: string })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    await annotationService.delete(session.ctx, data.id)
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -78,12 +114,14 @@ function formatDateTime(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function AccountDetailPage() {
-  const { user, workspace, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument, rates } = Route.useLoaderData()
+  const { user, workspace, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument, rates, annotations } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const router = useRouter()
   const [editing, setEditing] = React.useState(false)
   const [showImportWizard, setShowImportWizard] = React.useState(false)
   const [showBulkImportWizard, setShowBulkImportWizard] = React.useState(false)
+  const [showAnnotationForm, setShowAnnotationForm] = React.useState(false)
+  const [editingAnnotation, setEditingAnnotation] = React.useState<TimelineAnnotation | null>(null)
   const navigate = Route.useNavigate()
 
   if (!user || !workspace) {
@@ -275,8 +313,92 @@ function AccountDetailPage() {
           initialData={balanceHistory}
           rates={rates}
           homeCurrencyCode={user!.homeCurrencyCode}
+          annotations={annotations.data}
         />
       )}
+
+      {/* Section A.7: Annotations */}
+      <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Annotations</h2>
+          {!showAnnotationForm && !editingAnnotation && (
+            <button
+              onClick={() => setShowAnnotationForm(true)}
+              className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+            >
+              + Add Annotation
+            </button>
+          )}
+        </div>
+
+        {(showAnnotationForm || editingAnnotation) && (
+          <AnnotationForm
+            accountId={account.id}
+            annotation={editingAnnotation}
+            onSave={async (formData) => {
+              if (editingAnnotation) {
+                await updateAnnotation({ data: { id: editingAnnotation.id, ...formData } })
+                setEditingAnnotation(null)
+              } else {
+                await createAnnotation({ data: { accountId: account.id, ...formData } })
+                setShowAnnotationForm(false)
+              }
+              router.invalidate()
+            }}
+            onCancel={() => {
+              setShowAnnotationForm(false)
+              setEditingAnnotation(null)
+            }}
+          />
+        )}
+
+        {annotations.data.length === 0 && !showAnnotationForm ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">No annotations yet. Add one to mark events on the chart.</p>
+        ) : (
+          <div className="mt-2 space-y-2">
+            {annotations.data.map((annotation) => (
+              <div
+                key={annotation.id}
+                className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-800 last:border-0"
+              >
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="inline-block w-3 border-t border-dashed border-amber-400 dark:border-amber-500" />
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{annotation.label}</span>
+                  <span className="text-gray-500 dark:text-gray-400">
+                    {new Date(annotation.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </span>
+                  {annotation.recurrence ? (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
+                      {annotation.recurrence.frequency}
+                    </span>
+                  ) : (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                      one-time
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setEditingAnnotation(annotation)}
+                    className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await deleteAnnotation({ data: { id: annotation.id } })
+                      router.invalidate()
+                    }}
+                    className="text-xs text-red-400 dark:text-red-500 hover:text-red-600 dark:hover:text-red-400"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Section B: Instruments Carousel */}
       <section>
@@ -412,5 +534,106 @@ function AccountDetailPage() {
         />
       </section>
     </div>
+  )
+}
+
+// ─── AnnotationForm ───────────────────────────────────────────────────────────
+
+const RECURRENCE_OPTIONS = [
+  { value: '', label: 'One-time' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+] as const
+
+function AnnotationForm({
+  accountId,
+  annotation,
+  onSave,
+  onCancel,
+}: {
+  accountId: string
+  annotation: TimelineAnnotation | null
+  onSave: (data: { label: string; date: string; recurrence: RecurrenceRule | null }) => Promise<void>
+  onCancel: () => void
+}) {
+  const [submitting, setSubmitting] = React.useState(false)
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    const label = String(fd.get('label')).trim()
+    const date = String(fd.get('date'))
+    const recurrenceFreq = String(fd.get('recurrence'))
+    const recurrence: RecurrenceRule | null = recurrenceFreq
+      ? ({ frequency: recurrenceFreq } as RecurrenceRule)
+      : null
+    setSubmitting(true)
+    try {
+      await onSave({ label, date, recurrence })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const defaultDate = annotation
+    ? new Date(annotation.date).toISOString().slice(0, 10)
+    : new Date().toISOString().slice(0, 10)
+
+  const defaultRecurrence = annotation?.recurrence?.frequency ?? ''
+
+  return (
+    <form onSubmit={handleSubmit} className="mb-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3">
+      <div>
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Label</label>
+        <input
+          name="label"
+          defaultValue={annotation?.label ?? ''}
+          required
+          placeholder="e.g. Salary raise"
+          className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Date</label>
+        <input
+          name="date"
+          type="date"
+          defaultValue={defaultDate}
+          required
+          className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Recurrence</label>
+        <select
+          name="recurrence"
+          defaultValue={defaultRecurrence}
+          className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {RECURRENCE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={submitting}
+          className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-50"
+        >
+          {annotation ? 'Save' : 'Add'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   )
 }
