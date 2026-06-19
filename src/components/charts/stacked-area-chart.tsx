@@ -116,10 +116,14 @@ function Chart({
     const point = localPoint(event)
     if (!point) return
 
-    // Check annotation proximity first — show annotation tooltip if near a line.
+    // Check annotation proximity first — show annotation tooltip if near a line or inside a band.
     if (annotations && annotations.length > 0) {
       const near = annotations.filter((ann) => {
         const axPos = xScale(ann.occurrenceDate)
+        if (ann.endDate) {
+          const axEnd = xScale(ann.endDate)
+          return point.x >= axPos - ANNOTATION_SNAP_PX && point.x <= axEnd + ANNOTATION_SNAP_PX
+        }
         return Math.abs(axPos - point.x) < ANNOTATION_SNAP_PX
       })
       if (near.length > 0) {
@@ -176,15 +180,55 @@ function Chart({
             strokeDasharray="4 4"
           />
         )}
-        {/* Annotation vertical dotted lines — rendered below series areas */}
+        {/* Annotation marks — vertical dotted lines (point) or shaded bands (range) */}
         {annotations?.map((ann) => {
           const xPos = xScale(ann.occurrenceDate)
-          if (xPos < MARGIN.left || xPos > width - MARGIN.right) return null
+          const chartRight = width - MARGIN.right
+          const chartTop = MARGIN.top
+          const chartBottom = height - MARGIN.bottom
+          if (ann.endDate) {
+            const xEnd = xScale(ann.endDate)
+            if (xEnd < MARGIN.left || xPos > chartRight) return null
+            const x1 = Math.max(xPos, MARGIN.left)
+            const x2 = Math.min(xEnd, chartRight)
+            return (
+              <g key={`${ann.annotationId}-${ann.occurrenceDate.getTime()}`} pointerEvents="none">
+                <rect
+                  x={x1}
+                  y={chartTop}
+                  width={Math.max(x2 - x1, 0)}
+                  height={chartBottom - chartTop}
+                  className="fill-amber-400/15 dark:fill-amber-500/15"
+                />
+                {xPos >= MARGIN.left && (
+                  <Line
+                    from={{ x: xPos, y: chartTop }}
+                    to={{ x: xPos, y: chartBottom }}
+                    stroke="currentColor"
+                    className="stroke-amber-400 dark:stroke-amber-500"
+                    strokeWidth={1.5}
+                    strokeDasharray="3 3"
+                  />
+                )}
+                {xEnd <= chartRight && (
+                  <Line
+                    from={{ x: xEnd, y: chartTop }}
+                    to={{ x: xEnd, y: chartBottom }}
+                    stroke="currentColor"
+                    className="stroke-amber-400 dark:stroke-amber-500"
+                    strokeWidth={1.5}
+                    strokeDasharray="3 3"
+                  />
+                )}
+              </g>
+            )
+          }
+          if (xPos < MARGIN.left || xPos > chartRight) return null
           return (
             <Line
               key={`${ann.annotationId}-${ann.occurrenceDate.getTime()}`}
-              from={{ x: xPos, y: MARGIN.top }}
-              to={{ x: xPos, y: height - MARGIN.bottom }}
+              from={{ x: xPos, y: chartTop }}
+              to={{ x: xPos, y: chartBottom }}
               stroke="currentColor"
               className="stroke-amber-400 dark:stroke-amber-500"
               strokeWidth={1.5}
@@ -313,6 +357,7 @@ function Chart({
                 <span className="font-medium">{ann.label}</span>
                 <span className="text-gray-400 dark:text-gray-500">
                   {ann.occurrenceDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {ann.endDate && ` – ${ann.endDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`}
                 </span>
               </div>
             ))}

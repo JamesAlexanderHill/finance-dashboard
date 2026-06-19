@@ -60,7 +60,7 @@ const updateAccount = createServerFn({ method: 'POST' })
   })
 
 const createAnnotation = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { accountId: string; label: string; date: string; recurrence: RecurrenceRule | null })
+  .inputValidator((data: unknown) => data as { accountId: string; label: string; date: string; endDate: string | null; recurrence: RecurrenceRule | null })
   .handler(async ({ data }) => {
     const session = await getSession()
     if (!session) throw new Error('No user found')
@@ -68,18 +68,20 @@ const createAnnotation = createServerFn({ method: 'POST' })
       accountId: data.accountId,
       label: data.label,
       date: new Date(data.date),
+      endDate: data.endDate ? new Date(data.endDate) : null,
       recurrence: data.recurrence,
     })
   })
 
 const updateAnnotation = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { id: string; label: string; date: string; recurrence: RecurrenceRule | null })
+  .inputValidator((data: unknown) => data as { id: string; label: string; date: string; endDate: string | null; recurrence: RecurrenceRule | null })
   .handler(async ({ data }) => {
     const session = await getSession()
     if (!session) throw new Error('No user found')
     await annotationService.update(session.ctx, data.id, {
       label: data.label,
       date: new Date(data.date),
+      endDate: data.endDate ? new Date(data.endDate) : null,
       recurrence: data.recurrence,
     })
   })
@@ -366,6 +368,7 @@ function AccountDetailPage() {
                   <span className="font-medium text-gray-900 dark:text-gray-100">{annotation.label}</span>
                   <span className="text-gray-500 dark:text-gray-400">
                     {new Date(annotation.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {annotation.endDate && ` – ${new Date(annotation.endDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`}
                   </span>
                   {annotation.recurrence ? (
                     <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
@@ -554,7 +557,7 @@ function AnnotationForm({
 }: {
   accountId: string
   annotation: TimelineAnnotation | null
-  onSave: (data: { label: string; date: string; recurrence: RecurrenceRule | null }) => Promise<void>
+  onSave: (data: { label: string; date: string; endDate: string | null; recurrence: RecurrenceRule | null }) => Promise<void>
   onCancel: () => void
 }) {
   const [submitting, setSubmitting] = React.useState(false)
@@ -564,13 +567,15 @@ function AnnotationForm({
     const fd = new FormData(e.currentTarget)
     const label = String(fd.get('label')).trim()
     const date = String(fd.get('date'))
+    const endDateRaw = String(fd.get('endDate')).trim()
+    const endDate = endDateRaw || null
     const recurrenceFreq = String(fd.get('recurrence'))
     const recurrence: RecurrenceRule | null = recurrenceFreq
       ? ({ frequency: recurrenceFreq } as RecurrenceRule)
       : null
     setSubmitting(true)
     try {
-      await onSave({ label, date, recurrence })
+      await onSave({ label, date, endDate, recurrence })
     } finally {
       setSubmitting(false)
     }
@@ -579,6 +584,10 @@ function AnnotationForm({
   const defaultDate = annotation
     ? new Date(annotation.date).toISOString().slice(0, 10)
     : new Date().toISOString().slice(0, 10)
+
+  const defaultEndDate = annotation?.endDate
+    ? new Date(annotation.endDate).toISOString().slice(0, 10)
+    : ''
 
   const defaultRecurrence = annotation?.recurrence?.frequency ?? ''
 
@@ -594,15 +603,26 @@ function AnnotationForm({
           className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Date</label>
-        <input
-          name="date"
-          type="date"
-          defaultValue={defaultDate}
-          required
-          className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Start date</label>
+          <input
+            name="date"
+            type="date"
+            defaultValue={defaultDate}
+            required
+            className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">End date <span className="font-normal text-gray-400">(optional)</span></label>
+          <input
+            name="endDate"
+            type="date"
+            defaultValue={defaultEndDate}
+            className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Recurrence</label>

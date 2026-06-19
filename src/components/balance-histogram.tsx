@@ -139,6 +139,7 @@ export default function BalanceHistogram({
           annotationId: ea.annotation.id,
           label: ea.annotation.label,
           occurrenceDate: ea.occurrenceDate,
+          endDate: ea.endDate,
           color: ea.annotation.color,
         })),
     [expandedAnnotations, visibleAnnotations],

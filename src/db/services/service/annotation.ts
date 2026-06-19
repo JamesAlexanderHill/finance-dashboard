@@ -14,6 +14,7 @@ type CreateAnnotationData = {
   accountId: string
   label: string
   date: Date
+  endDate?: Date | null
   recurrence: RecurrenceRule | null
   color?: string | null
 }
@@ -42,6 +43,7 @@ async function create(ctx: RequestContext, data: CreateAnnotationData) {
       accountId: data.accountId,
       label: data.label.trim(),
       date: data.date,
+      endDate: data.endDate ?? null,
       recurrence: data.recurrence ?? null,
       color: data.color ?? null,
     })
@@ -57,6 +59,7 @@ async function update(ctx: RequestContext, id: string, data: UpdateAnnotationDat
     .set({
       ...(data.label !== undefined ? { label: data.label.trim() } : {}),
       ...(data.date !== undefined ? { date: data.date } : {}),
+      ...(data.endDate !== undefined ? { endDate: data.endDate } : {}),
       ...(data.recurrence !== undefined ? { recurrence: data.recurrence } : {}),
       ...(data.color !== undefined ? { color: data.color } : {}),
     })

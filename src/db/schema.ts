@@ -306,6 +306,8 @@ export const timelineAnnotations = pgTable('timeline_annotations', {
   // Anchor date. For one-time annotations this is the sole occurrence date.
   // For recurring annotations this is the reference point the cadence expands from.
   date: timestamp('date', { withTimezone: true }).notNull(),
+  // Optional end date — when set the annotation spans a range rather than a point.
+  endDate: timestamp('end_date', { withTimezone: true }),
   recurrence: jsonb('recurrence').$type<RecurrenceRule | null>().default(null),
   // Optional color name override (e.g. 'rose'). null = default amber.
   color: text('color'),

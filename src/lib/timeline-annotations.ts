@@ -11,6 +11,7 @@ export type AnnotationForExpansion = {
   accountId: string
   label: string
   date: Date
+  endDate?: Date | null
   recurrence: RecurrenceRule | null
   color?: string | null
 }
@@ -18,6 +19,8 @@ export type AnnotationForExpansion = {
 export type ExpandedAnnotation = {
   annotation: AnnotationForExpansion
   occurrenceDate: Date
+  /** Set when the annotation spans a range. */
+  endDate?: Date | null
 }
 
 /**
@@ -55,10 +58,11 @@ export function expandAnnotations(
   const endMs = rangeEnd.getTime()
 
   for (const annotation of annotations) {
+    const annotEndDate = annotation.endDate ?? null
     if (!annotation.recurrence) {
       const t = annotation.date.getTime()
       if (t >= startMs && t <= endMs) {
-        results.push({ annotation, occurrenceDate: annotation.date })
+        results.push({ annotation, occurrenceDate: annotation.date, endDate: annotEndDate })
       }
       continue
     }
@@ -76,7 +80,7 @@ export function expandAnnotations(
     while (true) {
       const d = step(n)
       if (d.getTime() > endMs) break
-      if (d.getTime() >= startMs) results.push({ annotation, occurrenceDate: d })
+      if (d.getTime() >= startMs) results.push({ annotation, occurrenceDate: d, endDate: annotEndDate })
       n++
     }
 
@@ -85,7 +89,7 @@ export function expandAnnotations(
     while (true) {
       const d = step(n)
       if (d.getTime() < startMs) break
-      results.push({ annotation, occurrenceDate: d })
+      results.push({ annotation, occurrenceDate: d, endDate: annotEndDate })
       n--
     }
   }
