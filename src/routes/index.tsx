@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { accountService, instrumentService, rateService, getSession } from '~/db/services'
+import { accountService, annotationService, instrumentService, rateService, getSession } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import { balanceColorClass } from '~/lib/format'
 import BalanceHistogram, { type InstrumentRates } from '~/components/balance-histogram'
@@ -13,14 +13,15 @@ type AccountSummary = { id: string; color: AccountColorName | null }
 
 const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
   const session = await getSession()
-  if (!session) return { user: null, workspace: null, balances: [], instruments: [], accounts: [] as AccountSummary[], accountNames: {} as Record<string, string>, rates: {} as InstrumentRates }
+  if (!session) return { user: null, workspace: null, balances: [], instruments: [], accounts: [] as AccountSummary[], accountNames: {} as Record<string, string>, rates: {} as InstrumentRates, annotations: [] }
 
   const { ctx, user, workspace } = session
 
-  const [balances, accountsResult, instrumentsResult] = await Promise.all([
+  const [balances, accountsResult, instrumentsResult, annotations] = await Promise.all([
     instrumentService.getAccountBalances(ctx),
     accountService.list(ctx),
     instrumentService.list(ctx),
+    annotationService.listByWorkspace(ctx),
   ])
 
   const accountNames = Object.fromEntries(accountsResult.data.map((a) => [a.id, a.name]))
@@ -31,7 +32,7 @@ const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
     Array.from(ratesMap.entries()).map(([id, r]) => [id, { rate: r.rate, asOf: r.asOf.toISOString(), source: r.source }]),
   )
 
-  return { user, workspace, balances, instruments: instrumentsResult.data, accounts, accountNames, rates }
+  return { user, workspace, balances, instruments: instrumentsResult.data, accounts, accountNames, rates, annotations }
 })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -44,7 +45,7 @@ export const Route = createFileRoute('/')({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function DashboardPage() {
-  const { user, workspace, balances, instruments, accounts, accountNames, rates } = Route.useLoaderData()
+  const { user, workspace, balances, instruments, accounts, accountNames, rates, annotations } = Route.useLoaderData()
 
   if (!user || !workspace) {
     return (
@@ -123,6 +124,7 @@ function DashboardPage() {
               return accountName ? `${accountName} ${instrument.ticker}` : instrument.ticker
             }}
             defaultView="stacked"
+            annotations={annotations}
           />
         </div>
       )}

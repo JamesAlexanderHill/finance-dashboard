@@ -1,13 +1,14 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
-import type { Instrument, RateSource } from '~/db/schema'
+import type { Instrument, RateSource, TimelineAnnotation } from '~/db/schema'
 import type { BalanceHistoryPeriod, BalanceHistoryRange, BalancePoint } from '~/db/services'
 import { instrumentService, getSession } from '~/db/services'
 import { formatBalance } from '~/lib/format'
 import { formatMajorAmount } from '~/lib/format-currency'
 import scaleUnit from '~/lib/scale-unit'
 import { defaultBalanceHistoryRange, rangesEqual, serializeRange, type DateRange } from '~/lib/date-range'
+import { expandAnnotations } from '~/lib/timeline-annotations'
 import { ACCOUNT_COLORS, resolveAccountColor, chartColorFor, type AccountColorName } from '~/lib/chart-colors'
 import {
   LineAreaChart,
@@ -16,6 +17,7 @@ import {
   type ChartColor,
   type ChartSeries,
   type TooltipPoint,
+  type AnnotationMark,
   type StackedAreaDatum,
   type StackedAreaKey,
 } from '~/components/charts'
@@ -54,6 +56,8 @@ type BalanceHistogramProps = {
   labelFor?: (instrument: Instrument) => string
   /** Initial chart view. Defaults to "line". */
   defaultView?: ChartViewType
+  /** Timeline annotations for the account(s), pre-fetched by the route loader. */
+  annotations?: TimelineAnnotation[]
 }
 
 type ChartPoint = {
@@ -93,11 +97,15 @@ export default function BalanceHistogram({
   title = 'Balance History',
   labelFor = (instrument) => instrument.ticker,
   defaultView = DEFAULT_VIEW,
+  annotations,
 }: BalanceHistogramProps) {
   const [range, setRange] = useState<DateRange>(() => defaultBalanceHistoryRange())
   const [period, setPeriod] = useState<BalanceHistoryPeriod>(DEFAULT_PERIOD)
   const [view, setView] = useState<ChartViewType>(defaultView)
   const [visible, setVisible] = useState<Set<string>>(() => new Set(instruments.map((i) => i.id)))
+  const [visibleAnnotations, setVisibleAnnotations] = useState<Set<string>>(
+    () => new Set((annotations ?? []).map((a) => a.id)),
+  )
 
   // Each account gets one base hue (explicit or cycled by its position); each
   // of its instruments gets a distinct shade of that hue, cycling by position
@@ -117,6 +125,25 @@ export default function BalanceHistogram({
     const accountColor = accountColorByAccountId.get(instrument.accountId) ?? ACCOUNT_COLORS[0]
     return chartColorFor(accountColor, shadeIndexByInstrumentId.get(instrument.id) ?? 0)
   }
+
+  const expandedAnnotations = useMemo(() => {
+    if (!annotations?.length) return []
+    return expandAnnotations(annotations, range.start ?? new Date(0), range.end)
+  }, [annotations, range])
+
+  const filteredAnnotationMarks: AnnotationMark[] = useMemo(
+    () =>
+      expandedAnnotations
+        .filter((ea) => visibleAnnotations.has(ea.annotation.id))
+        .map((ea) => ({
+          annotationId: ea.annotation.id,
+          label: ea.annotation.label,
+          occurrenceDate: ea.occurrenceDate,
+          endDate: ea.endDate,
+          color: ea.annotation.color,
+        })),
+    [expandedAnnotations, visibleAnnotations],
+  )
 
   const serializedRange = serializeRange(range)
 
@@ -179,6 +206,15 @@ export default function BalanceHistogram({
     })
   }
 
+  function toggleAnnotation(annotationId: string) {
+    setVisibleAnnotations((prev) => {
+      const next = new Set(prev)
+      if (next.has(annotationId)) next.delete(annotationId)
+      else next.add(annotationId)
+      return next
+    })
+  }
+
   return (
     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
       <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
@@ -228,6 +264,39 @@ export default function BalanceHistogram({
         </div>
       )}
 
+      {annotations && annotations.length > 0 && (
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">Annotations:</span>
+          {annotations.map((annotation) => {
+            const checked = visibleAnnotations.has(annotation.id)
+            return (
+              <label
+                key={annotation.id}
+                className={`inline-flex items-center gap-1.5 text-xs cursor-pointer select-none ${
+                  checked ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleAnnotation(annotation.id)}
+                  className="sr-only"
+                />
+                <span
+                  className={`inline-block w-4 border-t border-dashed ${
+                    checked ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-700'
+                  }`}
+                />
+                {annotation.label}
+                {annotation.recurrence && (
+                  <span className="text-gray-400 dark:text-gray-500">({annotation.recurrence.frequency})</span>
+                )}
+              </label>
+            )
+          })}
+        </div>
+      )}
+
       <div className={isFetching ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
         {series.length > 0 ? (
           view === 'stacked' ? (
@@ -237,6 +306,7 @@ export default function BalanceHistogram({
               numTicks={6}
               yTickFormat={yTickFormat}
               tickFormat={tickFormat}
+              annotations={filteredAnnotationMarks}
               renderTooltip={(datum) => (
                 <>
                   <div className="font-medium">
@@ -269,6 +339,7 @@ export default function BalanceHistogram({
               numTicks={6}
               yTickFormat={yTickFormat}
               tickFormat={tickFormat}
+              annotations={filteredAnnotationMarks}
               renderTooltip={(points) => (
                 <>
                   <div className="font-medium">

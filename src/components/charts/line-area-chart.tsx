@@ -68,6 +68,16 @@ export const DEFAULT_CHART_COLOR: ChartColor = 'blue-2'
 
 export type { ChartColor }
 
+/** A single expanded annotation occurrence to render on the chart. */
+export type AnnotationMark = {
+  annotationId: string
+  label: string
+  occurrenceDate: Date
+  /** When set, renders a shaded band from occurrenceDate to endDate. */
+  endDate?: Date | null
+  color?: string | null
+}
+
 export type ChartSeries<T> = {
   /** Unique identifier for this series, e.g. an instrument id. */
   id: string
@@ -111,6 +121,8 @@ export type LineAreaChartProps<T> = {
   yNumTicks?: number
   /** Line interpolation curve. Defaults to `curveMonotoneX` (smoothed). */
   curve?: CurveFactory
+  /** Expanded annotation occurrences to render as vertical dotted lines with hover tooltips. */
+  annotations?: AnnotationMark[]
 }
 
 /**
@@ -142,9 +154,19 @@ function Chart<T>({
   yTickFormat,
   yNumTicks = 4,
   curve = curveMonotoneX,
+  annotations,
 }: LineAreaChartProps<T> & { width: number; height: number }) {
   const { tooltipData, tooltipLeft, tooltipTop, tooltipOpen, showTooltip, hideTooltip } =
     useTooltip<TooltipPoint<T>[]>()
+
+  const {
+    tooltipData: annotTooltipData,
+    tooltipLeft: annotTooltipLeft,
+    tooltipTop: annotTooltipTop,
+    tooltipOpen: annotTooltipOpen,
+    showTooltip: showAnnotTooltip,
+    hideTooltip: hideAnnotTooltip,
+  } = useTooltip<AnnotationMark[]>()
 
   const nonEmptySeries = React.useMemo(() => series.filter((s) => s.data.length > 0), [series])
 
@@ -179,9 +201,33 @@ function Chart<T>({
     })
   }, [nonEmptySeries, y, height, fixedYMin, fixedYMax])
 
+  const ANNOTATION_SNAP_PX = 8
+
   const handlePointerMove = (event: React.MouseEvent | React.TouchEvent) => {
     const point = localPoint(event)
     if (!point) return
+
+    // Check annotation proximity first — show annotation tooltip if near a line or inside a band.
+    if (annotations && annotations.length > 0) {
+      const near = annotations.filter((ann) => {
+        const axPos = xScale(ann.occurrenceDate)
+        if (ann.endDate) {
+          const axEnd = xScale(ann.endDate)
+          return point.x >= axPos - ANNOTATION_SNAP_PX && point.x <= axEnd + ANNOTATION_SNAP_PX
+        }
+        return Math.abs(axPos - point.x) < ANNOTATION_SNAP_PX
+      })
+      if (near.length > 0) {
+        showAnnotTooltip({
+          tooltipData: near,
+          tooltipLeft: xScale(near[0].occurrenceDate),
+          tooltipTop: MARGIN.top + 8,
+        })
+        hideTooltip()
+        return
+      }
+    }
+    hideAnnotTooltip()
 
     const targetX = xScale.invert(point.x).getTime()
 
@@ -230,6 +276,63 @@ function Chart<T>({
             strokeDasharray="4 4"
           />
         )}
+        {/* Annotation marks — vertical dotted lines (point) or shaded bands (range) */}
+        {annotations?.map((ann) => {
+          const xPos = xScale(ann.occurrenceDate)
+          const chartRight = width - MARGIN.right
+          const chartTop = MARGIN.top
+          const chartBottom = height - MARGIN.bottom
+          if (ann.endDate) {
+            const xEnd = xScale(ann.endDate)
+            if (xEnd < MARGIN.left || xPos > chartRight) return null
+            const x1 = Math.max(xPos, MARGIN.left)
+            const x2 = Math.min(xEnd, chartRight)
+            return (
+              <g key={`${ann.annotationId}-${ann.occurrenceDate.getTime()}`} pointerEvents="none">
+                <rect
+                  x={x1}
+                  y={chartTop}
+                  width={Math.max(x2 - x1, 0)}
+                  height={chartBottom - chartTop}
+                  className="fill-amber-400/15 dark:fill-amber-500/15"
+                />
+                {xPos >= MARGIN.left && (
+                  <Line
+                    from={{ x: xPos, y: chartTop }}
+                    to={{ x: xPos, y: chartBottom }}
+                    stroke="currentColor"
+                    className="stroke-amber-400 dark:stroke-amber-500"
+                    strokeWidth={1.5}
+                    strokeDasharray="3 3"
+                  />
+                )}
+                {xEnd <= chartRight && (
+                  <Line
+                    from={{ x: xEnd, y: chartTop }}
+                    to={{ x: xEnd, y: chartBottom }}
+                    stroke="currentColor"
+                    className="stroke-amber-400 dark:stroke-amber-500"
+                    strokeWidth={1.5}
+                    strokeDasharray="3 3"
+                  />
+                )}
+              </g>
+            )
+          }
+          if (xPos < MARGIN.left || xPos > chartRight) return null
+          return (
+            <Line
+              key={`${ann.annotationId}-${ann.occurrenceDate.getTime()}`}
+              from={{ x: xPos, y: chartTop }}
+              to={{ x: xPos, y: chartBottom }}
+              stroke="currentColor"
+              className="stroke-amber-400 dark:stroke-amber-500"
+              strokeWidth={1.5}
+              strokeDasharray="3 3"
+              pointerEvents="none"
+            />
+          )
+        })}
         {nonEmptySeries.map((s) => {
           const colors = COLOR_CLASSES[s.color]
           const firstProjectedIndex = s.isProjected ? s.data.findIndex((d) => s.isProjected!(d)) : -1
@@ -325,9 +428,9 @@ function Chart<T>({
           height={Math.max(height - MARGIN.top - MARGIN.bottom, 0)}
           fill="transparent"
           onMouseMove={handlePointerMove}
-          onMouseLeave={hideTooltip}
+          onMouseLeave={() => { hideTooltip(); hideAnnotTooltip() }}
           onTouchMove={handlePointerMove}
-          onTouchEnd={hideTooltip}
+          onTouchEnd={() => { hideTooltip(); hideAnnotTooltip() }}
         />
       </svg>
 
@@ -347,6 +450,35 @@ function Chart<T>({
         >
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg px-2 py-1 text-xs text-gray-900 dark:text-gray-100 whitespace-nowrap">
             {renderTooltip(tooltipData)}
+          </div>
+        </TooltipWithBounds>
+      )}
+
+      {annotTooltipOpen && annotTooltipData && (
+        <TooltipWithBounds
+          left={annotTooltipLeft}
+          top={annotTooltipTop}
+          style={{
+            position: 'absolute',
+            backgroundColor: 'transparent',
+            padding: 0,
+            border: 'none',
+            boxShadow: 'none',
+            borderRadius: 0,
+            pointerEvents: 'none',
+          }}
+        >
+          <div className="bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 rounded-md shadow-lg px-2 py-1 text-xs text-gray-900 dark:text-gray-100 whitespace-nowrap">
+            {annotTooltipData.map((ann) => (
+              <div key={`${ann.annotationId}-${ann.occurrenceDate.getTime()}`} className="flex items-center gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 dark:bg-amber-500" />
+                <span className="font-medium">{ann.label}</span>
+                <span className="text-gray-400 dark:text-gray-500">
+                  {ann.occurrenceDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {ann.endDate && ` – ${ann.endDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                </span>
+              </div>
+            ))}
           </div>
         </TooltipWithBounds>
       )}

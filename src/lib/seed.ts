@@ -11,6 +11,7 @@ import {
   instruments,
   legs,
   lineItems,
+  timelineAnnotations,
   users,
   workspaceMembers,
   workspaces,
@@ -29,6 +30,7 @@ export async function clearAllData(): Promise<void> {
   await db.delete(events)
   await db.delete(files)
   await db.delete(categories)
+  await db.delete(timelineAnnotations)
   // Clear defaultInstrumentId before deleting instruments (circular FK)
   await db.update(accounts).set({ defaultInstrumentId: null })
   await db.delete(instruments)
@@ -637,4 +639,29 @@ export async function seedSampleEvents(workspaceId: string): Promise<void> {
     mar26Salary, mar26VhySell, apr26Salary, apr26Insurance, apr26TransOut, apr26TransIn,
     may26Salary, may26Aldi, may26NzdExchange, may26Dining,
     aug25Woolies, sep25TransOut, sep25TransIn, oct25Exchange, nov25InvOut, nov25InvIn]
+
+  // ── Timeline Annotations ──────────────────────────────────────────────────
+  await db.insert(timelineAnnotations).values([
+    {
+      workspaceId,
+      accountId: commbank.id,
+      label: 'Salary raise',
+      date: new Date('2026-01-01T00:00:00Z'),
+      recurrence: null,
+    },
+    {
+      workspaceId,
+      accountId: commbank.id,
+      label: 'Monthly rent',
+      date: new Date('2025-08-07T00:00:00Z'),
+      recurrence: { frequency: 'monthly' },
+    },
+    {
+      workspaceId,
+      accountId: vanguard.id,
+      label: 'Annual rebalance',
+      date: new Date('2025-11-01T00:00:00Z'),
+      recurrence: { frequency: 'yearly' },
+    },
+  ])
 }

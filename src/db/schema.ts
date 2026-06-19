@@ -15,6 +15,7 @@ import { relations } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { uuidv7 } from 'uuidv7'
 import { ACCOUNT_COLORS } from '~/lib/chart-colors'
+import type { RecurrenceRule } from '~/lib/timeline-annotations'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -293,6 +294,26 @@ export const lineItems = pgTable('line_items', {
   description: text('description'),
 })
 
+// ─── Timeline Annotations ─────────────────────────────────────────────────────
+
+export const timelineAnnotations = pgTable('timeline_annotations', {
+  id: id(),
+  workspaceId: workspaceId().references(() => workspaces.id),
+  accountId: text('account_id')
+    .notNull()
+    .references(() => accounts.id),
+  label: text('label').notNull(),
+  // Anchor date. For one-time annotations this is the sole occurrence date.
+  // For recurring annotations this is the reference point the cadence expands from.
+  date: timestamp('date', { withTimezone: true }).notNull(),
+  // Optional end date — when set the annotation spans a range rather than a point.
+  endDate: timestamp('end_date', { withTimezone: true }),
+  recurrence: jsonb('recurrence').$type<RecurrenceRule | null>().default(null),
+  // Optional color name override (e.g. 'rose'). null = default amber.
+  color: text('color'),
+  createdAt: createdAt(),
+})
+
 // ─── Event Relations ──────────────────────────────────────────────────────────
 
 export const eventRelations = pgTable(
@@ -330,8 +351,9 @@ export const workspaceMembersRelations = relations(workspaceMembers, ({ one }) =
   user: one(users, { fields: [workspaceMembers.userId], references: [users.id] }),
 }))
 
-export const accountsRelations = relations(accounts, ({ one, many }) => ({// account -> instruments (via instruments.accountId)
+export const accountsRelations = relations(accounts, ({ one, many }) => ({
   instruments: many(instruments, { relationName: 'accountInstruments' }),
+  annotations: many(timelineAnnotations),
 
   defaultInstrument: one(instruments, {
     fields: [accounts.defaultInstrumentId],
@@ -397,6 +419,17 @@ export const lineItemsRelations = relations(lineItems, ({ one }) => ({
   category: one(categories, { fields: [lineItems.categoryId], references: [categories.id] }),
 }))
 
+export const timelineAnnotationsRelations = relations(timelineAnnotations, ({ one }) => ({
+  account: one(accounts, {
+    fields: [timelineAnnotations.accountId],
+    references: [accounts.id],
+  }),
+  workspace: one(workspaces, {
+    fields: [timelineAnnotations.workspaceId],
+    references: [workspaces.id],
+  }),
+}))
+
 export const eventRelationRelations = relations(eventRelations, ({ one }) => ({
   parentEvent: one(events, {
     fields: [eventRelations.parentEventId],
@@ -432,3 +465,4 @@ export type InstrumentRate = typeof instrumentRates.$inferSelect
 export type RateSource = (typeof rateSourceEnum.enumValues)[number]
 export type LineItem = typeof lineItems.$inferSelect
 export type EventRelation = typeof eventRelations.$inferSelect
+export type TimelineAnnotation = typeof timelineAnnotations.$inferSelect

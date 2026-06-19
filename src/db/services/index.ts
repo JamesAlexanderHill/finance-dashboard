@@ -1,4 +1,6 @@
 export { accountService } from './service/account'
+export { annotationService } from './service/annotation'
+export type { TimelineAnnotation } from '~/db/schema'
 export { eventService } from './service/event'
 export { instrumentService } from './service/instrument'
 export type { AccountBalance, BalancePoint, BalanceHistoryRange, BalanceHistoryPeriod } from './service/instrument'
