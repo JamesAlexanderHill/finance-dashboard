@@ -75,22 +75,14 @@ export function expandAnnotations(
       return addMonthsClamped(annotation.date, n * 12)
     }
 
-    // Walk forward from anchor (n=0, 1, 2, …)
+    // Walk forward from anchor (n=0, 1, 2, …). The anchor date is the start
+    // of the recurrence — occurrences before it are not generated.
     let n = 0
     while (true) {
       const d = step(n)
       if (d.getTime() > endMs) break
       if (d.getTime() >= startMs) results.push({ annotation, occurrenceDate: d, endDate: annotEndDate })
       n++
-    }
-
-    // Walk backward from anchor (n=-1, -2, …)
-    n = -1
-    while (true) {
-      const d = step(n)
-      if (d.getTime() < startMs) break
-      results.push({ annotation, occurrenceDate: d, endDate: annotEndDate })
-      n--
     }
   }
 

@@ -62,14 +62,14 @@ describe('expandAnnotations', () => {
     expect(toISODate(result[2].occurrenceDate)).toBe('2026-01-15')
   })
 
-  test('weekly: anchor after rangeStart → walk-back finds earlier occurrences', () => {
+  test('weekly: anchor after rangeStart → only occurrences from anchor onward', () => {
     // anchor = Jan 10, range = Jan 1–31
-    // walk back: Jan 3 (10-7), Jan 3 >= Jan 1 ✓; Jan -4 < Jan 1, stop
+    // Jan 3 (before the anchor) must NOT appear; recurrence starts at the anchor date
     // walk forward: Jan 10, 17, 24, 31
     const ann = makeAnnotation({ date: new Date('2026-01-10T00:00:00Z'), recurrence: { frequency: 'weekly' } })
     const result = expandAnnotations([ann], JAN_1, JAN_31)
     const dates = result.map((r) => toISODate(r.occurrenceDate))
-    expect(dates).toContain('2026-01-03')
+    expect(dates).not.toContain('2026-01-03')
     expect(dates).toContain('2026-01-10')
     expect(dates).toContain('2026-01-17')
     expect(dates).toContain('2026-01-24')
