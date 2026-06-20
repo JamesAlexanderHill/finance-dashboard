@@ -372,7 +372,7 @@ function AccountDetailPage() {
                   </span>
                   {annotation.recurrence ? (
                     <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
-                      {annotation.recurrence.frequency}
+                      {RECURRENCE_LABELS[annotation.recurrence.frequency] ?? annotation.recurrence.frequency}
                     </span>
                   ) : (
                     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
@@ -545,9 +545,16 @@ function AccountDetailPage() {
 const RECURRENCE_OPTIONS = [
   { value: '', label: 'One-time' },
   { value: 'weekly', label: 'Weekly' },
+  { value: 'fortnightly', label: 'Fortnightly' },
   { value: 'monthly', label: 'Monthly' },
+  { value: 'start_of_month', label: 'Start of month' },
+  { value: 'end_of_month', label: 'End of month' },
   { value: 'yearly', label: 'Yearly' },
 ] as const
+
+const RECURRENCE_LABELS: Record<string, string> = Object.fromEntries(
+  RECURRENCE_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label]),
+)
 
 function AnnotationForm({
   accountId,

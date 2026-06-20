@@ -2,7 +2,10 @@ import { addDays } from '~/lib/date-range'
 
 export type RecurrenceRule =
   | { frequency: 'weekly' }
+  | { frequency: 'fortnightly' }
   | { frequency: 'monthly' }
+  | { frequency: 'start_of_month' }
+  | { frequency: 'end_of_month' }
   | { frequency: 'yearly' }
 
 /** Structural subset used by expandAnnotations — structurally compatible with the DB $inferSelect row. */
@@ -71,7 +74,14 @@ export function expandAnnotations(
 
     function step(n: number): Date {
       if (frequency === 'weekly') return addDays(annotation.date, n * 7)
+      if (frequency === 'fortnightly') return addDays(annotation.date, n * 14)
       if (frequency === 'monthly') return addMonthsClamped(annotation.date, n)
+      if (frequency === 'start_of_month') {
+        return new Date(Date.UTC(annotation.date.getUTCFullYear(), annotation.date.getUTCMonth() + n, 1))
+      }
+      if (frequency === 'end_of_month') {
+        return new Date(Date.UTC(annotation.date.getUTCFullYear(), annotation.date.getUTCMonth() + n + 1, 0))
+      }
       return addMonthsClamped(annotation.date, n * 12)
     }
 
