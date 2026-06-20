@@ -20,6 +20,7 @@ import {
   type AnnotationMark,
   type StackedAreaDatum,
   type StackedAreaKey,
+  type StackMode,
 } from '~/components/charts'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from '~/components/ui/select'
 import DateRangePicker from '~/components/ui/date-range-picker'
@@ -85,6 +86,13 @@ const VIEW_OPTIONS: { value: ChartViewType; label: string }[] = [
   { value: 'stacked', label: 'Stacked Area' },
 ]
 
+const DEFAULT_STACK_MODE: StackMode = 'net'
+
+const STACK_MODE_OPTIONS: { value: StackMode; label: string }[] = [
+  { value: 'net', label: 'Net Balance' },
+  { value: 'separated', label: 'Separated' },
+]
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function BalanceHistogram({
@@ -102,6 +110,7 @@ export default function BalanceHistogram({
   const [range, setRange] = useState<DateRange>(() => defaultBalanceHistoryRange())
   const [period, setPeriod] = useState<BalanceHistoryPeriod>(DEFAULT_PERIOD)
   const [view, setView] = useState<ChartViewType>(defaultView)
+  const [stackMode, setStackMode] = useState<StackMode>(DEFAULT_STACK_MODE)
   const [visible, setVisible] = useState<Set<string>>(() => new Set(instruments.map((i) => i.id)))
   const [visibleAnnotations, setVisibleAnnotations] = useState<Set<string>>(
     () => new Set((annotations ?? []).map((a) => a.id)),
@@ -223,6 +232,9 @@ export default function BalanceHistogram({
         <div className="flex items-center gap-2">
           <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
           <DateRangePicker value={range} onChange={setRange} />
+          {view === 'stacked' && (
+            <SegmentedControl options={STACK_MODE_OPTIONS} value={stackMode} onChange={setStackMode} />
+          )}
           <Select items={VIEW_OPTIONS} value={view} onValueChange={(value) => setView(value as ChartViewType)}>
             <SelectTrigger>
               <SelectValue />
@@ -303,6 +315,7 @@ export default function BalanceHistogram({
             <StackedAreaChart
               data={stackedData}
               keys={stackedKeys}
+              stackMode={stackMode}
               numTicks={6}
               yTickFormat={yTickFormat}
               tickFormat={tickFormat}
