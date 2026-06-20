@@ -62,14 +62,14 @@ describe('expandAnnotations', () => {
     expect(toISODate(result[2].occurrenceDate)).toBe('2026-01-15')
   })
 
-  test('weekly: anchor after rangeStart → walk-back finds earlier occurrences', () => {
+  test('weekly: anchor after rangeStart → only occurrences from anchor onward', () => {
     // anchor = Jan 10, range = Jan 1–31
-    // walk back: Jan 3 (10-7), Jan 3 >= Jan 1 ✓; Jan -4 < Jan 1, stop
+    // Jan 3 (before the anchor) must NOT appear; recurrence starts at the anchor date
     // walk forward: Jan 10, 17, 24, 31
     const ann = makeAnnotation({ date: new Date('2026-01-10T00:00:00Z'), recurrence: { frequency: 'weekly' } })
     const result = expandAnnotations([ann], JAN_1, JAN_31)
     const dates = result.map((r) => toISODate(r.occurrenceDate))
-    expect(dates).toContain('2026-01-03')
+    expect(dates).not.toContain('2026-01-03')
     expect(dates).toContain('2026-01-10')
     expect(dates).toContain('2026-01-17')
     expect(dates).toContain('2026-01-24')
@@ -116,6 +116,53 @@ describe('expandAnnotations', () => {
     const result = expandAnnotations([ann], new Date('2025-01-01T00:00:00Z'), DEC_31)
     const dates = result.map((r) => toISODate(r.occurrenceDate))
     expect(dates).toEqual(['2025-11-01', '2026-11-01'])
+  })
+
+  test('fortnightly: anchor within range, correct 14-day cadence', () => {
+    // anchor = Jan 1, range = Jan 1 – Jan 29 → Jan 1, 15, 29 (Jan 43 > rangeEnd)
+    const ann = makeAnnotation({ date: JAN_1, recurrence: { frequency: 'fortnightly' } })
+    const result = expandAnnotations([ann], JAN_1, new Date('2026-01-29T00:00:00Z'))
+    const dates = result.map((r) => toISODate(r.occurrenceDate))
+    expect(dates).toEqual(['2026-01-01', '2026-01-15', '2026-01-29'])
+  })
+
+  test('fortnightly: anchor before rangeStart → walk-forward lands in range', () => {
+    // anchor = Dec 1 2025, +14 days each. Range = Jan 1–31 2026.
+    // Dec 1 + 4*14 = Dec 29 (out), + 5*14 = Jan 12 ✓, + 6*14 = Jan 26 ✓, + 7*14 = Feb 9 (out)
+    const ann = makeAnnotation({ date: new Date('2025-12-01T00:00:00Z'), recurrence: { frequency: 'fortnightly' } })
+    const result = expandAnnotations([ann], JAN_1, JAN_31)
+    const dates = result.map((r) => toISODate(r.occurrenceDate))
+    expect(dates).toEqual(['2026-01-12', '2026-01-26'])
+  })
+
+  test('start_of_month: always fires on the 1st regardless of anchor day', () => {
+    // anchor = Jan 15, range = Jan 1 – Apr 30 → Jan 1, Feb 1, Mar 1, Apr 1
+    const ann = makeAnnotation({ date: new Date('2026-01-15T00:00:00Z'), recurrence: { frequency: 'start_of_month' } })
+    const result = expandAnnotations([ann], JAN_1, new Date('2026-04-30T00:00:00Z'))
+    const dates = result.map((r) => toISODate(r.occurrenceDate))
+    expect(dates).toEqual(['2026-01-01', '2026-02-01', '2026-03-01', '2026-04-01'])
+  })
+
+  test('start_of_month: anchor on the 1st, same result', () => {
+    const ann = makeAnnotation({ date: JAN_1, recurrence: { frequency: 'start_of_month' } })
+    const result = expandAnnotations([ann], JAN_1, new Date('2026-03-31T00:00:00Z'))
+    const dates = result.map((r) => toISODate(r.occurrenceDate))
+    expect(dates).toEqual(['2026-01-01', '2026-02-01', '2026-03-01'])
+  })
+
+  test('end_of_month: always fires on last day of month regardless of anchor day', () => {
+    // anchor = Jan 15, range = Jan 1 – Apr 30 → Jan 31, Feb 28, Mar 31, Apr 30
+    const ann = makeAnnotation({ date: new Date('2026-01-15T00:00:00Z'), recurrence: { frequency: 'end_of_month' } })
+    const result = expandAnnotations([ann], JAN_1, new Date('2026-04-30T00:00:00Z'))
+    const dates = result.map((r) => toISODate(r.occurrenceDate))
+    expect(dates).toEqual(['2026-01-31', '2026-02-28', '2026-03-31', '2026-04-30'])
+  })
+
+  test('end_of_month: February in non-leap year → 28th', () => {
+    const ann = makeAnnotation({ date: new Date('2026-01-01T00:00:00Z'), recurrence: { frequency: 'end_of_month' } })
+    const result = expandAnnotations([ann], new Date('2026-02-01T00:00:00Z'), new Date('2026-02-28T00:00:00Z'))
+    const dates = result.map((r) => toISODate(r.occurrenceDate))
+    expect(dates).toEqual(['2026-02-28'])
   })
 
   test('multiple annotations → result sorted ascending by occurrenceDate', () => {

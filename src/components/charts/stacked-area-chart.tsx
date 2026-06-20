@@ -8,7 +8,10 @@ import { useTooltip, TooltipWithBounds } from '@visx/tooltip'
 import { localPoint } from '@visx/event'
 import { curveMonotoneX } from '@visx/curve'
 import type { CurveFactory } from '@visx/vendor/d3-shape'
+
 import { MARGIN, COLOR_CLASSES, DEFAULT_CHART_COLOR, type ChartColor, type AnnotationMark } from './line-area-chart'
+
+export type StackMode = 'net' | 'separated'
 
 /** One x-position's worth of stacked values, keyed by series id. */
 export type StackedAreaDatum = {
@@ -39,6 +42,14 @@ export type StackedAreaChartProps = {
   renderTooltip?: (datum: StackedAreaDatum) => React.ReactNode
   /** Expanded annotation occurrences to render as vertical dotted lines with hover tooltips. */
   annotations?: AnnotationMark[]
+  /**
+   * How debt and asset series are stacked:
+   * - `'net'` (default): negative series stack below zero first, then positive series
+   *   stack on top of the cumulative debt — shows true net position.
+   * - `'separated'`: positive series stack upward from zero and negative series
+   *   stack downward from zero independently — shows gross assets vs gross liabilities.
+   */
+  stackMode?: StackMode
 }
 
 /**
@@ -67,6 +78,7 @@ function Chart({
   curve = curveMonotoneX,
   renderTooltip,
   annotations,
+  stackMode = 'net',
 }: StackedAreaChartProps & { width: number; height: number }) {
   const { tooltipData, tooltipLeft, tooltipOpen, showTooltip, hideTooltip } = useTooltip<StackedAreaDatum>()
 
@@ -92,15 +104,45 @@ function Chart({
     [xDomain, width],
   )
 
+  // In net mode, sort keys so negative series (debts) come first — they stack
+  // below zero and positive series (assets) stack on top of the total debt.
+  const sortedKeys = React.useMemo(() => {
+    if (stackMode !== 'net' || data.length === 0) return keys
+    const lastDatum = data[data.length - 1]
+    return [...keys].sort((a, b) => {
+      const va = lastDatum.values[a.id] ?? 0
+      const vb = lastDatum.values[b.id] ?? 0
+      if (va < 0 && vb >= 0) return -1
+      if (va >= 0 && vb < 0) return 1
+      return 0
+    })
+  }, [keys, data, stackMode])
+
   const yScale = React.useMemo(() => {
     let min = 0
     let max = 0
-    for (const d of data) {
-      let cumulative = 0
-      for (const key of keys) {
-        cumulative += d.values[key.id] ?? 0
-        if (cumulative > max) max = cumulative
-        if (cumulative < min) min = cumulative
+    if (stackMode === 'separated') {
+      // Positive and negative stacks are independent from zero.
+      for (const d of data) {
+        let posSum = 0
+        let negSum = 0
+        for (const key of sortedKeys) {
+          const v = d.values[key.id] ?? 0
+          if (v >= 0) posSum += v
+          else negSum += v
+        }
+        if (posSum > max) max = posSum
+        if (negSum < min) min = negSum
+      }
+    } else {
+      // Net mode: cumulative sum — negatives build the debt trough, positives climb from there.
+      for (const d of data) {
+        let cumulative = 0
+        for (const key of sortedKeys) {
+          cumulative += d.values[key.id] ?? 0
+          if (cumulative > max) max = cumulative
+          if (cumulative < min) min = cumulative
+        }
       }
     }
     const pad = (max - min) * 0.1 || Math.abs(max) * 0.1 || 1
@@ -108,7 +150,7 @@ function Chart({
       domain: [min < 0 ? min - pad : 0, max + pad],
       range: [height - MARGIN.bottom, MARGIN.top],
     })
-  }, [data, keys, height])
+  }, [data, sortedKeys, height, stackMode])
 
   const ANNOTATION_SNAP_PX = 8
 
@@ -239,16 +281,17 @@ function Chart({
         })}
         <AreaStack
           data={data}
-          keys={keys.map((k) => k.id)}
+          keys={sortedKeys.map((k) => k.id)}
           value={(d: StackedAreaDatum, key) => d.values[key] ?? 0}
           x={(d) => xScale(d.data.period)}
           y0={(d) => yScale(d[0])}
           y1={(d) => yScale(d[1])}
           curve={curve}
+          {...(stackMode === 'separated' ? { offset: 'diverging' as const } : {})}
         >
           {({ stacks, path }) =>
             stacks.map((stack) => {
-              const color = keys.find((k) => k.id === stack.key)?.color ?? DEFAULT_CHART_COLOR
+              const color = sortedKeys.find((k) => k.id === stack.key)?.color ?? DEFAULT_CHART_COLOR
               const colors = COLOR_CLASSES[color]
               return (
                 <path
