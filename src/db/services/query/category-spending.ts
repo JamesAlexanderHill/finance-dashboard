@@ -2,7 +2,7 @@ import { and, eq, isNull, isNotNull, gte, lte } from 'drizzle-orm'
 import { db } from '~/db'
 import { categories, legs, events } from '~/db/schema'
 
-export async function querySankeyLegs(
+export async function queryCategoryLegsByDate(
   workspaceId: string,
   dateRange?: { start: string | null; end: string },
 ) {
@@ -11,10 +11,11 @@ export async function querySankeyLegs(
     .from(categories)
     .where(eq(categories.workspaceId, workspaceId))
 
-  const categorizedLegs = await db
+  const rows = await db
     .select({
       categoryId: legs.categoryId,
       unitCount: legs.unitCount,
+      effectiveAt: events.effectiveAt,
     })
     .from(legs)
     .innerJoin(events, eq(legs.eventId, events.id))
@@ -30,5 +31,5 @@ export async function querySankeyLegs(
       ),
     )
 
-  return { categories: cats, legs: categorizedLegs }
+  return { categories: cats, legs: rows }
 }

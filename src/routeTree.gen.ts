@@ -11,7 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspacesRouteImport } from './routes/workspaces'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as SankeyRouteImport } from './routes/sankey'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DevRouteImport } from './routes/dev'
 import { Route as CategoriesRouteImport } from './routes/categories'
@@ -40,11 +39,6 @@ const WorkspacesRoute = WorkspacesRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SankeyRoute = SankeyRouteImport.update({
-  id: '/sankey',
-  path: '/sankey',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -158,7 +152,6 @@ export interface FileRoutesByFullPath {
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
   '/login': typeof LoginRoute
-  '/sankey': typeof SankeyRoute
   '/settings': typeof SettingsRoute
   '/workspaces': typeof WorkspacesRoute
   '/accounts/$accountId': typeof AccountsAccountIdRouteRouteWithChildren
@@ -180,7 +173,6 @@ export interface FileRoutesByTo {
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
   '/login': typeof LoginRoute
-  '/sankey': typeof SankeyRoute
   '/settings': typeof SettingsRoute
   '/workspaces': typeof WorkspacesRoute
   '/accounts': typeof AccountsIndexRoute
@@ -201,7 +193,6 @@ export interface FileRoutesById {
   '/categories': typeof CategoriesRoute
   '/dev': typeof DevRoute
   '/login': typeof LoginRoute
-  '/sankey': typeof SankeyRoute
   '/settings': typeof SettingsRoute
   '/workspaces': typeof WorkspacesRoute
   '/accounts/$accountId': typeof AccountsAccountIdRouteRouteWithChildren
@@ -227,7 +218,6 @@ export interface FileRouteTypes {
     | '/categories'
     | '/dev'
     | '/login'
-    | '/sankey'
     | '/settings'
     | '/workspaces'
     | '/accounts/$accountId'
@@ -249,7 +239,6 @@ export interface FileRouteTypes {
     | '/categories'
     | '/dev'
     | '/login'
-    | '/sankey'
     | '/settings'
     | '/workspaces'
     | '/accounts'
@@ -269,7 +258,6 @@ export interface FileRouteTypes {
     | '/categories'
     | '/dev'
     | '/login'
-    | '/sankey'
     | '/settings'
     | '/workspaces'
     | '/accounts/$accountId'
@@ -294,7 +282,6 @@ export interface RootRouteChildren {
   CategoriesRoute: typeof CategoriesRoute
   DevRoute: typeof DevRoute
   LoginRoute: typeof LoginRoute
-  SankeyRoute: typeof SankeyRoute
   SettingsRoute: typeof SettingsRoute
   WorkspacesRoute: typeof WorkspacesRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
@@ -314,13 +301,6 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sankey': {
-      id: '/sankey'
-      path: '/sankey'
-      fullPath: '/sankey'
-      preLoaderRoute: typeof SankeyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -563,7 +543,6 @@ const rootRouteChildren: RootRouteChildren = {
   CategoriesRoute: CategoriesRoute,
   DevRoute: DevRoute,
   LoginRoute: LoginRoute,
-  SankeyRoute: SankeyRoute,
   SettingsRoute: SettingsRoute,
   WorkspacesRoute: WorkspacesRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
