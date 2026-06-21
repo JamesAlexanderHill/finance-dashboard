@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
+import { ParentSize } from '@visx/responsive'
 import type { Instrument, RateSource, TimelineAnnotation } from '~/db/schema'
 import type { BalanceHistoryPeriod, BalanceHistoryRange, BalancePoint } from '~/db/services'
-import { instrumentService, getSession } from '~/db/services'
+import { instrumentService, sankeyService, categorySpendingService, getSession } from '~/db/services'
 import { formatBalance } from '~/lib/format'
 import { formatMajorAmount } from '~/lib/format-currency'
 import scaleUnit from '~/lib/scale-unit'
@@ -13,6 +14,8 @@ import { ACCOUNT_COLORS, resolveAccountColor, chartColorFor, type AccountColorNa
 import {
   LineAreaChart,
   StackedAreaChart,
+  CategoryBarChart,
+  buildCategoryColorMap,
   COLOR_CLASSES,
   type ChartColor,
   type ChartSeries,
@@ -22,6 +25,7 @@ import {
   type StackedAreaKey,
   type StackMode,
 } from '~/components/charts'
+import { SankeyChart } from '~/components/charts/sankey-chart'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from '~/components/ui/select'
 import DateRangePicker from '~/components/ui/date-range-picker'
 
@@ -32,8 +36,23 @@ const getBalanceHistory = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     const session = await getSession()
     if (!session) return []
-
     return instrumentService.getBalanceHistory(session.ctx, data.instrumentId, data.range, data.period)
+  })
+
+const getCategoryFlow = createServerFn({ method: 'GET' })
+  .inputValidator((d: unknown) => d as { start: string | null; end: string })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) return null
+    return sankeyService.getData(session.ctx, data)
+  })
+
+const getCategoryBarData = createServerFn({ method: 'GET' })
+  .inputValidator((d: unknown) => d as { start: string | null; end: string; period: BalanceHistoryPeriod })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) return null
+    return categorySpendingService.getByPeriod(session.ctx, data, data.period)
   })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,14 +95,15 @@ const PERIOD_OPTIONS: { value: BalanceHistoryPeriod; label: string }[] = [
   { value: 'month', label: 'Monthly' },
 ]
 
-/** How the balance history is visualized: separate lines per instrument, or a stacked area chart of their combined value. */
-type ChartViewType = 'line' | 'stacked'
+type ChartViewType = 'line' | 'stacked' | 'category-bars' | 'sankey'
 
 const DEFAULT_VIEW: ChartViewType = 'line'
 
 const VIEW_OPTIONS: { value: ChartViewType; label: string }[] = [
   { value: 'line', label: 'Line' },
   { value: 'stacked', label: 'Stacked Area' },
+  { value: 'category-bars', label: 'Category Bars' },
+  { value: 'sankey', label: 'Sankey' },
 ]
 
 const DEFAULT_STACK_MODE: StackMode = 'net'
@@ -116,9 +136,6 @@ export default function BalanceHistogram({
     () => new Set((annotations ?? []).map((a) => a.id)),
   )
 
-  // Each account gets one base hue (explicit or cycled by its position); each
-  // of its instruments gets a distinct shade of that hue, cycling by position
-  // within the account (e.g. AUD/VHY/VAP/VAS/VDAL for a Vanguard account).
   const accountColorByAccountId = new Map<string, AccountColorName>()
   accounts.forEach((account, index) => accountColorByAccountId.set(account.id, resolveAccountColor(account, index)))
 
@@ -165,13 +182,32 @@ export default function BalanceHistogram({
           ? initialData
           : undefined,
       placeholderData: (prev?: BalancePoint[]) => prev,
-      enabled: visible.has(instrument.id),
+      enabled: visible.has(instrument.id) && (view === 'line' || view === 'stacked'),
     })),
+  })
+
+  const { data: categoryFlowData, isFetching: sankeyFetching } = useQuery({
+    queryKey: ['category-flow', serializedRange.start, serializedRange.end],
+    queryFn: () => getCategoryFlow({ data: { start: serializedRange.start, end: serializedRange.end } }),
+    enabled: view === 'sankey',
+    placeholderData: (prev) => prev,
+  })
+
+  const { data: categoryBarData, isFetching: barFetching } = useQuery({
+    queryKey: ['category-bars', serializedRange.start, serializedRange.end, period],
+    queryFn: () => getCategoryBarData({ data: { start: serializedRange.start, end: serializedRange.end, period } }),
+    enabled: view === 'category-bars',
+    placeholderData: (prev) => prev,
   })
 
   if (instruments.length === 0) return null
 
-  const isFetching = queries.some((q) => q.isFetching)
+  const isBalanceView = view === 'line' || view === 'stacked'
+  const isFetching = isBalanceView
+    ? queries.some((q) => q.isFetching)
+    : view === 'sankey'
+    ? sankeyFetching
+    : barFetching
 
   const series: ChartSeries<ChartPoint>[] = instruments
     .map((instrument, index): ChartSeries<ChartPoint> | null => {
@@ -206,6 +242,18 @@ export default function BalanceHistogram({
   const stackedKeys: StackedAreaKey[] = series.map((s) => ({ id: s.id, color: s.color }))
   const stackedData: StackedAreaDatum[] = buildStackedData(series)
 
+  const barTickFormat = (period: string) => {
+    const d = new Date(period + 'T00:00:00Z')
+    if (period.endsWith('-01') || period.length === 7) {
+      return d.toLocaleDateString('en-AU', { month: 'short', year: '2-digit', timeZone: 'UTC' })
+    }
+    return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+  }
+
+  const catColorMap = categoryBarData?.categories
+    ? buildCategoryColorMap(categoryBarData.categories)
+    : new Map<string, string>()
+
   function toggle(instrumentId: string) {
     setVisible((prev) => {
       const next = new Set(prev)
@@ -224,13 +272,18 @@ export default function BalanceHistogram({
     })
   }
 
+  const isSankeyEmpty = !categoryFlowData || categoryFlowData.nodes.length === 0
+  const isBarsEmpty = !categoryBarData || categoryBarData.data.length === 0
+
   return (
     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
       <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
 
         <div className="flex items-center gap-2">
-          <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
+          {view !== 'sankey' && (
+            <SegmentedControl options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
+          )}
           <DateRangePicker value={range} onChange={setRange} />
           {view === 'stacked' && (
             <SegmentedControl options={STACK_MODE_OPTIONS} value={stackMode} onChange={setStackMode} />
@@ -250,7 +303,8 @@ export default function BalanceHistogram({
         </div>
       </div>
 
-      {instruments.length > 1 && (
+      {/* Instrument legend — only shown for balance views */}
+      {isBalanceView && instruments.length > 1 && (
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           {instruments.map((instrument) => {
             const color = colorForInstrument(instrument)
@@ -276,7 +330,23 @@ export default function BalanceHistogram({
         </div>
       )}
 
-      {annotations && annotations.length > 0 && (
+      {/* Category legend — shown for category views */}
+      {view === 'category-bars' && categoryBarData && categoryBarData.categories.length > 0 && (
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          {categoryBarData.categories.map((cat) => (
+            <span key={cat.id} className="inline-flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300">
+              <span
+                className="inline-block w-2.5 h-2.5 rounded-sm"
+                style={{ backgroundColor: catColorMap.get(cat.id) ?? '#888', opacity: 0.85 }}
+              />
+              {cat.name}
+              <span className="text-gray-400 dark:text-gray-500">{cat.isIncome ? '↑' : '↓'}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {annotations && annotations.length > 0 && isBalanceView && (
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">Annotations:</span>
           {annotations.map((annotation) => {
@@ -310,7 +380,58 @@ export default function BalanceHistogram({
       )}
 
       <div className={isFetching ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
-        {series.length > 0 ? (
+        {view === 'sankey' ? (
+          isSankeyEmpty ? (
+            <EmptyState message="No categorized transactions in this date range." />
+          ) : (
+            <div style={{ height: Math.max(280, Math.min(480, (categoryFlowData!.nodes.length ?? 4) * 52)) }}>
+              <ParentSize>
+                {({ width }) => (
+                  <SankeyChart
+                    width={width}
+                    height={Math.max(280, Math.min(480, (categoryFlowData!.nodes.length ?? 4) * 52))}
+                    nodes={categoryFlowData!.nodes}
+                    links={categoryFlowData!.links}
+                  />
+                )}
+              </ParentSize>
+            </div>
+          )
+        ) : view === 'category-bars' ? (
+          isBarsEmpty ? (
+            <EmptyState message="No categorized transactions in this date range." />
+          ) : (
+            <CategoryBarChart
+              categories={categoryBarData!.categories}
+              data={categoryBarData!.data}
+              height={200}
+              tickFormat={barTickFormat}
+              yTickFormat={yTickFormat}
+              renderTooltip={(datum) => (
+                <>
+                  <div className="font-medium mb-1">{barTickFormat(datum.period)}</div>
+                  {categoryBarData!.categories.map((cat) => {
+                    const v = datum.amounts[cat.id] ?? 0
+                    if (v === 0) return null
+                    return (
+                      <div key={cat.id} className="flex items-center gap-1.5 tabular-nums">
+                        <span
+                          className="inline-block w-2 h-2 rounded-sm"
+                          style={{ backgroundColor: catColorMap.get(cat.id) ?? '#888' }}
+                        />
+                        <span className="text-gray-500 dark:text-gray-400">{cat.name}</span>
+                        <span className={v >= 0 ? 'text-green-600 dark:text-green-400' : ''}>
+                          {formatMajorAmount(Math.abs(v), homeCurrencyCode)}
+                          {v >= 0 ? ' ↑' : ' ↓'}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+            />
+          )
+        ) : series.length > 0 ? (
           view === 'stacked' ? (
             <StackedAreaChart
               data={stackedData}
@@ -377,6 +498,12 @@ export default function BalanceHistogram({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function EmptyState({ message }: { message: string }) {
+  return (
+    <p className="text-sm text-gray-500 dark:text-gray-400 py-8 text-center">{message}</p>
+  )
+}
+
 function TooltipRow({
   point,
   instruments,
@@ -406,17 +533,11 @@ function TooltipRow({
   )
 }
 
-// 1 unit of `instrument` = N units of `homeCurrencyCode`. Instruments whose
-// ticker matches the home currency, or with no stored rate, default to 1.
 function rateFor(instrument: Instrument, homeCurrencyCode: string, rates: InstrumentRates): number {
   if (instrument.ticker === homeCurrencyCode) return 1
   return rates[instrument.id]?.rate ?? 1
 }
 
-// Merges per-instrument series (which may have different timestamps, e.g. when
-// an instrument has no activity in part of the range) onto a shared set of
-// x-positions — the union of every series' timestamps — carrying each
-// series' last known value forward into positions where it has no point of its own.
 function buildStackedData(series: ChartSeries<ChartPoint>[]): StackedAreaDatum[] {
   const allTimes = new Set<number>()
   for (const s of series) {

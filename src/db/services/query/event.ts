@@ -5,7 +5,7 @@ import type { PaginationOptions } from '../utils/pagination'
 
 const eventWith = {
   account: true as const,
-  legs: { with: { instrument: true as const } },
+  legs: { with: { instrument: true as const, category: true as const } },
 }
 
 export async function queryEventsByAccount(workspaceId: string, accountId: string, opts: PaginationOptions = {}) {

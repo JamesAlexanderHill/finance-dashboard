@@ -7,6 +7,7 @@ import { events, legs, lineItems, categories } from '~/db/schema'
 import { checkpointService, rateService, getSession } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import Badge from '~/components/ui/badge'
+import { CategorySelector } from '~/components/ui/category-selector'
 import {
   Sheet,
   SheetContent,
@@ -147,20 +148,9 @@ export function EventDrawer({ eventId, onClose }: EventDrawerProps) {
     queryClient.invalidateQueries({ queryKey: ['event-drawer', eventId] })
   }
 
-  async function handleCategoryChange(legId: string, categoryId: string) {
-    await updateLegCategory({ data: { legId, categoryId: categoryId || null } })
+  async function handleCategoryChange(legId: string, categoryId: string | null) {
+    await updateLegCategory({ data: { legId, categoryId } })
     queryClient.invalidateQueries({ queryKey: ['event-drawer', eventId] })
-  }
-
-  function buildCategoryLabel(catId: string): string {
-    if (!data?.userCategories) return ''
-    const parts: string[] = []
-    let current = data.userCategories.find((c) => c.id === catId)
-    while (current) {
-      parts.unshift(current.name)
-      current = data.userCategories.find((c) => c.id === current!.parentId)
-    }
-    return parts.join(' › ')
   }
 
   return (
@@ -254,18 +244,11 @@ export function EventDrawer({ eventId, onClose }: EventDrawerProps) {
                           </span>
 
                           {/* Category selector */}
-                          <select
-                            value={leg.categoryId ?? ''}
-                            onChange={(e) => handleCategoryChange(leg.id, e.target.value)}
-                            className="text-xs border border-gray-200 dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[120px]"
-                          >
-                            <option value="">No category</option>
-                            {data.userCategories.map((cat) => (
-                              <option key={cat.id} value={cat.id}>
-                                {buildCategoryLabel(cat.id)}
-                              </option>
-                            ))}
-                          </select>
+                          <CategorySelector
+                            value={leg.categoryId ?? null}
+                            onChange={(id) => handleCategoryChange(leg.id, id)}
+                            categories={data.userCategories}
+                          />
 
                           {/* Expand line items */}
                           <button
@@ -282,11 +265,8 @@ export function EventDrawer({ eventId, onClose }: EventDrawerProps) {
                           <LineItemEditor
                             leg={leg}
                             userCategories={data.userCategories}
-                            buildCategoryLabel={buildCategoryLabel}
                             onSave={async (items) => {
-                              await upsertLineItems({
-                                data: { legId: leg.id, items },
-                              })
+                              await upsertLineItems({ data: { legId: leg.id, items } })
                               queryClient.invalidateQueries({ queryKey: ['event-drawer', eventId] })
                             }}
                           />
@@ -348,12 +328,11 @@ type LineItemDraft = {
 function LineItemEditor({
   leg,
   userCategories,
-  buildCategoryLabel,
   onSave,
 }: {
   leg: any
   userCategories: any[]
-  buildCategoryLabel: (id: string) => string
+  buildCategoryLabel?: (id: string) => string
   onSave: (items: LineItemDraft[]) => Promise<void>
 }) {
   const [items, setItems] = React.useState<LineItemDraft[]>(() =>
@@ -415,18 +394,11 @@ function LineItemEditor({
               placeholder="Amount"
               className="w-24 text-xs border border-gray-200 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-            <select
-              value={item.categoryId}
-              onChange={(e) => updateItem(idx, 'categoryId', e.target.value)}
-              className="text-xs border border-gray-200 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 flex-1 max-w-[120px]"
-            >
-              <option value="">No category</option>
-              {userCategories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {buildCategoryLabel(cat.id)}
-                </option>
-              ))}
-            </select>
+            <CategorySelector
+              value={item.categoryId || null}
+              onChange={(id) => updateItem(idx, 'categoryId', id ?? '')}
+              categories={userCategories}
+            />
             <input
               type="text"
               value={item.description}

@@ -6,6 +6,10 @@ export { instrumentService } from './service/instrument'
 export type { AccountBalance, BalancePoint, BalanceHistoryRange, BalanceHistoryPeriod } from './service/instrument'
 export { fileService } from './service/file'
 export { categoryService } from './service/category'
+export { sankeyService } from './service/sankey'
+export { categorySpendingService } from './service/category-spending'
+export type { CategoryInfo, CategoryBarDatum, CategoryBarData } from './service/category-spending'
+export type { SankeyData, SankeyNode, SankeyLink } from './service/sankey'
 export { importService } from './service/import'
 export type {
   BulkImportFile,
