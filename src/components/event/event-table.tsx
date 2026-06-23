@@ -12,6 +12,7 @@ import { formatChange } from '~/lib/format'
 import { PaginationData } from '~/db/services/utils/pagination'
 import { categoryService, getSession } from '~/db/services'
 import { CategorySelector } from '~/components/ui/category-selector'
+import { EventLegBar } from '~/components/event/event-leg-bar'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -85,9 +86,12 @@ export default function EventTable({
       id: 'description',
       header: 'Description',
       cell: ({ row }) => (
-        <span className="text-gray-900 dark:text-gray-100 font-medium">
-          {row.original.description}
-        </span>
+        <div>
+          <span className="text-gray-900 dark:text-gray-100 font-medium">
+            {row.original.description}
+          </span>
+          <EventLegBar legs={row.original.legs} categories={categories} />
+        </div>
       ),
     },
     {

@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, Check, X } from 'lucide-react'
 import type { Category } from '~/db/schema'
 import { categoryService, getSession } from '~/db/services'
 import { Button } from '~/components/ui/button'
+import { CategoryAssignWidget } from '~/components/category-assign-widget'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -145,50 +146,67 @@ function CategoriesPage() {
   }
 
   return (
-    <div className="max-w-2xl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Categories</h1>
-        <Button
-          size="sm"
-          onClick={() => patch({ addingParentId: null, newName: '', editingId: null, confirmDeleteId: null })}
-        >
-          <Plus className="size-3.5" />
-          Add Category
-        </Button>
-      </div>
+    <div className="max-w-5xl">
+      <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6">Categories</h1>
 
-      {state.error && (
-        <div className="mb-4 px-3 py-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
-          {state.error}
-          <button
-            onClick={() => patch({ error: null })}
-            className="ml-2 text-red-400 hover:text-red-600 dark:hover:text-red-300"
-          >
-            <X className="size-3.5 inline" />
-          </button>
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
+        {/* Left: category tree */}
+        <div className="min-w-0">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
+              Category Tree
+            </h2>
+            <Button
+              size="sm"
+              onClick={() => patch({ addingParentId: null, newName: '', editingId: null, confirmDeleteId: null })}
+            >
+              <Plus className="size-3.5" />
+              Add
+            </Button>
+          </div>
+
+          {state.error && (
+            <div className="mb-3 px-3 py-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
+              {state.error}
+              <button
+                onClick={() => patch({ error: null })}
+                className="ml-2 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+              >
+                <X className="size-3.5 inline" />
+              </button>
+            </div>
+          )}
+
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            {categories.length === 0 && state.addingParentId === undefined ? (
+              <p className="text-gray-500 dark:text-gray-400 text-sm p-4">
+                No categories yet. Click "Add" to create one.
+              </p>
+            ) : (
+              <CategoryTree nodes={roots} depth={0} {...sharedProps} />
+            )}
+
+            {/* Root-level add form */}
+            {state.addingParentId === null && (
+              <AddForm
+                value={state.newName}
+                placeholder="Root category name"
+                depth={0}
+                onChange={(v) => patch({ newName: v })}
+                onConfirm={handleCreate}
+                onCancel={() => patch({ addingParentId: undefined, newName: '' })}
+              />
+            )}
+          </div>
         </div>
-      )}
 
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-        {categories.length === 0 && state.addingParentId === undefined ? (
-          <p className="text-gray-500 dark:text-gray-400 text-sm p-4">
-            No categories yet. Click "Add Category" to create one.
-          </p>
-        ) : (
-          <CategoryTree nodes={roots} depth={0} {...sharedProps} />
-        )}
-
-        {/* Root-level add form */}
-        {state.addingParentId === null && (
-          <AddForm
-            value={state.newName}
-            placeholder="Root category name"
-            depth={0}
-            onChange={(v) => patch({ newName: v })}
-            onConfirm={handleCreate}
-            onCancel={() => patch({ addingParentId: undefined, newName: '' })}
-          />
-        )}
+        {/* Right: assignment widget */}
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-3">
+            Assign Categories
+          </h2>
+          <CategoryAssignWidget categories={categories} />
+        </div>
       </div>
     </div>
   )

@@ -8,6 +8,7 @@ import { checkpointService, rateService, getSession } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import Badge from '~/components/ui/badge'
 import { CategorySelector } from '~/components/ui/category-selector'
+import { EventLegBar } from '~/components/event/event-leg-bar'
 import {
   Sheet,
   SheetContent,
@@ -178,6 +179,7 @@ export function EventDrawer({ eventId, onClose }: EventDrawerProps) {
               >
                 {data.event.description}
               </SheetTitle>
+              <EventLegBar legs={data.event.legs} categories={data.userCategories} />
               <SheetDescription>
                 {formatDate(data.event.effectiveAt)}
               </SheetDescription>
