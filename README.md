@@ -56,6 +56,10 @@ The schema (`src/db/schema.ts`) is built around `users`, `accounts`, `instrument
   can be computed without summing every leg from the beginning.
 - `legs` can be split into `lineItems` and tagged with `categories` (a
   self-referential tree).
+- `eventRelations` link two events as an internal transfer, reimbursement, or
+  refund, making the spending analytics relation-aware — transfers are excluded
+  and reimbursements/refunds offset the linked expense (see
+  [docs/5-relations.md](docs/5-relations.md)).
 
 ### Service layer
 

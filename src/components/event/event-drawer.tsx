@@ -1,11 +1,16 @@
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
+import { useRouter } from '@tanstack/react-router'
+import { Popover } from '@base-ui/react/popover'
+import { Plus, X } from 'lucide-react'
 import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
 import { events, legs, lineItems, categories } from '~/db/schema'
-import { checkpointService, rateService, getSession } from '~/db/services'
+import type { EventRelationType } from '~/db/schema'
+import { checkpointService, rateService, getSession, relationService } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
+import cn from '~/lib/class-merge'
 import Badge from '~/components/ui/badge'
 import { CategorySelector } from '~/components/ui/category-selector'
 import { EventLegBar } from '~/components/event/event-leg-bar'
@@ -45,7 +50,9 @@ const getEventDrawerData = createServerFn({ method: 'GET' })
       .from(categories)
       .where(eq(categories.workspaceId, session.workspace.id))
 
-    return { event, userCategories, workspaceId: session.workspace.id }
+    const relations = await relationService.listForEvent(session.ctx, data.id)
+
+    return { event, userCategories, workspaceId: session.workspace.id, relations }
   })
 
 const softDeleteEvent = createServerFn({ method: 'POST' })
@@ -116,17 +123,51 @@ const upsertLineItems = createServerFn({ method: 'POST' })
     }
   })
 
+const createRelation = createServerFn({ method: 'POST' })
+  .inputValidator(
+    (data: unknown) =>
+      data as { parentEventId: string; childEventId: string; relationType: EventRelationType },
+  )
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    await relationService.create(session.ctx, data)
+  })
+
+const deleteRelation = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { parentEventId: string; childEventId: string })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    await relationService.delete(session.ctx, data)
+  })
+
+const searchEventsForRelation = createServerFn({ method: 'GET' })
+  .inputValidator((data: unknown) => data as { query: string; excludeEventIds: string[] })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    return relationService.searchCandidates(session.ctx, {
+      query: data.query,
+      excludeEventIds: data.excludeEventIds,
+    })
+  })
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface EventDrawerProps {
   eventId: string | undefined
   onClose: () => void
+  // Switch the drawer to another event. Supplied by the route that owns the
+  // `viewEvent` search param so the navigation is correctly typed.
+  onOpenRelated: (id: string) => void
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function EventDrawer({ eventId, onClose }: EventDrawerProps) {
+export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProps) {
   const queryClient = useQueryClient()
+  const router = useRouter()
   const [expandedLegId, setExpandedLegId] = React.useState<string | null>(null)
 
   const { data, isLoading, error } = useQuery({
@@ -153,6 +194,28 @@ export function EventDrawer({ eventId, onClose }: EventDrawerProps) {
     await updateLegCategory({ data: { legId, categoryId } })
     queryClient.invalidateQueries({ queryKey: ['event-drawer', eventId] })
   }
+
+  // Relations change spend/income analytics, so refresh both the drawer and the
+  // route loaders that feed the dashboard / category charts.
+  async function refreshAfterRelationChange() {
+    await queryClient.invalidateQueries({ queryKey: ['event-drawer', eventId] })
+    await router.invalidate()
+  }
+
+  async function handleLinkCandidate(candidate: any, relationType: EventRelationType) {
+    if (!data?.event) return
+    const pair = assignParentChild(data.event, candidate)
+    await createRelation({ data: { ...pair, relationType } })
+    await refreshAfterRelationChange()
+  }
+
+  async function handleRemoveRelation(pair: { parentEventId: string; childEventId: string }) {
+    await deleteRelation({ data: pair })
+    await refreshAfterRelationChange()
+  }
+
+  const relationRows = data?.event ? buildRelationRows(data.event, data.relations) : []
+  const excludeIds = data?.event ? [data.event.id, ...relationRows.map((r) => r.other.id)] : []
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -277,6 +340,60 @@ export function EventDrawer({ eventId, onClose }: EventDrawerProps) {
                     )
                   })}
                 </div>
+              </Section>
+
+              {/* Relations */}
+              <Section title={`Relations (${relationRows.length})`}>
+                <div className="space-y-2">
+                  {relationRows.length === 0 && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                      No linked transactions yet.
+                    </p>
+                  )}
+                  {relationRows.map((row) => (
+                    <div
+                      key={row.key}
+                      className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2"
+                    >
+                      <button
+                        onClick={() => onOpenRelated(row.other.id)}
+                        className="flex-1 min-w-0 text-left outline-none"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Badge color="gray" className="shrink-0">
+                            {relationLabel(row.type, row.anchorIsParent)}
+                          </Badge>
+                          <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
+                            {row.other.description}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+                          <span className="truncate">{row.other.account.name}</span>
+                          <span>·</span>
+                          <span className="whitespace-nowrap">{formatDate(row.other.effectiveAt)}</span>
+                          <span>·</span>
+                          <span className="tabular-nums whitespace-nowrap">
+                            {formatEventNet(row.other)}
+                          </span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => handleRemoveRelation(row.pair)}
+                        aria-label="Remove relation"
+                        className="shrink-0 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {data.event && (
+                  <RelationPicker
+                    anchor={data.event}
+                    excludeIds={excludeIds}
+                    onLink={handleLinkCandidate}
+                  />
+                )}
               </Section>
             </div>
           </>
@@ -441,5 +558,196 @@ function LineItemEditor({
         </button>
       </div>
     </div>
+  )
+}
+
+// ─── Relations ────────────────────────────────────────────────────────────────
+
+const RELATION_TYPES: EventRelationType[] = ['transfer', 'reimbursement', 'refund']
+
+type RelationRow = {
+  key: string
+  pair: { parentEventId: string; childEventId: string }
+  type: EventRelationType
+  anchorIsParent: boolean
+  other: any
+}
+
+// Flatten the two relation directions into display rows. `parentRelations` are
+// relations where the open event is the parent (the other event is the child);
+// `childRelations` are the reverse.
+function buildRelationRows(event: any, relations: any): RelationRow[] {
+  const rows: RelationRow[] = []
+  for (const r of relations?.parentRelations ?? []) {
+    rows.push({
+      key: `${event.id}:${r.childEvent.id}`,
+      pair: { parentEventId: event.id, childEventId: r.childEvent.id },
+      type: r.relationType,
+      anchorIsParent: true,
+      other: r.childEvent,
+    })
+  }
+  for (const r of relations?.childRelations ?? []) {
+    rows.push({
+      key: `${r.parentEvent.id}:${event.id}`,
+      pair: { parentEventId: r.parentEvent.id, childEventId: event.id },
+      type: r.relationType,
+      anchorIsParent: false,
+      other: r.parentEvent,
+    })
+  }
+  return rows
+}
+
+function relationLabel(type: EventRelationType, anchorIsParent: boolean): string {
+  switch (type) {
+    case 'transfer':
+      return anchorIsParent ? 'Transfer to' : 'Transfer from'
+    case 'reimbursement':
+      return anchorIsParent ? 'Reimbursed by' : 'Reimbursement for'
+    case 'refund':
+      return anchorIsParent ? 'Refunded by' : 'Refund of'
+  }
+}
+
+function netUnitCount(legs: any[]): bigint {
+  return legs.reduce((sum: bigint, l: any) => sum + BigInt(l.unitCount), BigInt(0))
+}
+
+// Net amount in the event's primary instrument, for compact display.
+function formatEventNet(ev: any): string {
+  if (!ev.legs?.length) return ''
+  const inst = ev.legs[0].instrument
+  const net = ev.legs
+    .filter((l: any) => l.instrumentId === inst.id)
+    .reduce((sum: bigint, l: any) => sum + BigInt(l.unitCount), BigInt(0))
+  return formatCurrency(net, { exponent: inst.exponent, ticker: inst.ticker })
+}
+
+// Convention: parent = the outflow (negative net), child = the inflow (positive).
+// This keeps reimbursement/refund netting correct (the inflow offsets the
+// expense). Same-sign or ambiguous pairs keep the open event as the parent.
+function assignParentChild(
+  anchor: any,
+  candidate: any,
+): { parentEventId: string; childEventId: string } {
+  const anchorNet = netUnitCount(anchor.legs)
+  const candNet = netUnitCount(candidate.legs)
+  if (anchorNet < BigInt(0) && candNet >= BigInt(0)) {
+    return { parentEventId: anchor.id, childEventId: candidate.id }
+  }
+  if (candNet < BigInt(0) && anchorNet >= BigInt(0)) {
+    return { parentEventId: candidate.id, childEventId: anchor.id }
+  }
+  return { parentEventId: anchor.id, childEventId: candidate.id }
+}
+
+// ─── RelationPicker ───────────────────────────────────────────────────────────
+
+function RelationPicker({
+  anchor,
+  excludeIds,
+  onLink,
+}: {
+  anchor: any
+  excludeIds: string[]
+  onLink: (candidate: any, relationType: EventRelationType) => Promise<void>
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [relationType, setRelationType] = React.useState<EventRelationType>('transfer')
+  const [query, setQuery] = React.useState('')
+  const [linking, setLinking] = React.useState(false)
+
+  const { data: results, isFetching } = useQuery({
+    queryKey: ['relation-search', anchor.id, query, excludeIds],
+    queryFn: () => searchEventsForRelation({ data: { query, excludeEventIds: excludeIds } }),
+    enabled: open,
+  })
+
+  async function handlePick(candidate: any) {
+    setLinking(true)
+    try {
+      await onLink(candidate, relationType)
+      setOpen(false)
+      setQuery('')
+    } finally {
+      setLinking(false)
+    }
+  }
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger className="mt-3 inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline outline-none">
+        <Plus className="size-3" />
+        Link transaction
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner sideOffset={6} align="start" className="z-50">
+          <Popover.Popup className="w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg overflow-hidden">
+            {/* Relation type */}
+            <div className="flex gap-1 p-2 border-b border-gray-100 dark:border-gray-800">
+              {RELATION_TYPES.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setRelationType(t)}
+                  className={cn(
+                    'flex-1 capitalize text-xs rounded px-2 py-1 transition-colors',
+                    relationType === t
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700',
+                  )}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            {/* Search */}
+            <div className="p-2">
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search description or amount…"
+                className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Results */}
+            <ul className="max-h-64 overflow-y-auto pb-1">
+              {isFetching && (
+                <li className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">Searching…</li>
+              )}
+              {!isFetching && (results?.length ?? 0) === 0 && (
+                <li className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
+                  No matching transactions
+                </li>
+              )}
+              {results?.map((ev: any) => (
+                <li key={ev.id}>
+                  <button
+                    disabled={linking}
+                    onClick={() => handlePick(ev)}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 outline-none"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
+                        {ev.description}
+                      </span>
+                      <span className="text-xs tabular-nums shrink-0 text-gray-500 dark:text-gray-400">
+                        {formatEventNet(ev)}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">
+                      {ev.account.name} · {formatDate(ev.effectiveAt)}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   )
 }

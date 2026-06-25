@@ -97,3 +97,12 @@ Categories are the foundation of two visualizations:
 - **Sankey diagram** — Flows income sources through expense categories. Amounts are aggregated up to root categories by walking the `parentId` chain.
 
 Both visualizations filter out legs where `categoryId IS NULL`.
+
+### Relation-Aware Netting
+
+Both visualizations are also aware of [transaction relations](./5-relations.md):
+
+- Legs belonging to an **internal transfer** are excluded entirely, so moving money between your own accounts never appears as spending or income.
+- **Reimbursement** and **refund** inflows are netted against the category of the expense they offset, in that expense's period — a $300 dinner with a $200 repayment contributes −$100 to its category rather than −$300.
+
+This netting is applied by `applyRelationsToLegs` before aggregation, so it affects every period bucket and Sankey flow.
