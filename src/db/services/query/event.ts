@@ -1,4 +1,4 @@
-import { eq, and, desc, count, inArray, sql } from 'drizzle-orm'
+import { eq, and, desc, count, inArray, isNull, ne, or, sql } from 'drizzle-orm'
 import { db } from '~/db'
 import { events, legs } from '~/db/schema'
 import type { PaginationOptions } from '../utils/pagination'
@@ -88,7 +88,7 @@ export async function queryEventsByInstrument(
       account: true,
       legs: {
         where: eq(legs.instrumentId, instrumentId),
-        with: { instrument: true },
+        with: { instrument: true, category: true },
       },
     },
   })
@@ -103,4 +103,72 @@ export async function queryEventByDedupeKey(dedupeKey: string) {
     .where(eq(events.dedupeKey, dedupeKey))
 
   return event ?? null
+}
+
+export async function queryUncategorizedEvents(workspaceId: string, opts: PaginationOptions = {}) {
+  const { limit = 10, offset = 0 } = opts
+
+  const baseWhere = and(eq(events.workspaceId, workspaceId), isNull(events.deletedAt))
+
+  const [countResult, idRows] = await Promise.all([
+    db
+      .select({ total: sql<number>`count(distinct ${events.id})` })
+      .from(events)
+      .innerJoin(legs, and(eq(legs.eventId, events.id), isNull(legs.categoryId)))
+      .where(baseWhere),
+    db
+      .selectDistinct({ id: events.id, effectiveAt: events.effectiveAt })
+      .from(events)
+      .innerJoin(legs, and(eq(legs.eventId, events.id), isNull(legs.categoryId)))
+      .where(baseWhere)
+      .orderBy(desc(events.effectiveAt))
+      .limit(limit)
+      .offset(offset),
+  ])
+
+  const total = Number(countResult[0]?.total ?? 0)
+  if (idRows.length === 0) return { data: [], total }
+
+  const data = await db.query.events.findMany({
+    where: inArray(events.id, idRows.map((r) => r.id)),
+    orderBy: [desc(events.effectiveAt)],
+    with: eventWith,
+  })
+
+  return { data, total }
+}
+
+export async function querySimilarUncategorizedEvents(
+  workspaceId: string,
+  excludeEventId: string,
+  description: string,
+  firstLegUnitCount: bigint,
+) {
+  const absCount = firstLegUnitCount < 0n ? -firstLegUnitCount : firstLegUnitCount
+
+  const idRows = await db
+    .selectDistinct({ id: events.id, effectiveAt: events.effectiveAt })
+    .from(events)
+    .innerJoin(legs, and(eq(legs.eventId, events.id), isNull(legs.categoryId)))
+    .where(
+      and(
+        eq(events.workspaceId, workspaceId),
+        isNull(events.deletedAt),
+        ne(events.id, excludeEventId),
+        or(
+          sql`lower(trim(${events.description})) = lower(trim(${description}))`,
+          sql`abs(${legs.unitCount}) = ${absCount}`,
+        ),
+      ),
+    )
+    .orderBy(desc(events.effectiveAt))
+    .limit(50)
+
+  if (idRows.length === 0) return []
+
+  return db.query.events.findMany({
+    where: inArray(events.id, idRows.map((r) => r.id)),
+    orderBy: [desc(events.effectiveAt)],
+    with: eventWith,
+  })
 }
