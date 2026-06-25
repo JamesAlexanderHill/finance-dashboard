@@ -14,6 +14,8 @@ import {
 } from '~/db/schema'
 import { checkpointService, rateService, createUserWithPersonalWorkspace, getSession } from '~/db/services'
 import { clearAllData, seedBase, seedSampleEvents } from '~/lib/seed'
+import { exportWorkspaceSnapshot, importWorkspaceSnapshot } from '~/lib/snapshot'
+import type { WorkspaceSnapshot } from '~/lib/snapshot'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -113,6 +115,27 @@ const devCreateAdditionalUser = createServerFn({ method: 'POST' })
     }
   })
 
+const devExportSnapshot = createServerFn({ method: 'POST' }).handler(async () => {
+  const { workspace } = await requireDevSession()
+  const snapshot = await exportWorkspaceSnapshot(workspace.id)
+  return { ok: true as const, snapshot, workspaceName: workspace.name }
+})
+
+const devImportSnapshot = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { snapshot: WorkspaceSnapshot })
+  .handler(async ({ data }) => {
+    const { workspace } = await requireDevSession()
+    try {
+      const counts = await importWorkspaceSnapshot(workspace.id, data.snapshot)
+      return {
+        ok: true,
+        message: `Restored ${counts.accounts} account(s), ${counts.events} event(s), ${counts.legs} leg(s).`,
+      }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute('/dev')({
@@ -200,6 +223,52 @@ function DevPage() {
     router.invalidate()
     return r
   })
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const pendingFileRef = React.useRef<File | null>(null)
+
+  const exportAction = useAction(async () => {
+    const r = await devExportSnapshot()
+    const blob = new Blob([JSON.stringify(r.snapshot, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const safeName =
+      (r.workspaceName || 'workspace').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() ||
+      'workspace'
+    a.href = url
+    a.download = `snapshot-${safeName}-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    return {
+      ok: true,
+      message: `Exported ${r.snapshot.events.length} event(s) and ${r.snapshot.accounts.length} account(s).`,
+    }
+  })
+
+  const importAction = useAction(async () => {
+    const file = pendingFileRef.current
+    if (!file) return { ok: false, message: 'No file selected.' }
+    const text = await file.text()
+    let snapshot: WorkspaceSnapshot
+    try {
+      snapshot = JSON.parse(text) as WorkspaceSnapshot
+    } catch {
+      return { ok: false, message: 'Could not parse file — not valid JSON.' }
+    }
+    const r = await devImportSnapshot({ data: { snapshot } })
+    router.invalidate()
+    return r
+  })
+
+  function onSnapshotFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null
+    e.target.value = '' // reset so picking the same file again re-triggers onChange
+    if (!file) return
+    pendingFileRef.current = file
+    importAction.run()
+  }
 
   const actions = [
     {
@@ -361,6 +430,63 @@ function DevPage() {
               ].join(' ')}
             >
               {createUserAction.message}
+            </p>
+          )}
+        </div>
+
+        {/* Export / import workspace snapshot */}
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Export / import workspace snapshot</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
+            Download the current workspace's full data graph (accounts, instruments, events, legs, categories,
+            line items, checkpoints, rates, annotations) as a JSON file, or restore it from one. Importing wipes
+            the current workspace before restoring.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={exportAction.run}
+              disabled={exportAction.state === 'loading'}
+              className="px-4 py-1.5 text-sm font-medium rounded-md transition-colors disabled:opacity-50 whitespace-nowrap bg-gray-800 dark:bg-gray-100 hover:bg-gray-700 dark:hover:bg-gray-200 text-white dark:text-gray-900"
+            >
+              {exportAction.state === 'loading' ? 'Working…' : 'Export snapshot'}
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importAction.state === 'loading'}
+              className="px-4 py-1.5 text-sm font-medium rounded-md transition-colors disabled:opacity-50 whitespace-nowrap bg-gray-800 dark:bg-gray-100 hover:bg-gray-700 dark:hover:bg-gray-200 text-white dark:text-gray-900"
+            >
+              {importAction.state === 'loading' ? 'Working…' : 'Import snapshot'}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={onSnapshotFileChange}
+              className="hidden"
+            />
+          </div>
+          {exportAction.message && (
+            <p
+              className={[
+                'text-xs mt-2',
+                exportAction.state === 'success'
+                  ? 'text-green-600 dark:text-green-400'
+                  : 'text-red-600 dark:text-red-400',
+              ].join(' ')}
+            >
+              {exportAction.message}
+            </p>
+          )}
+          {importAction.message && (
+            <p
+              className={[
+                'text-xs mt-2',
+                importAction.state === 'success'
+                  ? 'text-green-600 dark:text-green-400'
+                  : 'text-red-600 dark:text-red-400',
+              ].join(' ')}
+            >
+              {importAction.message}
             </p>
           )}
         </div>
