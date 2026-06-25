@@ -54,6 +54,24 @@ Each event has a unique `dedupeKey` used to prevent duplicate imports:
 
 During import, if a matching `dedupeKey` already exists the event is either skipped or restored (if it was previously soft-deleted and the user chose to restore).
 
+### Event Drawer
+
+Clicking any event row anywhere in the app opens the **event drawer** — a slide-in panel on the right side of the screen, controlled by the `viewEvent` search parameter on the current route. The drawer shows:
+
+- **Details** — effective and posted dates, external ID (if any), and dedupe key.
+- **Delete / Restore** — a toggle button that soft-deletes the event (sets `deletedAt`) or restores it (clears `deletedAt`). Deleted events display with a strikethrough title. Checkpoints and rates are recomputed immediately after the toggle.
+- **Legs** — each leg is listed with its instrument ticker, signed amount, and a category selector. Changing the category updates `legs.categoryId` in place without affecting the event's other fields.
+- **Line items** — each leg has an expandable line-item editor. Clicking "Items (N)" expands a panel where sub-splits can be added, edited, or removed. Each line item has an amount (in minor units), an optional category, and an optional description. The line-item total must equal the parent leg's `unitCount` before saving is allowed.
+
+### Events Pages
+
+Events can be browsed from two places:
+
+- **`/events`** — a global cross-account list of all events in the workspace, with an account filter dropdown that narrows results to a single account. Pagination is controlled via `page` and `pageSize` search params.
+- **`/accounts/$accountId/events`** — the same paginated table scoped to one account, accessible via the account detail page or breadcrumb navigation.
+
+Both views open the event drawer when a row is clicked.
+
 ---
 
 ## Accounts
@@ -101,6 +119,14 @@ Monthly **checkpoints** (`instrumentCheckpoints` table) store snapshots of each 
 ### Exchange Rates
 
 Each instrument can have an exchange rate record (`instrumentRates`) expressing how many units of the user's home currency one unit of this instrument is worth. Rates are used to convert multi-currency balances for display in the dashboard's net worth card and stacked area chart.
+
+Rates have a `source` field:
+- `'manual'` — explicitly set by the user via the instrument detail page.
+- `'transaction'` — inferred automatically from a trade event that exchanged the instrument against the home currency (e.g. a Vanguard buy where AUD and ETF units are both legs of the same event).
+
+The instrument detail page (`/accounts/$accountId/instruments/$instrumentId`) shows the current value (balance × rate converted to home currency) and an "Update price" button that opens an inline form. Entering a new rate and saving writes a `'manual'` rate record with the current date as `asOf`. The `source` and `asOf` values are displayed beneath the current value.
+
+Instruments whose ticker matches the user's `homeCurrencyCode` are treated as the home currency and do not show exchange rate UI.
 
 ### Deletion
 
@@ -195,3 +221,30 @@ The `errors` field stores per-row error details (`line`, `message`, `phase`) for
 ### Category Assignment During Import
 
 The canonical CSV can include a `categoryAssignments` map keyed by `"{eventGroup}_{legIndex}"` with values as colon-separated category paths (e.g. `"food:coffee"`). The importer resolves these paths by walking the category hierarchy and sets `legs.categoryId` accordingly. Unresolvable paths are silently skipped — the leg is imported with `categoryId = NULL`.
+
+### Import Wizard (Single File)
+
+The account detail page (`/accounts/$accountId`) has an **"+ Import CSV"** button that opens a 4-step wizard inline:
+
+1. **Select file** — The user picks a canonical CSV file. The file is parsed client-side immediately; any parse errors are shown before the user can proceed.
+2. **Instruments** — All instrument tickers referenced in the CSV are listed. Existing instruments are shown read-only. New instruments (those not yet present in the account) show editable name and exponent fields — the user can rename or adjust decimal places before they are created on commit.
+3. **Review** — Events are shown as a collapsible accordion. Expanding an event reveals its legs, each with an optional category path input (colon-separated, e.g. `food:coffee`). A "Restore soft-deleted duplicates" checkbox controls whether previously deleted events matching an incoming dedupe key should be restored rather than skipped.
+4. **Commit** — A summary shows the account, filename, event count, new instruments, and restore setting. Clicking "Import" calls the server, which runs the full import flow and returns a file ID. On success the wizard closes and the page data is invalidated.
+
+### Bulk Import Wizard (Multiple Files)
+
+The **"Bulk import"** button on the account detail page opens an alternative 4-step wizard that processes multiple canonical CSV files in a single operation:
+
+1. **Select files** — The user picks multiple CSV files at once (browser multi-select). All files are parsed client-side and sorted alphabetically by filename.
+2. **Instruments** — Identical to the single-file wizard: all tickers across all files are deduplicated into one review step.
+3. **Review** — A table lists every selected file with its parsed event count and error count. Files with parse errors are flagged but are not blocked from committing (files with zero events are skipped). The "Restore soft-deleted duplicates" option applies across all files.
+4. **Commit** — Shows a summary (account, file count, total events, new instruments). After committing, the step transitions to a results table showing per-file `importedCount`, `skippedCount`, `restoredCount`, and `errorCount`. Each file is committed as a separate `files` row, so per-file history is preserved.
+
+### Import History
+
+All past imports are listed at `/accounts/$accountId/files`. Each row shows the filename, import timestamp, and the four counters. Clicking a row opens the file detail page, which shows:
+
+- **Per-import stats** — imported, skipped, restored, and error counts displayed as stat cards.
+- **Per-row errors** — if any rows failed, the error list shows the phase (`parse`, `commit`), line number, and message for each failure.
+- **Imported events** — a paginated table of the events created by this import run.
+- **Delete** — a "Delete" button soft-deletes all events from the file and removes the `files` row. Checkpoints are recomputed after deletion.

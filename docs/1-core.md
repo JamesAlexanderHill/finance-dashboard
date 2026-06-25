@@ -112,3 +112,28 @@ If the email does not match any existing user, an error is returned. Users must 
 |-------|---------|
 | `workspaces` | `id`, `name`, `isPersonal`, `ownerId`, `createdAt` |
 | `workspaceMembers` | Junction table: `(workspaceId, userId)` PK, `role` enum |
+
+---
+
+## Settings
+
+The `/settings` page lets authenticated users manage their account.
+
+### Profile
+
+Users can update their **display name**. The name is stored on the `users` row and shown in workspace member lists. It is separate from the email address, which cannot be changed.
+
+### Passkeys
+
+The passkeys section lists all registered WebAuthn credentials with their name, device type, and registration date. Users can:
+
+- **Add a passkey** — enter an optional label, then complete the browser's WebAuthn registration prompt. The credential is stored in the `passkeys` table.
+- **Remove a passkey** — click the delete button next to any passkey. Removing the last passkey does not lock the account out; magic-link login remains available.
+
+### Account Info
+
+A read-only summary shows the account's email address, whether the email has been verified, and the date the account was created.
+
+### Sign Out
+
+The sign-out button calls `authClient.signOut()`, clears the TanStack Query cache (so cached per-user data is not visible to the next user on the same device), and redirects to `/login`.
