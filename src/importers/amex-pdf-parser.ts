@@ -20,11 +20,11 @@
  * month (17th onward) through this date.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { csvEscape } from "./shared/csv";
 import { rowHash } from "./shared/hash";
+import { writeCanonicalCsv, type CanonicalLeg } from "./shared/canonical";
 
 type Args = {
   inPaths: string[];
@@ -134,8 +134,7 @@ function parseAccountSummary(items: PdfTextItem[]): { newCredits: number; newDeb
   return { newCredits: numbers[1], newDebits: numbers[2] };
 }
 
-async function extractRows(pdfPath: string): Promise<Row[]> {
-  const filename = basename(pdfPath);
+async function extractRows(data: Uint8Array, filename: string): Promise<Row[]> {
   const m = filename.match(/^(\d{4})-(\d{2})-\d{2}\.pdf$/);
   if (!m) throw new Error(`Filename must be YYYY-MM-DD.pdf (statement closing date), got: ${filename}`);
   const endYear = parseInt(m[1], 10);
@@ -143,7 +142,6 @@ async function extractRows(pdfPath: string): Promise<Row[]> {
   const startMonth = endMonth === 1 ? 12 : endMonth - 1;
   const startYear = endMonth === 1 ? endYear - 1 : endYear;
 
-  const data = new Uint8Array(readFileSync(pdfPath));
   const doc = await getDocument({ data, verbosity: 0 }).promise;
 
   const rows: Row[] = [];
@@ -240,30 +238,20 @@ async function extractRows(pdfPath: string): Promise<Row[]> {
   return rows;
 }
 
-async function main() {
-  const args = parseArgs(process.argv);
-
+/** Parses one or more Amex statement PDFs into canonical legs. */
+export async function parseAmexPdf(
+  files: { data: Uint8Array; filename: string }[],
+): Promise<CanonicalLeg[]> {
   const allRows: Row[] = [];
-  for (const inPath of args.inPaths) {
-    const rows = await extractRows(inPath);
-    console.error(`${basename(inPath)}: parsed ${rows.length} transactions`);
+  for (const file of files) {
+    const rows = await extractRows(file.data, file.filename);
+    console.error(`${file.filename}: parsed ${rows.length} transactions`);
     allRows.push(...rows);
   }
 
   allRows.sort((a, b) => a.effectiveAt.localeCompare(b.effectiveAt));
 
-  const outHeader = [
-    "externalEventId",
-    "eventGroup",
-    "eventDescription",
-    "effectiveAt",
-    "postedAt",
-    "legDescription",
-    "legTicker",
-    "legUnitCount",
-  ];
-  const outLines: string[] = [outHeader.join(",")];
-
+  const legs: CanonicalLeg[] = [];
   const seen = new Map<string, number>();
   for (const row of allRows) {
     let id = rowHash([row.effectiveAt, row.description, String(row.amountCents)]);
@@ -272,21 +260,29 @@ async function main() {
     if (count > 0) id = rowHash([id, String(count)]);
 
     const effectiveAtIso = `${row.effectiveAt}T00:00:00Z`;
-    const line = [
-      csvEscape(id),
-      csvEscape(id),
-      csvEscape(row.description),
-      csvEscape(effectiveAtIso),
-      csvEscape(effectiveAtIso),
-      csvEscape(row.description),
-      "AUD",
-      String(row.amountCents),
-    ].join(",");
-    outLines.push(line);
+    legs.push({
+      externalEventId: id,
+      eventGroup: id,
+      eventDescription: row.description,
+      effectiveAt: effectiveAtIso,
+      postedAt: effectiveAtIso,
+      legDescription: row.description,
+      legTicker: "AUD",
+      legUnitCount: row.amountCents,
+    });
   }
 
-  writeFileSync(args.outPath, outLines.join("\n") + "\n", "utf8");
-  console.log(`Wrote ${outLines.length - 1} rows to ${args.outPath}`);
+  return legs;
 }
 
-main();
+async function main() {
+  const args = parseArgs(process.argv);
+  const files = args.inPaths.map((p) => ({ data: new Uint8Array(readFileSync(p)), filename: basename(p) }));
+  const legs = await parseAmexPdf(files);
+  writeCanonicalCsv(args.outPath, legs);
+  console.log(`Wrote ${legs.length} rows to ${args.outPath}`);
+}
+
+if (import.meta.main) {
+  main();
+}
