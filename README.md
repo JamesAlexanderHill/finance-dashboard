@@ -59,7 +59,7 @@ The schema (`src/db/schema.ts`) is built around `users`, `accounts`, `instrument
 - `eventRelations` link two events as an internal transfer, reimbursement, or
   refund, making the spending analytics relation-aware — transfers are excluded
   and reimbursements/refunds offset the linked expense (see
-  [docs/5-relations.md](docs/5-relations.md)).
+  [docs/6-relations.md](docs/6-relations.md)).
 
 ### Service layer
 

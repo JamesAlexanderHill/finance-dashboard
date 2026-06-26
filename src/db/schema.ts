@@ -44,7 +44,7 @@ export const workspaceMemberRoleEnum = pgEnum('workspace_member_role', ['owner',
 // Relations between events. `transfer` links the two sides of an internal
 // money movement between your own accounts; `reimbursement` links an expense to
 // a repayment received from someone else; `refund` links a purchase to a
-// merchant reversal. See docs/5-relations.md.
+// merchant reversal. See docs/6-relations.md.
 export const eventRelationTypeEnum = pgEnum('event_relation_type', [
   'transfer',
   'reimbursement',

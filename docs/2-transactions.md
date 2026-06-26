@@ -56,7 +56,7 @@ During import, if a matching `dedupeKey` already exists the event is either skip
 
 ### Relations
 
-Events can be linked to one another as **internal transfers**, **reimbursements**, or **refunds**. Relations are managed from the event drawer and make the spending analytics aware of what really happened: transfers between your own accounts are excluded from spend/income, and reimbursements/refunds offset the expense they relate to. See [Relations](./5-relations.md) for the full model.
+Events can be linked to one another as **internal transfers**, **reimbursements**, or **refunds**. Relations are managed from the event drawer and make the spending analytics aware of what really happened: transfers between your own accounts are excluded from spend/income, and reimbursements/refunds offset the expense they relate to. See [Relations](./6-relations.md) for the full model.
 
 ### Event Drawer
 
@@ -66,7 +66,7 @@ Clicking any event row anywhere in the app opens the **event drawer** — a slid
 - **Delete / Restore** — a toggle button that soft-deletes the event (sets `deletedAt`) or restores it (clears `deletedAt`). Deleted events display with a strikethrough title. Checkpoints and rates are recomputed immediately after the toggle.
 - **Legs** — each leg is listed with its instrument ticker, signed amount, and a category selector. Changing the category updates `legs.categoryId` in place without affecting the event's other fields.
 - **Line items** — each leg has an expandable line-item editor. Clicking "Items (N)" expands a panel where sub-splits can be added, edited, or removed. Each line item has an amount (in minor units), an optional category, and an optional description. The line-item total must equal the parent leg's `unitCount` before saving is allowed.
-- **Relations** — linked transactions (transfers, reimbursements, refunds). Each relation shows the other event with a direction-aware label and can be opened or removed. The "Link transaction" picker suggests likely matches for the chosen relation type and lets you search for any other event. See [Relations](./5-relations.md).
+- **Relations** — linked transactions (transfers, reimbursements, refunds). Each relation shows the other event with a direction-aware label and can be opened or removed. The "Link transaction" picker suggests likely matches for the chosen relation type and lets you search for any other event. See [Relations](./6-relations.md).
 
 ### Events Pages
 
