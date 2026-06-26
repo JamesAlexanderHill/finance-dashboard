@@ -2,6 +2,7 @@ import type { Category } from '~/db/schema'
 import type { RequestContext } from '../utils/context'
 import type { BalanceHistoryPeriod } from '../query/instrument'
 import { queryCategoryLegsByDate } from '../query/category-spending'
+import { applyRelationsToLegs } from './relation-netting'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,16 +54,20 @@ async function getByPeriod(
   dateRange: { start: string | null; end: string },
   period: BalanceHistoryPeriod,
 ): Promise<CategoryBarData> {
-  const { categories, legs } = await queryCategoryLegsByDate(ctx.workspaceId, dateRange)
+  const { categories, legs, relations, childLegs } = await queryCategoryLegsByDate(
+    ctx.workspaceId,
+    dateRange,
+  )
+  const nettedLegs = applyRelationsToLegs(legs, relations, childLegs)
 
-  if (!categories.length || !legs.length) return { categories: [], data: [] }
+  if (!categories.length || !nettedLegs.length) return { categories: [], data: [] }
 
   const catMap = new Map(categories.map((c) => [c.id, c]))
 
   // Accumulate amounts per (period bucket, root category id)
   const periodAmounts = new Map<string, Map<string, bigint>>()
 
-  for (const leg of legs) {
+  for (const leg of nettedLegs) {
     if (!leg.categoryId) continue
     const root = rootOf(leg.categoryId, catMap)
     if (!root) continue

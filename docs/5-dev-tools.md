@@ -48,7 +48,7 @@ accounts, instruments, categories, files, events, legs, lineItems,
 instrumentCheckpoints, instrumentRates, timelineAnnotations, eventRelations
 ```
 
-`eventRelations` is the only one with no `workspaceId` column, so it is scoped indirectly via the workspace's events.
+`eventRelations` (see [Relations](./6-relations.md)) is the only one with no `workspaceId` column, so it is scoped indirectly via the workspace's events.
 
 ### Snapshot Format
 

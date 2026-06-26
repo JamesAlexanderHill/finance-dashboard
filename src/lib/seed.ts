@@ -299,7 +299,7 @@ export async function seedSampleEvents(workspaceId: string): Promise<void> {
     instrumentId: wiseAud.id, unitCount: BigInt(150000),
   })
   await db.insert(eventRelations).values({
-    parentEventId: sep25TransOut.id, childEventId: sep25TransIn.id, relationType: 'transfer_pair',
+    parentEventId: sep25TransOut.id, childEventId: sep25TransIn.id, relationType: 'transfer',
   })
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -386,7 +386,7 @@ export async function seedSampleEvents(workspaceId: string): Promise<void> {
     instrumentId: vanguardAud.id, unitCount: BigInt(300000),
   })
   await db.insert(eventRelations).values({
-    parentEventId: nov25InvOut.id, childEventId: nov25InvIn.id, relationType: 'transfer_pair',
+    parentEventId: nov25InvOut.id, childEventId: nov25InvIn.id, relationType: 'transfer',
   })
 
   // trade: Buy 60 VHY @ $45.80 ($2,748 total) — per-leg descriptions
@@ -607,7 +607,7 @@ export async function seedSampleEvents(workspaceId: string): Promise<void> {
     instrumentId: wiseAud.id, unitCount: BigInt(50000),
   })
   await db.insert(eventRelations).values({
-    parentEventId: apr26TransOut.id, childEventId: apr26TransIn.id, relationType: 'transfer_pair',
+    parentEventId: apr26TransOut.id, childEventId: apr26TransIn.id, relationType: 'transfer',
   })
 
   // ══════════════════════════════════════════════════════════════════════════
