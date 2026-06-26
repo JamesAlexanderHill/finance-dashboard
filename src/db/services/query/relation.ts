@@ -93,6 +93,38 @@ export async function queryEventsForLinking(
   })
 }
 
+/** A single workspace-scoped, decorated event — the anchor for suggestions. */
+export async function queryAnchorEvent(workspaceId: string, eventId: string) {
+  return db.query.events.findFirst({
+    where: and(eq(events.id, eventId), eq(events.workspaceId, workspaceId)),
+    with: relatedEventWith,
+  })
+}
+
+/**
+ * Non-deleted, decorated events whose effectiveAt falls in [start, end],
+ * excluding the given ids. The caller (`relationService.suggest`) fetches a
+ * generous window and the pure `suggestRelations` applies the exact per-type
+ * day rules.
+ */
+export async function querySuggestionCandidates(
+  workspaceId: string,
+  params: { start: Date; end: Date; excludeEventIds?: string[] },
+) {
+  const { start, end, excludeEventIds = [] } = params
+  return db.query.events.findMany({
+    where: and(
+      eq(events.workspaceId, workspaceId),
+      isNull(events.deletedAt),
+      gte(events.effectiveAt, start),
+      lte(events.effectiveAt, end),
+      excludeEventIds.length ? notInArray(events.id, excludeEventIds) : undefined,
+    ),
+    orderBy: [desc(events.effectiveAt)],
+    with: relatedEventWith,
+  })
+}
+
 export type AnalyticsRelation = {
   parentEventId: string
   childEventId: string

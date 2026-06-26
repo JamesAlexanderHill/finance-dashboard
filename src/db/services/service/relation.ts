@@ -2,7 +2,19 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '~/db'
 import { eventRelations, events, type EventRelationType } from '~/db/schema'
 import type { RequestContext } from '../utils/context'
-import { queryEventsForLinking, queryRelationsForEvent } from '../query/relation'
+import {
+  queryAnchorEvent,
+  queryEventsForLinking,
+  queryRelationsForEvent,
+  querySuggestionCandidates,
+} from '../query/relation'
+import {
+  suggestRelations,
+  REIMBURSEMENT_WINDOW_DAYS,
+  TRANSFER_WINDOW_DAYS,
+} from './relation-suggestions'
+
+const DAY_MS = 86_400_000
 
 /** Throw unless every id belongs to the caller's workspace. */
 async function assertEventsInWorkspace(workspaceId: string, ids: string[]) {
@@ -62,4 +74,27 @@ async function remove(
     )
 }
 
-export const relationService = { listForEvent, searchCandidates, create, delete: remove }
+async function suggest(
+  ctx: RequestContext,
+  params: { eventId: string; relationType: EventRelationType; excludeEventIds?: string[] },
+) {
+  const anchor = await queryAnchorEvent(ctx.workspaceId, params.eventId)
+  if (!anchor) return []
+
+  // Fetch a window generous enough to cover both rules (±transfer days and the
+  // forward reimbursement window) plus a day of slack; the pure ranker then
+  // applies the exact per-type calendar-day limits.
+  const anchorTime = anchor.effectiveAt.getTime()
+  const start = new Date(anchorTime - (TRANSFER_WINDOW_DAYS + 1) * DAY_MS)
+  const end = new Date(anchorTime + (REIMBURSEMENT_WINDOW_DAYS + 1) * DAY_MS)
+  const excludeEventIds = [params.eventId, ...(params.excludeEventIds ?? [])]
+
+  const candidates = await querySuggestionCandidates(ctx.workspaceId, {
+    start,
+    end,
+    excludeEventIds,
+  })
+  return suggestRelations(anchor, candidates, params.relationType)
+}
+
+export const relationService = { listForEvent, searchCandidates, suggest, create, delete: remove }

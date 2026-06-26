@@ -153,6 +153,17 @@ const searchEventsForRelation = createServerFn({ method: 'GET' })
     })
   })
 
+const suggestEventsForRelation = createServerFn({ method: 'GET' })
+  .inputValidator(
+    (data: unknown) =>
+      data as { eventId: string; relationType: EventRelationType; excludeEventIds: string[] },
+  )
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    return relationService.suggest(session.ctx, data)
+  })
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface EventDrawerProps {
@@ -658,11 +669,26 @@ function RelationPicker({
   const [query, setQuery] = React.useState('')
   const [linking, setLinking] = React.useState(false)
 
-  const { data: results, isFetching } = useQuery({
+  // An empty box shows type-specific suggestions; typing switches to free search.
+  const showingSuggestions = query.trim().length === 0
+
+  const { data: suggestions, isFetching: suggestFetching } = useQuery({
+    queryKey: ['relation-suggest', anchor.id, relationType, excludeIds],
+    queryFn: () =>
+      suggestEventsForRelation({
+        data: { eventId: anchor.id, relationType, excludeEventIds: excludeIds },
+      }),
+    enabled: open && showingSuggestions,
+  })
+
+  const { data: results, isFetching: searchFetching } = useQuery({
     queryKey: ['relation-search', anchor.id, query, excludeIds],
     queryFn: () => searchEventsForRelation({ data: { query, excludeEventIds: excludeIds } }),
-    enabled: open,
+    enabled: open && !showingSuggestions,
   })
+
+  const list = showingSuggestions ? suggestions : results
+  const fetching = showingSuggestions ? suggestFetching : searchFetching
 
   async function handlePick(candidate: any) {
     setLinking(true)
@@ -713,17 +739,26 @@ function RelationPicker({
               />
             </div>
 
+            {/* Suggested header (only when browsing suggestions) */}
+            {showingSuggestions && (list?.length ?? 0) > 0 && (
+              <div className="px-3 pt-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                Suggested
+              </div>
+            )}
+
             {/* Results */}
             <ul className="max-h-64 overflow-y-auto pb-1">
-              {isFetching && (
-                <li className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">Searching…</li>
-              )}
-              {!isFetching && (results?.length ?? 0) === 0 && (
+              {fetching && (
                 <li className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
-                  No matching transactions
+                  {showingSuggestions ? 'Finding suggestions…' : 'Searching…'}
                 </li>
               )}
-              {results?.map((ev: any) => (
+              {!fetching && (list?.length ?? 0) === 0 && (
+                <li className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
+                  {showingSuggestions ? 'No suggestions — type to search' : 'No matching transactions'}
+                </li>
+              )}
+              {list?.map((ev: any) => (
                 <li key={ev.id}>
                   <button
                     disabled={linking}

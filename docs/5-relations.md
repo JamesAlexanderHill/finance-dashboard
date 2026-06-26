@@ -67,11 +67,27 @@ Open any event to reveal a **Relations** section in the drawer, below Legs:
   "Transfer from", "Reimbursed by", "Reimbursement for", "Refunded by", "Refund
   of"), the linked event's description, account, date, and amount. Clicking a
   relation opens that linked event in the drawer.
-- **"Link transaction"** opens a picker: choose the relation type, then search by
-  description or amount for the other event. The current event and any already
-  linked events are excluded from results. Selecting a result creates the
-  relation.
+- **"Link transaction"** opens a picker. Choose the relation type to see
+  **suggested matches** (see below), or type to search all transactions by
+  description or amount. The current event and any already-linked events are
+  excluded. Selecting a result creates the relation.
 - The **✕** button on a relation removes it.
+
+### Suggested matches
+
+With an empty search box the picker suggests likely counterparts for the selected
+relation type, so the common cases are one click:
+
+| Type | Suggestion rule |
+|------|-----------------|
+| `transfer` | An opposite-signed transaction of the **same amount** in a **different account**, within **±4 days**. Catches same-currency internal transfers. |
+| `reimbursement` | An **inflow within 14 days after** the expense whose amount is **less than** the expense — you are repaid for others' share, not your own. |
+| `refund` | Like a reimbursement, but the inflow may **equal** the expense (a full refund). |
+
+Reimbursement and refund suggestions only appear when the open event is an expense
+(a net outflow); transfer suggestions work from either side. The matching logic is
+the pure `suggestRelations` function (`src/db/services/service/relation-suggestions.ts`).
+Start typing to search all transactions instead.
 
 Creating or removing a relation refreshes the drawer and invalidates the route
 loaders that feed the dashboard and category charts, so analytics update
@@ -114,7 +130,8 @@ to the caller's workspace.
 
 ## Limitations
 
-- Relations are created manually. Automatic detection of likely transfer pairs is
-  not implemented.
+- Suggested matches are heuristics (amount/date based). They miss FX transfers
+  (whose two sides differ in amount) and can surface unrelated inflows, so always
+  confirm before linking.
 - Netting attributes a multi-leg parent's reimbursement to a single category (the
   first categorised leg), not proportionally across its legs.
