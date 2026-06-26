@@ -66,7 +66,7 @@ Clicking any event row anywhere in the app opens the **event drawer** — a slid
 - **Delete / Restore** — a toggle button that soft-deletes the event (sets `deletedAt`) or restores it (clears `deletedAt`). Deleted events display with a strikethrough title. Checkpoints and rates are recomputed immediately after the toggle.
 - **Legs** — each leg is listed with its instrument ticker, signed amount, and a category selector. Changing the category updates `legs.categoryId` in place without affecting the event's other fields.
 - **Line items** — each leg has an expandable line-item editor. Clicking "Items (N)" expands a panel where sub-splits can be added, edited, or removed. Each line item has an amount (in minor units), an optional category, and an optional description. The line-item total must equal the parent leg's `unitCount` before saving is allowed.
-- **Relations** — linked transactions (transfers, reimbursements, refunds). Each relation shows the other event with a direction-aware label and can be opened or removed. The "Link transaction" picker creates a new relation by searching for the other event. See [Relations](./5-relations.md).
+- **Relations** — linked transactions (transfers, reimbursements, refunds). Each relation shows the other event with a direction-aware label and can be opened or removed. The "Link transaction" picker suggests likely matches for the chosen relation type and lets you search for any other event. See [Relations](./5-relations.md).
 
 ### Events Pages
 
