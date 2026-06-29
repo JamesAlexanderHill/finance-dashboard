@@ -41,6 +41,16 @@ export const accountColorEnum = pgEnum('account_color', ACCOUNT_COLORS)
 
 export const workspaceMemberRoleEnum = pgEnum('workspace_member_role', ['owner', 'member'])
 
+// Relations between events. `transfer` links the two sides of an internal
+// money movement between your own accounts; `reimbursement` links an expense to
+// a repayment received from someone else; `refund` links a purchase to a
+// merchant reversal. See docs/6-relations.md.
+export const eventRelationTypeEnum = pgEnum('event_relation_type', [
+  'transfer',
+  'reimbursement',
+  'refund',
+])
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 export const users = pgTable('users', {
@@ -331,7 +341,7 @@ export const eventRelations = pgTable(
     childEventId: text('child_event_id')
       .notNull()
       .references(() => events.id),
-    relationType: text('relation_type').notNull(),
+    relationType: eventRelationTypeEnum('relation_type').notNull(),
   },
   (t) => [primaryKey({ columns: [t.parentEventId, t.childEventId] })],
 )
@@ -471,4 +481,5 @@ export type InstrumentRate = typeof instrumentRates.$inferSelect
 export type RateSource = (typeof rateSourceEnum.enumValues)[number]
 export type LineItem = typeof lineItems.$inferSelect
 export type EventRelation = typeof eventRelations.$inferSelect
+export type EventRelationType = (typeof eventRelationTypeEnum.enumValues)[number]
 export type TimelineAnnotation = typeof timelineAnnotations.$inferSelect

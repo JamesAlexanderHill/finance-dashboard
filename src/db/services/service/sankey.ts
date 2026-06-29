@@ -1,6 +1,7 @@
 import type { Category } from '~/db/schema'
 import type { RequestContext } from '../utils/context'
 import { querySankeyLegs } from '../query/sankey'
+import { applyRelationsToLegs } from './relation-netting'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,16 +45,17 @@ async function getData(
   ctx: RequestContext,
   dateRange?: { start: string | null; end: string },
 ): Promise<SankeyData> {
-  const { categories, legs } = await querySankeyLegs(ctx.workspaceId, dateRange)
+  const { categories, legs, relations, childLegs } = await querySankeyLegs(ctx.workspaceId, dateRange)
+  const nettedLegs = applyRelationsToLegs(legs, relations, childLegs)
 
-  if (!categories.length || !legs.length) {
+  if (!categories.length || !nettedLegs.length) {
     return { nodes: [], links: [], totalIncome: 0, totalExpense: 0 }
   }
 
   const catMap = new Map(categories.map((c) => [c.id, c]))
 
   const aggregates = new Map<string, bigint>()
-  for (const leg of legs) {
+  for (const leg of nettedLegs) {
     if (!leg.categoryId) continue
     accumulateAncestors(leg.categoryId, leg.unitCount, catMap, aggregates)
   }

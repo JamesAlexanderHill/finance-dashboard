@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { db } from '~/db'
 import {
   accounts,
@@ -38,6 +38,39 @@ export async function clearAllData(): Promise<void> {
   await db.delete(workspaceMembers)
   await db.delete(workspaces)
   await db.delete(users)
+}
+
+/** `db`, or a transaction handle from `db.transaction` — both expose the same query builders. */
+export type DbOrTx = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+/**
+ * Delete a single workspace's data in dependency order, leaving the workspace,
+ * its members, and users intact. Mirrors {@link clearAllData} but scoped by
+ * `workspaceId`. Accepts an optional `executor` so callers (e.g. snapshot
+ * import) can run the wipe + restore in one transaction. Dev-only.
+ */
+export async function clearWorkspaceData(workspaceId: string, executor: DbOrTx = db): Promise<void> {
+  // event_relations has no workspace_id — scope it via the workspace's events.
+  const wsEvents = await executor
+    .select({ id: events.id })
+    .from(events)
+    .where(eq(events.workspaceId, workspaceId))
+  const eventIds = wsEvents.map((e) => e.id)
+  if (eventIds.length > 0) {
+    await executor.delete(eventRelations).where(inArray(eventRelations.parentEventId, eventIds))
+  }
+  await executor.delete(lineItems).where(eq(lineItems.workspaceId, workspaceId))
+  await executor.delete(instrumentCheckpoints).where(eq(instrumentCheckpoints.workspaceId, workspaceId))
+  await executor.delete(instrumentRates).where(eq(instrumentRates.workspaceId, workspaceId))
+  await executor.delete(legs).where(eq(legs.workspaceId, workspaceId))
+  await executor.delete(events).where(eq(events.workspaceId, workspaceId))
+  await executor.delete(files).where(eq(files.workspaceId, workspaceId))
+  await executor.delete(categories).where(eq(categories.workspaceId, workspaceId))
+  await executor.delete(timelineAnnotations).where(eq(timelineAnnotations.workspaceId, workspaceId))
+  // Clear defaultInstrumentId before deleting instruments (circular FK).
+  await executor.update(accounts).set({ defaultInstrumentId: null }).where(eq(accounts.workspaceId, workspaceId))
+  await executor.delete(instruments).where(eq(instruments.workspaceId, workspaceId))
+  await executor.delete(accounts).where(eq(accounts.workspaceId, workspaceId))
 }
 
 // ─── Result type ──────────────────────────────────────────────────────────────
@@ -266,7 +299,7 @@ export async function seedSampleEvents(workspaceId: string): Promise<void> {
     instrumentId: wiseAud.id, unitCount: BigInt(150000),
   })
   await db.insert(eventRelations).values({
-    parentEventId: sep25TransOut.id, childEventId: sep25TransIn.id, relationType: 'transfer_pair',
+    parentEventId: sep25TransOut.id, childEventId: sep25TransIn.id, relationType: 'transfer',
   })
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -353,7 +386,7 @@ export async function seedSampleEvents(workspaceId: string): Promise<void> {
     instrumentId: vanguardAud.id, unitCount: BigInt(300000),
   })
   await db.insert(eventRelations).values({
-    parentEventId: nov25InvOut.id, childEventId: nov25InvIn.id, relationType: 'transfer_pair',
+    parentEventId: nov25InvOut.id, childEventId: nov25InvIn.id, relationType: 'transfer',
   })
 
   // trade: Buy 60 VHY @ $45.80 ($2,748 total) — per-leg descriptions
@@ -574,7 +607,7 @@ export async function seedSampleEvents(workspaceId: string): Promise<void> {
     instrumentId: wiseAud.id, unitCount: BigInt(50000),
   })
   await db.insert(eventRelations).values({
-    parentEventId: apr26TransOut.id, childEventId: apr26TransIn.id, relationType: 'transfer_pair',
+    parentEventId: apr26TransOut.id, childEventId: apr26TransIn.id, relationType: 'transfer',
   })
 
   // ══════════════════════════════════════════════════════════════════════════

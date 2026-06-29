@@ -92,13 +92,17 @@ function RootComponent() {
   const navigate = useNavigate()
 
   function handleCloseDrawer() {
-    navigate({ search: (prev) => ({ ...prev, viewEvent: undefined }) })
+    navigate({ to: '.', search: (prev) => ({ ...prev, viewEvent: undefined }) })
   }
 
   return (
     <RootDocument>
       <Outlet />
-      <EventDrawer eventId={viewEvent} onClose={handleCloseDrawer} />
+      <EventDrawer
+        eventId={viewEvent}
+        onClose={handleCloseDrawer}
+        onOpenRelated={(id) => navigate({ to: '.', search: (prev) => ({ ...prev, viewEvent: id }) })}
+      />
     </RootDocument>
   )
 }
