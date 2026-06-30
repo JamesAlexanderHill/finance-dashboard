@@ -12,7 +12,16 @@ import {
   instrumentCheckpoints,
   instrumentRates,
 } from '~/db/schema'
-import { checkpointService, rateService, createUserWithPersonalWorkspace, getSession } from '~/db/services'
+import {
+  checkpointService,
+  rateService,
+  createUserWithPersonalWorkspace,
+  getSession,
+  importService,
+  instrumentService,
+} from '~/db/services'
+import type { InstrumentDraft } from '~/db/services'
+import { parseCanonicalCsv } from '~/importers/canonical'
 import { clearAllData, seedBase, seedSampleEvents } from '~/lib/seed'
 import { exportWorkspaceSnapshot, importWorkspaceSnapshot } from '~/lib/snapshot'
 import type { WorkspaceSnapshot } from '~/lib/snapshot'
@@ -59,15 +68,26 @@ const devSeedSampleEvents = createServerFn({ method: 'POST' }).handler(async () 
 
 const getDevStatus = createServerFn({ method: 'GET' }).handler(async () => {
   const session = await getSession()
-  if (!session) return { hasUser: false, eventCount: 0, legCount: 0, accountCount: 0, checkpointCount: 0, rateCount: 0 }
+  if (!session) {
+    return {
+      hasUser: false,
+      eventCount: 0,
+      legCount: 0,
+      accountCount: 0,
+      checkpointCount: 0,
+      rateCount: 0,
+      accounts: [] as { id: string; name: string }[],
+    }
+  }
 
   const { user, workspace } = session
-  const [evtResult, legResult, accResult, checkpointResult, rateResult] = await Promise.all([
+  const [evtResult, legResult, accResult, checkpointResult, rateResult, accountList] = await Promise.all([
     db.select({ n: count() }).from(events).where(eq(events.workspaceId, workspace.id)),
     db.select({ n: count() }).from(legs).where(eq(legs.workspaceId, workspace.id)),
     db.select({ n: count() }).from(accounts).where(eq(accounts.workspaceId, workspace.id)),
     db.select({ n: count() }).from(instrumentCheckpoints).where(eq(instrumentCheckpoints.workspaceId, workspace.id)),
     db.select({ n: count() }).from(instrumentRates).where(eq(instrumentRates.workspaceId, workspace.id)),
+    db.select({ id: accounts.id, name: accounts.name }).from(accounts).where(eq(accounts.workspaceId, workspace.id)),
   ])
 
   return {
@@ -80,6 +100,7 @@ const getDevStatus = createServerFn({ method: 'GET' }).handler(async () => {
     accountCount: Number(accResult[0]?.n ?? 0),
     checkpointCount: Number(checkpointResult[0]?.n ?? 0),
     rateCount: Number(rateResult[0]?.n ?? 0),
+    accounts: accountList,
   }
 })
 
@@ -113,6 +134,48 @@ const devCreateAdditionalUser = createServerFn({ method: 'POST' })
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) }
     }
+  })
+
+const devImportCanonicalCsv = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { accountId: string; filename: string; csv: string })
+  .handler(async ({ data }) => {
+    const session = await requireDevSession()
+    const { ctx } = session
+
+    if (!data.accountId) return { ok: false, message: 'Select an account first.' }
+
+    const result = parseCanonicalCsv(data.csv)
+    if (result.events.length === 0) {
+      const detail = result.errors[0] ? `: ${result.errors[0].message}` : ''
+      return { ok: false, message: `No events parsed${detail}` }
+    }
+
+    // Auto-resolve instruments: reuse existing tickers, default new ones to exponent 2.
+    const existing = await instrumentService.list(ctx, { accountIds: [data.accountId] })
+    const existingByTicker = new Map(existing.data.map((i) => [i.ticker.toUpperCase(), i]))
+    const tickers = new Set<string>()
+    for (const ev of result.events) {
+      for (const leg of ev.legs) tickers.add(leg.instrumentCode.toUpperCase())
+    }
+    const instrumentDrafts: InstrumentDraft[] = Array.from(tickers).map((ticker) => {
+      const found = existingByTicker.get(ticker)
+      return found
+        ? { ticker, name: found.name, exponent: found.exponent, existingId: found.id }
+        : { ticker, name: ticker, exponent: 2 }
+    })
+
+    await importService.commitImport(ctx, {
+      accountId: data.accountId,
+      parserId: 'canonical',
+      filename: data.filename || 'dev-import.csv',
+      events: result.events,
+      instrumentDrafts,
+      categoryAssignments: {},
+      restoreDeletedChosen: false,
+    })
+
+    const skipped = result.errors.length ? `, ${result.errors.length} row error(s) skipped` : ''
+    return { ok: true, message: `Imported ${result.events.length} event(s)${skipped}.` }
   })
 
 const devExportSnapshot = createServerFn({ method: 'POST' }).handler(async () => {
@@ -181,6 +244,10 @@ function DevPage() {
   const [newUserEmail, setNewUserEmail] = React.useState('')
   const [newUserCurrency, setNewUserCurrency] = React.useState('AUD')
 
+  const [importAccountId, setImportAccountId] = React.useState('')
+  const [importFilename, setImportFilename] = React.useState('')
+  const [importCsv, setImportCsv] = React.useState('')
+
   const clearAction = useAction(async () => {
     const r = await devClearAll()
     router.invalidate()
@@ -219,6 +286,18 @@ function DevPage() {
       setNewUserName('')
       setNewUserEmail('')
       setNewUserCurrency('AUD')
+    }
+    router.invalidate()
+    return r
+  })
+
+  const importCsvAction = useAction(async () => {
+    const r = await devImportCanonicalCsv({
+      data: { accountId: importAccountId, filename: importFilename, csv: importCsv },
+    })
+    if (r.ok) {
+      setImportCsv('')
+      setImportFilename('')
     }
     router.invalidate()
     return r
@@ -430,6 +509,75 @@ function DevPage() {
               ].join(' ')}
             >
               {createUserAction.message}
+            </p>
+          )}
+        </div>
+
+        {/* Import canonical CSV */}
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Import canonical CSV</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
+            Quick-import a CSV already in the canonical event/leg format into an account, skipping the
+            wizard. New instruments default to exponent 2.
+          </p>
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={importAccountId}
+                onChange={(e) => setImportAccountId(e.target.value)}
+                className="flex-1 min-w-[160px] text-sm border border-gray-200 dark:border-gray-700 rounded-md px-3 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select account…</option>
+                {status.accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={importFilename}
+                onChange={(e) => setImportFilename(e.target.value)}
+                placeholder="filename (optional)"
+                className="flex-1 min-w-[140px] text-sm border border-gray-200 dark:border-gray-700 rounded-md px-3 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0]
+                  if (!f) return
+                  setImportCsv(await f.text())
+                  if (!importFilename) setImportFilename(f.name)
+                }}
+                className="text-sm text-gray-700 dark:text-gray-300 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 dark:file:bg-blue-950 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100"
+              />
+            </div>
+            <textarea
+              value={importCsv}
+              onChange={(e) => setImportCsv(e.target.value)}
+              placeholder="Paste canonical CSV here (or choose a file above)…"
+              rows={5}
+              className="w-full text-xs font-mono border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={importCsvAction.run}
+              disabled={importCsvAction.state === 'loading' || !importAccountId || !importCsv}
+              className="px-4 py-1.5 text-sm font-medium rounded-md transition-colors disabled:opacity-50 whitespace-nowrap bg-gray-800 dark:bg-gray-100 hover:bg-gray-700 dark:hover:bg-gray-200 text-white dark:text-gray-900"
+            >
+              {importCsvAction.state === 'loading' ? 'Working…' : 'Import CSV'}
+            </button>
+          </div>
+          {importCsvAction.message && (
+            <p
+              className={[
+                'text-xs mt-2',
+                importCsvAction.state === 'success'
+                  ? 'text-green-600 dark:text-green-400'
+                  : 'text-red-600 dark:text-red-400',
+              ].join(' ')}
+            >
+              {importCsvAction.message}
             </p>
           )}
         </div>

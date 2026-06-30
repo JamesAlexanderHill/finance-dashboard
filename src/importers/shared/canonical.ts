@@ -40,8 +40,12 @@ export function formatCanonicalRow(leg: CanonicalLeg): string {
   ].join(",");
 }
 
+/** Serializes canonical-format CSV legs to a string, including the header row. */
+export function legsToCanonicalCsv(legs: CanonicalLeg[]): string {
+  return [CANONICAL_HEADER.join(","), ...legs.map(formatCanonicalRow)].join("\n") + "\n";
+}
+
 /** Writes canonical-format CSV legs to `outPath`, including the header row. */
 export function writeCanonicalCsv(outPath: string, legs: CanonicalLeg[]): void {
-  const outLines = [CANONICAL_HEADER.join(","), ...legs.map(formatCanonicalRow)];
-  writeFileSync(outPath, outLines.join("\n") + "\n", "utf8");
+  writeFileSync(outPath, legsToCanonicalCsv(legs), "utf8");
 }

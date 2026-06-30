@@ -3,8 +3,21 @@ import { createServerFn } from '@tanstack/react-start'
 import { parseCanonicalCsv } from '~/importers/canonical'
 import scaleUnit from '~/lib/scale-unit'
 import type { ParsedEvent } from '~/importers/canonical'
+import { PARSER_OPTIONS, DEFAULT_PARSER_ID } from '~/importers/parser-options'
+import type { ParserId } from '~/importers/parser-options'
 import { importService, instrumentService, getSession } from '~/db/services'
 import type { CommitImportParams, InstrumentDraft } from '~/db/services'
+
+/** Base64-encodes a File in chunks (avoids arg-count limits on large PDFs). */
+export async function fileToBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -25,6 +38,24 @@ export const doCommitImport = createServerFn({ method: 'POST' })
     return importService.commitImport(session.ctx, data)
   })
 
+// Parses a raw uploaded file (currently PDF statements) server-side and returns
+// canonical CSV. The parser modules — and pdfjs — are imported dynamically here
+// so they never reach the client bundle.
+export const doParseFile = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { parserId: ParserId; filename: string; contentBase64: string })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    try {
+      const { runPdfParserToCsv } = await import('~/importers/pdf-registry')
+      const bytes = new Uint8Array(Buffer.from(data.contentBase64, 'base64'))
+      const canonicalCsv = await runPdfParserToCsv(data.parserId, [{ data: bytes, filename: data.filename }])
+      return { canonicalCsv, error: null as string | null }
+    } catch (err) {
+      return { canonicalCsv: null as string | null, error: String(err) }
+    }
+  })
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type WizardStep = 0 | 1 | 2 | 3 | 4
@@ -32,7 +63,10 @@ type WizardStep = 0 | 1 | 2 | 3 | 4
 interface WizardState {
   step: WizardStep
   accountId: string
+  parserId: ParserId
   filename: string
+  /** Raw uploaded file kept for storage at commit (PDF parsers only). */
+  rawFile: File | null
   parsedEvents: ParsedEvent[]
   parseErrors: Array<{ line: number; message: string }>
   instrumentDrafts: InstrumentDraft[]
@@ -44,7 +78,9 @@ interface WizardState {
 const EMPTY_WIZARD: WizardState = {
   step: 0,
   accountId: '',
+  parserId: DEFAULT_PARSER_ID,
   filename: '',
+  rawFile: null,
   parsedEvents: [],
   parseErrors: [],
   instrumentDrafts: [],
@@ -76,8 +112,24 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
     const file = e.target.files?.[0]
     if (!file) return
 
-    const text = await file.text()
-    const result = parseCanonicalCsv(text)
+    const option = PARSER_OPTIONS.find((o) => o.id === wizard.parserId)
+    let result: ReturnType<typeof parseCanonicalCsv>
+    let rawFile: File | null = null
+
+    if (option?.kind === 'pdf') {
+      // PDF parsers run server-side; keep the raw file to store on commit.
+      const parsed = await doParseFile({
+        data: { parserId: wizard.parserId, filename: file.name, contentBase64: await fileToBase64(file) },
+      })
+      if (parsed.error || parsed.canonicalCsv == null) {
+        setWizard((w) => ({ ...w, parseErrors: [{ line: 0, message: parsed.error ?? 'Failed to parse file' }] }))
+        return
+      }
+      result = parseCanonicalCsv(parsed.canonicalCsv)
+      rawFile = file
+    } else {
+      result = parseCanonicalCsv(await file.text())
+    }
 
     if (result.errors.length > 0 && result.events.length === 0) {
       setWizard((w) => ({ ...w, parseErrors: result.errors }))
@@ -88,7 +140,7 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
     const existingInstruments = await getAccountInstruments({ data: { accountId } })
     const existingByTicker = new Map(existingInstruments.map((i) => [i.ticker.toUpperCase(), i]))
 
-    // Infer required instrument codes from the parsed CSV
+    // Infer required instrument codes from the parsed events
     const requiredTickers = new Set<string>()
     for (const ev of result.events) {
       for (const leg of ev.legs) requiredTickers.add(leg.instrumentCode.toUpperCase())
@@ -106,6 +158,7 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
       ...w,
       step: 2,
       filename: file.name,
+      rawFile,
       parsedEvents: result.events,
       parseErrors: result.errors,
       instrumentDrafts: drafts,
@@ -117,14 +170,19 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
   async function handleCommit() {
     setWizard((w) => ({ ...w, committing: true }))
     try {
+      const rawContent = wizard.rawFile
+        ? { base64: await fileToBase64(wizard.rawFile), contentType: wizard.rawFile.type || 'application/pdf' }
+        : null
       const runId = await doCommitImport({
         data: {
           accountId: wizard.accountId,
+          parserId: wizard.parserId,
           filename: wizard.filename,
           events: wizard.parsedEvents,
           instrumentDrafts: wizard.instrumentDrafts,
           categoryAssignments: wizard.categoryAssignments,
           restoreDeletedChosen: wizard.restoreDeletedChosen,
+          rawContent,
         },
       })
       onSuccess(runId)
@@ -166,7 +224,9 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
         {wizard.step === 1 && (
           <Step1
             accountName={accountName}
+            parserId={wizard.parserId}
             parseErrors={wizard.parseErrors}
+            onParserChange={(id) => setWizard((w) => ({ ...w, parserId: id, parseErrors: [] }))}
             onFileSelect={handleFileSelect}
           />
         )}
@@ -218,26 +278,49 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
 
 function Step1({
   accountName,
+  parserId,
   parseErrors,
+  onParserChange,
   onFileSelect,
 }: {
   accountName: string
+  parserId: ParserId
   parseErrors: Array<{ line: number; message: string }>
+  onParserChange: (id: ParserId) => void
   onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
 }) {
+  const option = PARSER_OPTIONS.find((o) => o.id === parserId) ?? PARSER_OPTIONS[0]
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-        Step 1 — Select CSV file for {accountName}
+        Step 1 — Select a file for {accountName}
       </h3>
 
       <div>
         <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-          CSV File
+          Parser
+        </label>
+        <select
+          value={parserId}
+          onChange={(e) => onParserChange(e.target.value as ParserId)}
+          className="text-sm border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          {PARSER_OPTIONS.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{option.description}</p>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+          File
         </label>
         <input
           type="file"
-          accept=".csv,text/csv"
+          accept={option.accept}
           onChange={onFileSelect}
           className="text-sm text-gray-700 dark:text-gray-300 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 dark:file:bg-blue-950 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100"
         />
@@ -251,20 +334,22 @@ function Step1({
           <ul className="space-y-1">
             {parseErrors.map((e, i) => (
               <li key={i} className="text-xs text-red-600 dark:text-red-400">
-                Line {e.line}: {e.message}
+                {e.line > 0 ? `Line ${e.line}: ` : ''}{e.message}
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      <div className="text-xs text-gray-400 dark:text-gray-500 pt-2">
-        Expected columns:{' '}
-        <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">
-          externalEventId, eventGroup, eventDescription, effectiveAt, postedAt,
-          legDescription, legTicker, legUnitCount
-        </code>
-      </div>
+      {option.kind === 'canonical' && (
+        <div className="text-xs text-gray-400 dark:text-gray-500 pt-2">
+          Expected columns:{' '}
+          <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">
+            externalEventId, eventGroup, eventDescription, effectiveAt, postedAt,
+            legDescription, legTicker, legUnitCount
+          </code>
+        </div>
+      )}
     </div>
   )
 }

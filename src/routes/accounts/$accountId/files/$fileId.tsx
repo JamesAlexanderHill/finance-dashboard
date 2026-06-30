@@ -2,6 +2,7 @@ import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import EventTable from '~/components/event/event-table'
+import { parserLabel } from '~/importers/parser-options'
 import { accountService, eventService, fileService, getSession } from '~/db/services'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -36,6 +37,14 @@ const deleteFile = createServerFn({ method: 'POST' })
     const session = await getSession()
     if (!session) throw new Error('No user found')
     await fileService.delete(session.ctx, data.fileId)
+  })
+
+const getFileDownloadUrl = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { fileId: string })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user found')
+    return fileService.getDownloadUrl(session.ctx, data.fileId)
   })
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -139,6 +148,16 @@ function FileDetailPage() {
     }
   }
 
+  async function handleDownload() {
+    try {
+      const url = await getFileDownloadUrl({ data: { fileId } })
+      if (url) window.open(url, '_blank')
+      else alert('No original file is stored for this import.')
+    } catch (err) {
+      alert(`Download failed: ${String(err)}`)
+    }
+  }
+
   const stats = [
     { label: 'Imported', value: file.importedCount, color: 'text-green-700 dark:text-green-400' },
     { label: 'Skipped', value: file.skippedCount, color: 'text-gray-600 dark:text-gray-400' },
@@ -182,16 +201,26 @@ function FileDetailPage() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{file.filename}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Imported {formatDateTime(file.createdAt)}
+            Imported {formatDateTime(file.createdAt)} · Parser: {parserLabel(file.parserId)}
           </p>
         </div>
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border border-red-200 dark:border-red-800 rounded-md disabled:opacity-50"
-        >
-          {deleting ? 'Deleting...' : 'Delete'}
-        </button>
+        <div className="flex items-center gap-2">
+          {file.storageKey && (
+            <button
+              onClick={handleDownload}
+              className="px-3 py-1.5 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-md"
+            >
+              Download original
+            </button>
+          )}
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border border-red-200 dark:border-red-800 rounded-md disabled:opacity-50"
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
       </div>
 
       {/* Stats */}

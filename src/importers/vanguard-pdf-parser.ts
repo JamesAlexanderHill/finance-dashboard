@@ -27,12 +27,12 @@
  * a seen-count collision suffix.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { csvEscape } from "./shared/csv";
 import { amountToCents } from "./shared/money";
 import { rowHash } from "./shared/hash";
+import { writeCanonicalCsv, type CanonicalLeg } from "./shared/canonical";
 
 type Args = {
   inPaths: string[];
@@ -293,10 +293,7 @@ type OutRow = {
   legUnitCount: number;
 };
 
-async function extractRows(pdfPath: string): Promise<OutRow[]> {
-  const filename = basename(pdfPath);
-
-  const data = new Uint8Array(readFileSync(pdfPath));
+async function extractRows(data: Uint8Array, filename: string): Promise<OutRow[]> {
   const doc = await getDocument({ data, verbosity: 0 }).promise;
 
   // Quarterly statements fit the cash account / investment transaction tables on a single page
@@ -397,13 +394,14 @@ async function extractRows(pdfPath: string): Promise<OutRow[]> {
   return rows;
 }
 
-async function main() {
-  const args = parseArgs(process.argv);
-
+/** Parses one or more Vanguard statement PDFs into canonical legs. */
+export async function parseVanguardPdf(
+  files: { data: Uint8Array; filename: string }[],
+): Promise<CanonicalLeg[]> {
   const allRows: OutRow[] = [];
-  for (const inPath of args.inPaths) {
-    const rows = await extractRows(inPath);
-    console.error(`${basename(inPath)}: parsed ${rows.length} legs`);
+  for (const file of files) {
+    const rows = await extractRows(file.data, file.filename);
+    console.error(`${file.filename}: parsed ${rows.length} legs`);
     allRows.push(...rows);
   }
 
@@ -418,18 +416,7 @@ async function main() {
     eventGroups.get(row.eventGroup)!.push(row);
   }
 
-  const outHeader = [
-    "externalEventId",
-    "eventGroup",
-    "eventDescription",
-    "effectiveAt",
-    "postedAt",
-    "legDescription",
-    "legTicker",
-    "legUnitCount",
-  ];
-  const outLines: string[] = [outHeader.join(",")];
-
+  const legs: CanonicalLeg[] = [];
   const seen = new Map<string, number>();
   for (const [originalGroup, rows] of eventGroups) {
     const count = seen.get(originalGroup) ?? 0;
@@ -437,23 +424,30 @@ async function main() {
     const id = count > 0 ? rowHash([originalGroup, String(count)]) : originalGroup;
 
     for (const row of rows) {
-      outLines.push(
-        [
-          csvEscape(id),
-          csvEscape(id),
-          csvEscape(row.eventDescription),
-          csvEscape(row.effectiveAt),
-          csvEscape(row.postedAt),
-          csvEscape(row.legDescription),
-          csvEscape(row.legTicker),
-          String(row.legUnitCount),
-        ].join(",")
-      );
+      legs.push({
+        externalEventId: id,
+        eventGroup: id,
+        eventDescription: row.eventDescription,
+        effectiveAt: row.effectiveAt,
+        postedAt: row.postedAt,
+        legDescription: row.legDescription,
+        legTicker: row.legTicker,
+        legUnitCount: row.legUnitCount,
+      });
     }
   }
 
-  writeFileSync(args.outPath, outLines.join("\n") + "\n", "utf8");
-  console.log(`Wrote ${outLines.length - 1} rows to ${args.outPath}`);
+  return legs;
 }
 
-main();
+async function main() {
+  const args = parseArgs(process.argv);
+  const files = args.inPaths.map((p) => ({ data: new Uint8Array(readFileSync(p)), filename: basename(p) }));
+  const legs = await parseVanguardPdf(files);
+  writeCanonicalCsv(args.outPath, legs);
+  console.log(`Wrote ${legs.length} rows to ${args.outPath}`);
+}
+
+if (import.meta.main) {
+  main();
+}

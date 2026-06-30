@@ -39,6 +39,17 @@ persisted to `.db/` (gitignored). Connection details come from `.env`
 (`DATABASE_URL`, `POSTGRES_*`), pointing at
 `postgresql://dev:development@localhost:5332/db`.
 
+### Object storage (imports)
+
+Raw import uploads (PDF statements) are kept in S3-compatible object storage, configured entirely
+from the environment — works with AWS S3, Cloudflare R2, MinIO, etc.:
+
+- `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (required)
+- `S3_REGION` (defaults to `auto`), `S3_ENDPOINT` (for non-AWS providers), and
+  `S3_FORCE_PATH_STYLE` (`true` for MinIO) (optional)
+
+A bucket (or a local MinIO) is required to import PDFs; canonical-CSV imports work without it.
+
 ## Architecture
 
 ### Data model
@@ -52,6 +63,9 @@ The schema (`src/db/schema.ts`) is built around `users`, `accounts`, `instrument
   payment, payout) belonging to one account, made up of one or more `legs`. Each leg
   references an instrument and carries a signed `unitCount` in minor units (cents,
   etc.) — money is always handled as bigints, never `Number`.
+- A `file` records an import run — its parser (`parserId`), result counts, and a reference to the
+  stored raw upload (`storageKey`/`contentType`/`byteSize`) when one was kept — and owns the
+  `events` it created.
 - `instrumentCheckpoints` store a monthly running balance per instrument so balances
   can be computed without summing every leg from the beginning.
 - `legs` can be split into `lineItems` and tagged with `categories` (a
@@ -67,21 +81,17 @@ The schema (`src/db/schema.ts`) is built around `users`, `accounts`, `instrument
 (business logic on top, scoped by `RequestContext`/`ctx.userId`). Everything is
 re-exported from `src/db/services/index.ts` — import from `~/db/services`.
 
-### Imports / CSV pipeline
+### Imports
 
-Provider-specific importers live in `src/importers/`:
+The **Import Wizard** (per account) takes a file, lets you pick a **parser**, converts it to the
+canonical event/leg format, then walks instrument review → event review → commit. **PDF statements**
+(Amex, CommBank, Vanguard) are parsed **server-side** so pdfjs never ships in the client bundle, and
+the original upload is stored in object storage and linked to the import (with the parser used,
+downloadable from the import's detail page). Canonical CSVs are parsed in the browser; the non-PDF
+CSV bank parsers remain standalone Bun CLI scripts, slated for deprecation.
 
-- `amex`, `commbank`, `vanguard`, `wise` each have a CSV parser (`*-parser.ts`), and
-  `amex`, `commbank`, `vanguard` also have a PDF statement parser (`*-pdf-parser.ts`).
-  These are standalone Bun CLI scripts (`bun src/importers/<name>-parser.ts --in
-  <file> --out <file>`) that convert a provider export into a **canonical CSV
-  format**: `externalEventId, eventGroup, eventDescription, effectiveAt, postedAt,
-  legDescription, legTicker, legUnitCount`.
-- Shared CSV/money/date/hash/canonical helpers used by all parsers live in
-  `src/importers/shared/`.
-- `src/importers/canonical.ts` parses the canonical CSV in the browser as part of the
-  Import Wizard flow; `src/db/services/service/import.ts` commits the result to the
-  database, handling instrument/category resolution and deduplication.
+See **[docs/7-imports.md](docs/7-imports.md)** for the full pipeline — canonical format, parsers,
+object-storage of originals, run tracking, the single-file and bulk wizards, and import history.
 
 ## Testing
 
