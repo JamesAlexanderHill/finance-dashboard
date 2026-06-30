@@ -84,32 +84,14 @@ re-exported from `src/db/services/index.ts` — import from `~/db/services`.
 ### Imports
 
 The **Import Wizard** (per account) takes a file, lets you pick a **parser**, converts it to the
-canonical event/leg format, then walks through instrument review, event review, and commit.
-`src/importers/canonical.ts` parses the canonical CSV in the browser, and
-`src/db/services/service/import.ts` commits the result, handling instrument/category resolution
-and deduplication. Shared CSV/money/date/hash/canonical helpers live in `src/importers/shared/`.
+canonical event/leg format, then walks instrument review → event review → commit. **PDF statements**
+(Amex, CommBank, Vanguard) are parsed **server-side** so pdfjs never ships in the client bundle, and
+the original upload is stored in object storage and linked to the import (with the parser used,
+downloadable from the import's detail page). Canonical CSVs are parsed in the browser; the non-PDF
+CSV bank parsers remain standalone Bun CLI scripts, slated for deprecation.
 
-The **canonical CSV format** every parser targets is: `externalEventId, eventGroup,
-eventDescription, effectiveAt, postedAt, legDescription, legTicker, legUnitCount`.
-
-The non-PDF CSV bank parsers (`amex`, `commbank`, `vanguard`, `wise` `*-parser.ts`) are standalone
-Bun CLI scripts (`bun src/importers/<name>-parser.ts --in <file> --out <file>`) and are **slated
-for deprecation** — they are not offered in the wizard. The dev tools (`/dev`) also expose a quick
-**"Import canonical CSV"** action for pasting/uploading a canonical file straight into an account.
-
-### Raw file import (PDF statements)
-
-Beyond an already-canonical CSV, the wizard takes a **raw provider file** and runs a chosen
-**parser** to extract events:
-
-- **PDF statements** (Amex, CommBank, Vanguard) are uploaded and parsed **server-side**
-  (`src/importers/pdf-registry.ts` + `src/importers/<name>-pdf-parser.ts`). The pdfjs dependency is
-  imported lazily and **never ships in the client bundle**. The Amex statement file must be named
-  `YYYY-MM-DD.pdf` (statement closing date) so the transaction year can be inferred.
-- The **original upload is stored in object storage** and linked to the import, and each import
-  records **which parser** produced it. Both are surfaced on the import's detail page
-  (`/accounts/$accountId/files/$fileId`): the scraped transactions, a **Download original** link,
-  and the parser used. Deleting an import also removes its stored original.
+See **[docs/7-imports.md](docs/7-imports.md)** for the full pipeline — canonical format, parsers,
+object-storage of originals, run tracking, the single-file and bulk wizards, and import history.
 
 ## Testing
 
