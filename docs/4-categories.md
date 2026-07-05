@@ -93,10 +93,19 @@ During CSV import, the `categoryAssignments` map can pre-assign categories using
 
 Categories are the foundation of two visualizations:
 
-- **Category bar chart** — Buckets spending by root category over time (daily, weekly, or monthly periods). Non-categorized legs are excluded.
+- **Category bar chart** — Buckets spending by root category over time (daily, weekly, or monthly periods).
 - **Sankey diagram** — Flows income sources through expense categories. Amounts are aggregated up to root categories by walking the `parentId` chain.
 
-Both visualizations filter out legs where `categoryId IS NULL`.
+### Category Roll-Up
+
+Both visualizations resolve each leg's *effective* category via `resolveLegCategoryShares` (`src/db/services/service/category-rollup.ts`) rather than reading `legs.categoryId` directly:
+
+- If a leg has **line items**, each item's own category is used as its share of the leg's amount, and the leg's own `categoryId` is ignored entirely.
+- Otherwise, the leg's own category stands (possibly `null`).
+
+A leg only contributes an "uncategorized" share when neither it nor any line item has a category — a leg with categorized line items but no leg-level tag is no longer invisible to these charts, which was a gap in earlier versions.
+
+This same roll-up rule, extended one level further to sub-events, also governs the event drawer's per-event breakdown — see [Sub-Events → Categorization Roll-Up](./8-sub-events.md#categorization-roll-up). The sub-event step of that chain is UI-only and does not feed these two charts; see that document's Limitations section for why.
 
 ### Relation-Aware Netting
 
@@ -105,4 +114,4 @@ Both visualizations are also aware of [transaction relations](./6-relations.md):
 - Legs belonging to an **internal transfer** are excluded entirely, so moving money between your own accounts never appears as spending or income.
 - **Reimbursement** and **refund** inflows are netted against the category of the expense they offset, in that expense's period — a $300 dinner with a $200 repayment contributes −$100 to its category rather than −$300.
 
-This netting is applied by `applyRelationsToLegs` before aggregation, so it affects every period bucket and Sankey flow.
+This netting is applied by `applyRelationsToLegs` before the category roll-up above, so it affects every period bucket and Sankey flow.

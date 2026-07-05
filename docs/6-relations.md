@@ -135,3 +135,10 @@ to the caller's workspace.
   confirm before linking.
 - Netting attributes a multi-leg parent's reimbursement to a single category (the
   first categorised leg), not proportionally across its legs.
+
+## See Also
+
+A `transfer` relation only links the two matching sides of a movement (e.g. a
+card repayment's checking-side outflow and the card account's credit). It does
+not itself surface *what the repayment paid for* — that is a separate,
+one-to-many concept covered in [Sub-Events](./8-sub-events.md).
