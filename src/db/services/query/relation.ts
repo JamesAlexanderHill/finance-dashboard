@@ -136,6 +136,10 @@ export type AnalyticsChildLeg = {
   categoryId: string | null
   unitCount: bigint
   effectiveAt: Date
+  // Reimbursement/refund child legs are exempted from line-item rollup in v1
+  // (always empty) — netting re-attributes the child's raw `unitCount` onto
+  // the parent's category regardless, so this doesn't change that behavior.
+  lineItems: { categoryId: string | null; unitCount: bigint }[]
 }
 
 /**
@@ -200,6 +204,7 @@ export async function queryAnalyticsRelations(
       categoryId: row.categoryId,
       unitCount: row.unitCount,
       effectiveAt: row.effectiveAt,
+      lineItems: [],
     })
   }
 

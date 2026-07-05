@@ -340,6 +340,25 @@ export const eventRelations = pgTable(
   (t) => [primaryKey({ columns: [t.parentEventId, t.childEventId] })],
 )
 
+// ─── Sub-Event Links ──────────────────────────────────────────────────────────
+
+// Decomposes one "lump sum" parent event (e.g. a credit card repayment) into
+// many child sub-events (the individual, already-categorized purchases the
+// repayment actually pays for). Unlike `eventRelations`, which pairs two
+// independent top-level events (parent = anchor outflow, child = offsetting
+// inflow), this is a strict one-parent-to-many-children decomposition with no
+// sign relationship between parent and children — so the child's PK alone
+// enforces "a sub-event belongs to exactly one parent." See docs/7-sub-events.md.
+export const subEventLinks = pgTable('sub_event_links', {
+  childEventId: text('child_event_id')
+    .primaryKey()
+    .references(() => events.id),
+  parentEventId: text('parent_event_id')
+    .notNull()
+    .references(() => events.id),
+  createdAt: createdAt(),
+})
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -415,6 +434,10 @@ export const eventsRelations = relations(events, ({ one, many }) => ({
   parentRelations: many(eventRelations, { relationName: 'parentEvent' }),
   // eventRelations where this event is the child
   childRelations: many(eventRelations, { relationName: 'childEvent' }),
+  // subEventLinks where this event is the parent (many children possible)
+  subEventChildren: many(subEventLinks, { relationName: 'subEventParent' }),
+  // subEventLinks where this event is the child (at most one row, enforced by PK)
+  subEventParentLink: many(subEventLinks, { relationName: 'subEventChild' }),
 }))
 
 export const legsRelations = relations(legs, ({ one, many }) => ({
@@ -453,6 +476,19 @@ export const eventRelationRelations = relations(eventRelations, ({ one }) => ({
   }),
 }))
 
+export const subEventLinksRelations = relations(subEventLinks, ({ one }) => ({
+  parentEvent: one(events, {
+    fields: [subEventLinks.parentEventId],
+    references: [events.id],
+    relationName: 'subEventParent',
+  }),
+  childEvent: one(events, {
+    fields: [subEventLinks.childEventId],
+    references: [events.id],
+    relationName: 'subEventChild',
+  }),
+}))
+
 // ─── Type exports ─────────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect
@@ -477,3 +513,4 @@ export type LineItem = typeof lineItems.$inferSelect
 export type EventRelation = typeof eventRelations.$inferSelect
 export type EventRelationType = (typeof eventRelationTypeEnum.enumValues)[number]
 export type TimelineAnnotation = typeof timelineAnnotations.$inferSelect
+export type SubEventLink = typeof subEventLinks.$inferSelect

@@ -5,6 +5,7 @@ import type { ParseError, ParsedEvent } from '~/importers/canonical'
 import { importService, getSession } from '~/db/services'
 import type { CommitBulkImportParams, FileImportResult, InstrumentDraft } from '~/db/services'
 import { getAccountInstruments, InstrumentReview } from '~/components/ImportWizard'
+import { PostImportSuggestions } from '~/components/event/post-import-suggestions'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ interface WizardState {
   restoreDeletedChosen: boolean
   committing: boolean
   results: FileImportResult[] | null
+  reviewedSuggestions: boolean
 }
 
 const EMPTY_WIZARD: WizardState = {
@@ -42,6 +44,7 @@ const EMPTY_WIZARD: WizardState = {
   restoreDeletedChosen: false,
   committing: false,
   results: null,
+  reviewedSuggestions: false,
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -263,7 +266,13 @@ export function BulkImportWizard({ accountId, accountName, onClose, onSuccess }:
         )}
 
         {/* Step 4 */}
-        {wizard.step === 4 && (
+        {wizard.step === 4 && wizard.results && !wizard.reviewedSuggestions && (
+          <PostImportSuggestions
+            eventIds={wizard.results.flatMap((r) => r.eventIds)}
+            onDone={() => setWizard((w) => ({ ...w, reviewedSuggestions: true }))}
+          />
+        )}
+        {wizard.step === 4 && (!wizard.results || wizard.reviewedSuggestions) && (
           <Step4
             wizard={wizard}
             accountName={accountName}

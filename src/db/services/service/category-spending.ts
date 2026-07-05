@@ -1,8 +1,9 @@
 import type { Category } from '~/db/schema'
 import type { RequestContext } from '../utils/context'
 import type { BalanceHistoryPeriod } from '../query/instrument'
-import { queryCategoryLegsByDate } from '../query/category-spending'
+import { queryLegsWithLineItemsByDate } from '../query/category-spending'
 import { applyRelationsToLegs } from './relation-netting'
+import { resolveLegCategoryShares } from './category-rollup'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,7 +55,7 @@ async function getByPeriod(
   dateRange: { start: string | null; end: string },
   period: BalanceHistoryPeriod,
 ): Promise<CategoryBarData> {
-  const { categories, legs, relations, childLegs } = await queryCategoryLegsByDate(
+  const { categories, legs, relations, childLegs } = await queryLegsWithLineItemsByDate(
     ctx.workspaceId,
     dateRange,
   )
@@ -68,14 +69,17 @@ async function getByPeriod(
   const periodAmounts = new Map<string, Map<string, bigint>>()
 
   for (const leg of nettedLegs) {
-    if (!leg.categoryId) continue
-    const root = rootOf(leg.categoryId, catMap)
-    if (!root) continue
+    const shares = resolveLegCategoryShares(leg)
+    for (const share of shares) {
+      if (!share.categoryId) continue
+      const root = rootOf(share.categoryId, catMap)
+      if (!root) continue
 
-    const bucket = bucketDate(leg.effectiveAt, period)
-    if (!periodAmounts.has(bucket)) periodAmounts.set(bucket, new Map())
-    const byCategory = periodAmounts.get(bucket)!
-    byCategory.set(root.id, (byCategory.get(root.id) ?? BigInt(0)) + leg.unitCount)
+      const bucket = bucketDate(leg.effectiveAt, period)
+      if (!periodAmounts.has(bucket)) periodAmounts.set(bucket, new Map())
+      const byCategory = periodAmounts.get(bucket)!
+      byCategory.set(root.id, (byCategory.get(root.id) ?? BigInt(0)) + share.amount)
+    }
   }
 
   if (periodAmounts.size === 0) return { categories: [], data: [] }

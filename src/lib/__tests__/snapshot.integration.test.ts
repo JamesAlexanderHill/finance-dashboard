@@ -12,6 +12,7 @@ import {
   instruments,
   legs,
   lineItems,
+  subEventLinks,
   timelineAnnotations,
   users,
   workspaceMembers,
@@ -126,7 +127,32 @@ async function seedFixture(workspaceId: string, suffix: string) {
   await db.insert(legs).values({ workspaceId, eventId: inEvent.id, instrumentId: usd.id, unitCount: BigInt(33000) })
   await db
     .insert(eventRelations)
-    .values({ parentEventId: outEvent.id, childEventId: inEvent.id, relationType: 'transfer_pair' })
+    .values({ parentEventId: outEvent.id, childEventId: inEvent.id, relationType: 'transfer' })
+
+  // Sub-event: a purchase decomposed under a (separate, unrelated) parent event.
+  const [repaymentEvent] = await db
+    .insert(events)
+    .values({
+      workspaceId,
+      accountId: acct.id,
+      effectiveAt: new Date('2026-02-10T00:00:00Z'),
+      postedAt: new Date('2026-02-10T00:00:00Z'),
+      description: 'Card repayment',
+      dedupeKey: `snap:repayment:${suffix}`,
+    })
+    .returning()
+  const [purchaseEvent] = await db
+    .insert(events)
+    .values({
+      workspaceId,
+      accountId: acct.id,
+      effectiveAt: new Date('2026-01-15T00:00:00Z'),
+      postedAt: new Date('2026-01-15T00:00:00Z'),
+      description: 'Groceries',
+      dedupeKey: `snap:purchase:${suffix}`,
+    })
+    .returning()
+  await db.insert(subEventLinks).values({ parentEventId: repaymentEvent.id, childEventId: purchaseEvent.id })
 
   await db.insert(instrumentCheckpoints).values({
     workspaceId,
@@ -150,12 +176,15 @@ async function seedFixture(workspaceId: string, suffix: string) {
   })
 }
 
-/** Row counts for every workspace-scoped table (event_relations scoped via events). */
+/** Row counts for every workspace-scoped table (event_relations/sub_event_links scoped via events). */
 async function tableCounts(workspaceId: string) {
   const ev = await db.select({ id: events.id }).from(events).where(eq(events.workspaceId, workspaceId))
   const eventIds = ev.map((e) => e.id)
   const rel = eventIds.length
     ? await db.select().from(eventRelations).where(inArray(eventRelations.parentEventId, eventIds))
+    : []
+  const subEv = eventIds.length
+    ? await db.select().from(subEventLinks).where(inArray(subEventLinks.parentEventId, eventIds))
     : []
   const [acc, ins, cat, fil, leg, li, cp, rt, ann] = await Promise.all([
     db.select().from(accounts).where(eq(accounts.workspaceId, workspaceId)),
@@ -180,6 +209,7 @@ async function tableCounts(workspaceId: string) {
     instrumentRates: rt.length,
     timelineAnnotations: ann.length,
     eventRelations: rel.length,
+    subEventLinks: subEv.length,
   }
 }
 
@@ -215,6 +245,7 @@ suite('workspace snapshot round-trip', () => {
     expect(typeof snapshot.legs[0].unitCount).toBe('string')
     expect(typeof snapshot.events[0].effectiveAt).toBe('string')
     expect(snapshot.eventRelations).toHaveLength(1)
+    expect(snapshot.subEventLinks).toHaveLength(1)
 
     await clearWorkspaceData(workspace.id)
     expect((await tableCounts(workspace.id)).events).toBe(0)
@@ -222,6 +253,16 @@ suite('workspace snapshot round-trip', () => {
     await importWorkspaceSnapshot(workspace.id, snapshot)
     const after = await tableCounts(workspace.id)
     expect(after).toEqual(before)
+
+    // Sub-event link survives the round-trip, still pointing at the right pair.
+    const restoredEvents = await db.select().from(events).where(eq(events.workspaceId, workspace.id))
+    const repayment = restoredEvents.find((e) => e.description === 'Card repayment')!
+    const purchase = restoredEvents.find((e) => e.description === 'Groceries')!
+    const [restoredLink] = await db
+      .select()
+      .from(subEventLinks)
+      .where(eq(subEventLinks.childEventId, purchase.id))
+    expect(restoredLink.parentEventId).toBe(repayment.id)
 
     // bigints are BigInt again, with magnitudes preserved (480000 - 50000 + 33000).
     const restoredLegs = await db.select().from(legs).where(eq(legs.workspaceId, workspace.id))

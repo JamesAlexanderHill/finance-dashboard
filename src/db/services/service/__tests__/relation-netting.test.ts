@@ -11,6 +11,7 @@ type Leg = {
   categoryId: string | null
   unitCount: bigint
   effectiveAt: Date
+  lineItems: { categoryId: string | null; unitCount: bigint }[]
 }
 
 const JAN = new Date('2026-01-10T00:00:00Z')
@@ -28,8 +29,8 @@ function sumByCategory(legs: Leg[]): Record<string, bigint> {
 describe('applyRelationsToLegs', () => {
   test('leaves unrelated legs untouched', () => {
     const legs: Leg[] = [
-      { eventId: 'a', categoryId: 'food', unitCount: -5000n, effectiveAt: JAN },
-      { eventId: 'b', categoryId: 'salary', unitCount: 900000n, effectiveAt: JAN },
+      { eventId: 'a', categoryId: 'food', unitCount: -5000n, effectiveAt: JAN, lineItems: [] },
+      { eventId: 'b', categoryId: 'salary', unitCount: 900000n, effectiveAt: JAN, lineItems: [] },
     ]
     const result = applyRelationsToLegs(legs, [], [])
     expect(result).toEqual(legs)
@@ -37,9 +38,9 @@ describe('applyRelationsToLegs', () => {
 
   test('drops both legs of an internal transfer', () => {
     const legs: Leg[] = [
-      { eventId: 'out', categoryId: 'transfers', unitCount: -150000n, effectiveAt: JAN },
-      { eventId: 'in', categoryId: 'transfers', unitCount: 150000n, effectiveAt: JAN },
-      { eventId: 'groceries', categoryId: 'food', unitCount: -5000n, effectiveAt: JAN },
+      { eventId: 'out', categoryId: 'transfers', unitCount: -150000n, effectiveAt: JAN, lineItems: [] },
+      { eventId: 'in', categoryId: 'transfers', unitCount: 150000n, effectiveAt: JAN, lineItems: [] },
+      { eventId: 'groceries', categoryId: 'food', unitCount: -5000n, effectiveAt: JAN, lineItems: [] },
     ]
     const relations: NettingRelation[] = [
       { parentEventId: 'out', childEventId: 'in', relationType: 'transfer' },
@@ -51,14 +52,14 @@ describe('applyRelationsToLegs', () => {
 
   test('nets a partial reimbursement against the parent expense category', () => {
     const legs: Leg[] = [
-      { eventId: 'dinner', categoryId: 'dining', unitCount: -30000n, effectiveAt: JAN },
+      { eventId: 'dinner', categoryId: 'dining', unitCount: -30000n, effectiveAt: JAN, lineItems: [] },
     ]
     const relations: NettingRelation[] = [
       { parentEventId: 'dinner', childEventId: 'repay', relationType: 'reimbursement' },
     ]
     const childLegs: Leg[] = [
       // Repayment received later, uncategorised — should still net.
-      { eventId: 'repay', categoryId: null, unitCount: 20000n, effectiveAt: FEB },
+      { eventId: 'repay', categoryId: null, unitCount: 20000n, effectiveAt: FEB, lineItems: [] },
     ]
     const result = applyRelationsToLegs(legs, relations, childLegs)
 
@@ -73,13 +74,13 @@ describe('applyRelationsToLegs', () => {
 
   test('nets a refund the same way as a reimbursement', () => {
     const legs: Leg[] = [
-      { eventId: 'purchase', categoryId: 'shopping', unitCount: -8000n, effectiveAt: JAN },
+      { eventId: 'purchase', categoryId: 'shopping', unitCount: -8000n, effectiveAt: JAN, lineItems: [] },
     ]
     const relations: NettingRelation[] = [
       { parentEventId: 'purchase', childEventId: 'refund', relationType: 'refund' },
     ]
     const childLegs: Leg[] = [
-      { eventId: 'refund', categoryId: null, unitCount: 8000n, effectiveAt: FEB },
+      { eventId: 'refund', categoryId: null, unitCount: 8000n, effectiveAt: FEB, lineItems: [] },
     ]
     const result = applyRelationsToLegs(legs, relations, childLegs)
     // Fully refunded → nets to zero in "shopping".
@@ -88,15 +89,15 @@ describe('applyRelationsToLegs', () => {
 
   test('does not double count when the repayment was itself categorised', () => {
     const legs: Leg[] = [
-      { eventId: 'exp', categoryId: 'dining', unitCount: -30000n, effectiveAt: JAN },
+      { eventId: 'exp', categoryId: 'dining', unitCount: -30000n, effectiveAt: JAN, lineItems: [] },
       // User mistakenly categorised the repayment as income; it appears in the base set.
-      { eventId: 'repay', categoryId: 'income', unitCount: 20000n, effectiveAt: FEB },
+      { eventId: 'repay', categoryId: 'income', unitCount: 20000n, effectiveAt: FEB, lineItems: [] },
     ]
     const relations: NettingRelation[] = [
       { parentEventId: 'exp', childEventId: 'repay', relationType: 'reimbursement' },
     ]
     const childLegs: Leg[] = [
-      { eventId: 'repay', categoryId: 'income', unitCount: 20000n, effectiveAt: FEB },
+      { eventId: 'repay', categoryId: 'income', unitCount: 20000n, effectiveAt: FEB, lineItems: [] },
     ]
     const result = applyRelationsToLegs(legs, relations, childLegs)
     // The repayment is re-attributed to "dining" exactly once; "income" disappears.
@@ -105,14 +106,14 @@ describe('applyRelationsToLegs', () => {
 
   test('uses the parent first categorised leg for multi-category parents', () => {
     const legs: Leg[] = [
-      { eventId: 'trip', categoryId: 'travel', unitCount: -20000n, effectiveAt: JAN },
-      { eventId: 'trip', categoryId: 'food', unitCount: -8000n, effectiveAt: JAN },
+      { eventId: 'trip', categoryId: 'travel', unitCount: -20000n, effectiveAt: JAN, lineItems: [] },
+      { eventId: 'trip', categoryId: 'food', unitCount: -8000n, effectiveAt: JAN, lineItems: [] },
     ]
     const relations: NettingRelation[] = [
       { parentEventId: 'trip', childEventId: 'repay', relationType: 'reimbursement' },
     ]
     const childLegs: Leg[] = [
-      { eventId: 'repay', categoryId: null, unitCount: 10000n, effectiveAt: FEB },
+      { eventId: 'repay', categoryId: null, unitCount: 10000n, effectiveAt: FEB, lineItems: [] },
     ]
     const result = applyRelationsToLegs(legs, relations, childLegs)
     // Inflow nets into the first categorised parent leg ("travel").
@@ -125,7 +126,7 @@ describe('applyRelationsToLegs', () => {
       { parentEventId: 'p', childEventId: 'c', relationType: 'refund' },
     ]
     const childLegs: Leg[] = [
-      { eventId: 'c', categoryId: null, unitCount: 5000n, effectiveAt: JAN },
+      { eventId: 'c', categoryId: null, unitCount: 5000n, effectiveAt: JAN, lineItems: [] },
     ]
     const result = applyRelationsToLegs([], relations, childLegs)
     expect(result).toHaveLength(0)
@@ -133,18 +134,47 @@ describe('applyRelationsToLegs', () => {
 
   test('transfer exclusion wins over a reimbursement link on the same event', () => {
     const legs: Leg[] = [
-      { eventId: 'x', categoryId: 'dining', unitCount: -30000n, effectiveAt: JAN },
+      { eventId: 'x', categoryId: 'dining', unitCount: -30000n, effectiveAt: JAN, lineItems: [] },
     ]
     const relations: NettingRelation[] = [
       { parentEventId: 'x', childEventId: 'y', relationType: 'transfer' },
       { parentEventId: 'x', childEventId: 'z', relationType: 'reimbursement' },
     ]
     const childLegs: Leg[] = [
-      { eventId: 'z', categoryId: null, unitCount: 10000n, effectiveAt: JAN },
+      { eventId: 'z', categoryId: null, unitCount: 10000n, effectiveAt: JAN, lineItems: [] },
     ]
     const result = applyRelationsToLegs(legs, relations, childLegs)
     // Event x is a transfer participant → fully excluded, and its reimbursement
     // child is not netted against it.
     expect(result).toHaveLength(0)
+  })
+
+  test('a synthetic netted leg does not inherit the parent representative leg\'s line items', () => {
+    // Regression test: the parent's representative leg has its own line items
+    // (e.g. a split supermarket charge). Once reimbursed, the synthetic leg
+    // carrying the child's netted inflow must NOT carry those line items along
+    // with it — its amount belongs to the child, not the parent's split.
+    const legs: Leg[] = [
+      {
+        eventId: 'trip',
+        categoryId: 'travel',
+        unitCount: -20000n,
+        effectiveAt: JAN,
+        lineItems: [
+          { categoryId: 'flights', unitCount: -15000n },
+          { categoryId: 'taxis', unitCount: -5000n },
+        ],
+      },
+    ]
+    const relations: NettingRelation[] = [
+      { parentEventId: 'trip', childEventId: 'repay', relationType: 'reimbursement' },
+    ]
+    const childLegs: Leg[] = [
+      { eventId: 'repay', categoryId: null, unitCount: 10000n, effectiveAt: FEB, lineItems: [] },
+    ]
+    const result = applyRelationsToLegs(legs, relations, childLegs)
+    const synthetic = result.find((l) => l.unitCount === 10000n)!
+    expect(synthetic.lineItems).toEqual([])
+    expect(synthetic.categoryId).toBe('travel')
   })
 })

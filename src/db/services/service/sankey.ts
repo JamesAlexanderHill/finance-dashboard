@@ -2,6 +2,7 @@ import type { Category } from '~/db/schema'
 import type { RequestContext } from '../utils/context'
 import { querySankeyLegs } from '../query/sankey'
 import { applyRelationsToLegs } from './relation-netting'
+import { resolveLegCategoryShares } from './category-rollup'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,8 +57,10 @@ async function getData(
 
   const aggregates = new Map<string, bigint>()
   for (const leg of nettedLegs) {
-    if (!leg.categoryId) continue
-    accumulateAncestors(leg.categoryId, leg.unitCount, catMap, aggregates)
+    for (const share of resolveLegCategoryShares(leg)) {
+      if (!share.categoryId) continue
+      accumulateAncestors(share.categoryId, share.amount, catMap, aggregates)
+    }
   }
 
   const roots = categories.filter((c) => c.parentId === null)

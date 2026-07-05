@@ -5,6 +5,7 @@ import scaleUnit from '~/lib/scale-unit'
 import type { ParsedEvent } from '~/importers/canonical'
 import { importService, instrumentService, getSession } from '~/db/services'
 import type { CommitImportParams, InstrumentDraft } from '~/db/services'
+import { PostImportSuggestions } from '~/components/event/post-import-suggestions'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ export const doCommitImport = createServerFn({ method: 'POST' })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type WizardStep = 0 | 1 | 2 | 3 | 4
+type WizardStep = 0 | 1 | 2 | 3 | 4 | 5
 
 interface WizardState {
   step: WizardStep
@@ -39,6 +40,8 @@ interface WizardState {
   categoryAssignments: Record<string, string | null>
   restoreDeletedChosen: boolean
   committing: boolean
+  committedFileId: string
+  committedEventIds: string[]
 }
 
 const EMPTY_WIZARD: WizardState = {
@@ -51,6 +54,8 @@ const EMPTY_WIZARD: WizardState = {
   categoryAssignments: {},
   restoreDeletedChosen: false,
   committing: false,
+  committedFileId: '',
+  committedEventIds: [],
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -117,7 +122,7 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
   async function handleCommit() {
     setWizard((w) => ({ ...w, committing: true }))
     try {
-      const runId = await doCommitImport({
+      const result = await doCommitImport({
         data: {
           accountId: wizard.accountId,
           filename: wizard.filename,
@@ -127,7 +132,13 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
           restoreDeletedChosen: wizard.restoreDeletedChosen,
         },
       })
-      onSuccess(runId)
+      setWizard((w) => ({
+        ...w,
+        committing: false,
+        step: 5,
+        committedFileId: result.fileId,
+        committedEventIds: result.eventIds,
+      }))
     } catch (err) {
       setWizard((w) => ({ ...w, committing: false }))
       alert(`Import failed: ${String(err)}`)
@@ -139,7 +150,7 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
       {/* Wizard header */}
       <div className="px-5 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          {([1, 2, 3, 4] as const).map((s) => (
+          {([1, 2, 3, 4, 5] as const).map((s) => (
             <span
               key={s}
               className={[
@@ -152,7 +163,7 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
               ].join(' ')}
             >
               {s}.{' '}
-              {['Select file', 'Instruments', 'Review', 'Commit'][s - 1]}
+              {['Select file', 'Instruments', 'Review', 'Commit', 'Suggested links'][s - 1]}
             </span>
           ))}
         </div>
@@ -207,6 +218,14 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
             accountName={accountName}
             onBack={() => setWizard((w) => ({ ...w, step: 3 }))}
             onCommit={handleCommit}
+          />
+        )}
+
+        {/* Step 5 */}
+        {wizard.step === 5 && (
+          <PostImportSuggestions
+            eventIds={wizard.committedEventIds}
+            onDone={() => onSuccess(wizard.committedFileId)}
           />
         )}
       </div>

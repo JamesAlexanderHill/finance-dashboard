@@ -8,7 +8,7 @@ import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
 import { events, legs, lineItems, categories } from '~/db/schema'
 import type { EventRelationType } from '~/db/schema'
-import { checkpointService, rateService, getSession, relationService } from '~/db/services'
+import { checkpointService, rateService, getSession, relationService, subEventService } from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import cn from '~/lib/class-merge'
 import Badge from '~/components/ui/badge'
@@ -51,8 +51,17 @@ const getEventDrawerData = createServerFn({ method: 'GET' })
       .where(eq(categories.workspaceId, session.workspace.id))
 
     const relations = await relationService.listForEvent(session.ctx, data.id)
+    const subEventChildren = await subEventService.listChildren(session.ctx, data.id)
+    const subEventParent = await subEventService.getParent(session.ctx, data.id)
 
-    return { event, userCategories, workspaceId: session.workspace.id, relations }
+    return {
+      event,
+      userCategories,
+      workspaceId: session.workspace.id,
+      relations,
+      subEventChildren,
+      subEventParent,
+    }
   })
 
 const softDeleteEvent = createServerFn({ method: 'POST' })
@@ -164,6 +173,41 @@ const suggestEventsForRelation = createServerFn({ method: 'GET' })
     return relationService.suggest(session.ctx, data)
   })
 
+const linkSubEvents = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { parentEventId: string; childEventIds: string[] })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    await subEventService.link(session.ctx, data)
+  })
+
+const unlinkSubEvent = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { childEventId: string })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    await subEventService.unlink(session.ctx, data)
+  })
+
+const searchEventsForSubEvent = createServerFn({ method: 'GET' })
+  .inputValidator((data: unknown) => data as { query: string; excludeEventIds: string[] })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    return subEventService.searchCandidates(session.ctx, {
+      query: data.query,
+      excludeEventIds: data.excludeEventIds,
+    })
+  })
+
+const suggestSubEventGroupings = createServerFn({ method: 'GET' })
+  .inputValidator((data: unknown) => data as { parentEventId: string })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    return subEventService.suggestGroupings(session.ctx, data)
+  })
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface EventDrawerProps {
@@ -225,6 +269,19 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
     await refreshAfterRelationChange()
   }
 
+  // Sub-event links change how the parent's aggregate breakdown displays and
+  // (indirectly, via transfer exclusion) analytics, so refresh the same way.
+  async function handleLinkSubEvents(childEventIds: string[]) {
+    if (!data?.event) return
+    await linkSubEvents({ data: { parentEventId: data.event.id, childEventIds } })
+    await refreshAfterRelationChange()
+  }
+
+  async function handleUnlinkSubEvent(childEventId: string) {
+    await unlinkSubEvent({ data: { childEventId } })
+    await refreshAfterRelationChange()
+  }
+
   const relationRows = data?.event ? buildRelationRows(data.event, data.relations) : []
   const excludeIds = data?.event ? [data.event.id, ...relationRows.map((r) => r.other.id)] : []
 
@@ -253,7 +310,11 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
               >
                 {data.event.description}
               </SheetTitle>
-              <EventLegBar legs={data.event.legs} categories={data.userCategories} />
+              <EventLegBar
+                legs={data.event.legs}
+                categories={data.userCategories}
+                childEvents={data.subEventChildren}
+              />
               <SheetDescription>
                 {formatDate(data.event.effectiveAt)}
               </SheetDescription>
@@ -403,6 +464,61 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
                     anchor={data.event}
                     excludeIds={excludeIds}
                     onLink={handleLinkCandidate}
+                  />
+                )}
+              </Section>
+
+              {/* Sub-events */}
+              <Section title={`Sub-events (${data.subEventChildren.length})`}>
+                {data.subEventParent && (
+                  <button
+                    onClick={() => onOpenRelated(data.subEventParent!.parentEventId)}
+                    className="mb-2 w-full text-left text-xs text-gray-500 dark:text-gray-400 hover:underline"
+                  >
+                    Part of: {data.subEventParent.parentEvent.description}
+                  </button>
+                )}
+                <div className="space-y-2">
+                  {data.subEventChildren.length === 0 && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                      No sub-events linked yet.
+                    </p>
+                  )}
+                  {data.subEventChildren.map((child: any) => (
+                    <div
+                      key={child.id}
+                      className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2"
+                    >
+                      <button
+                        onClick={() => onOpenRelated(child.id)}
+                        className="flex-1 min-w-0 text-left outline-none"
+                      >
+                        <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
+                          {child.description}
+                        </span>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+                          <span className="truncate">{child.account.name}</span>
+                          <span>·</span>
+                          <span className="whitespace-nowrap">{formatDate(child.effectiveAt)}</span>
+                          <span>·</span>
+                          <span className="tabular-nums whitespace-nowrap">{formatEventNet(child)}</span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => handleUnlinkSubEvent(child.id)}
+                        aria-label="Remove sub-event"
+                        className="shrink-0 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {data.event && !data.subEventParent && (
+                  <SubEventPicker
+                    anchor={data.event}
+                    excludeIds={[data.event.id, ...data.subEventChildren.map((c: any) => c.id)]}
+                    onLink={handleLinkSubEvents}
                   />
                 )}
               </Section>
@@ -780,6 +896,160 @@ function RelationPicker({
                 </li>
               ))}
             </ul>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  )
+}
+
+// ─── SubEventPicker ───────────────────────────────────────────────────────────
+
+// Multi-select: unlike RelationPicker's click-to-link-one, suggested and
+// searched candidates are checked/unchecked and linked together in one call —
+// the common case is approving a whole prior-statement purchase group at once.
+function SubEventPicker({
+  anchor,
+  excludeIds,
+  onLink,
+}: {
+  anchor: any
+  excludeIds: string[]
+  onLink: (childEventIds: string[]) => Promise<void>
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState('')
+  const [selected, setSelected] = React.useState<Set<string>>(new Set())
+  const [linking, setLinking] = React.useState(false)
+
+  const showingSuggestions = query.trim().length === 0
+  const isOutflow = netUnitCount(anchor.legs) < BigInt(0)
+
+  const { data: suggestion, isFetching: suggestFetching } = useQuery({
+    queryKey: ['sub-event-suggest', anchor.id],
+    queryFn: () => suggestSubEventGroupings({ data: { parentEventId: anchor.id } }),
+    enabled: open && showingSuggestions && isOutflow,
+  })
+
+  const { data: results, isFetching: searchFetching } = useQuery({
+    queryKey: ['sub-event-search', anchor.id, query, excludeIds],
+    queryFn: () => searchEventsForSubEvent({ data: { query, excludeEventIds: excludeIds } }),
+    enabled: open && !showingSuggestions,
+  })
+
+  const list = showingSuggestions ? suggestion?.candidates : results
+  const fetching = showingSuggestions ? suggestFetching : searchFetching
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // Suggestions arrive pre-checked so approving the whole group is one click.
+  React.useEffect(() => {
+    if (showingSuggestions && suggestion?.candidates) {
+      setSelected(new Set(suggestion.candidates.map((c: any) => c.id)))
+    }
+  }, [showingSuggestions, suggestion])
+
+  async function handleLink() {
+    if (selected.size === 0) return
+    setLinking(true)
+    try {
+      await onLink([...selected])
+      setOpen(false)
+      setQuery('')
+      setSelected(new Set())
+    } finally {
+      setLinking(false)
+    }
+  }
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger className="mt-3 inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline outline-none">
+        <Plus className="size-3" />
+        Link sub-events
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner sideOffset={6} align="start" className="z-50">
+          <Popover.Popup className="w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg overflow-hidden">
+            {/* Search */}
+            <div className="p-2">
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search description or amount…"
+                className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+
+            {showingSuggestions && suggestion && suggestion.candidates.length > 0 && (
+              <div className="px-3 pt-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                <span>Suggested (prior statement period)</span>
+                <span className="normal-case tabular-nums">
+                  sum {formatCurrency(suggestion.candidateSum)}
+                </span>
+              </div>
+            )}
+
+            <ul className="max-h-64 overflow-y-auto pb-1">
+              {showingSuggestions && !isOutflow && (
+                <li className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
+                  Sub-event suggestions only apply to outflows — type to search instead.
+                </li>
+              )}
+              {fetching && (
+                <li className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
+                  {showingSuggestions ? 'Finding suggestions…' : 'Searching…'}
+                </li>
+              )}
+              {!fetching && (list?.length ?? 0) === 0 && isOutflow && (
+                <li className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
+                  {showingSuggestions ? 'No suggestions — type to search' : 'No matching transactions'}
+                </li>
+              )}
+              {list?.map((ev: any) => (
+                <li key={ev.id}>
+                  <label className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(ev.id)}
+                      onChange={() => toggle(ev.id)}
+                      className="rounded shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
+                          {ev.description}
+                        </span>
+                        <span className="text-xs tabular-nums shrink-0 text-gray-500 dark:text-gray-400">
+                          {formatEventNet(ev)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500">
+                        {ev.account?.name ?? ''} · {formatDate(ev.effectiveAt)}
+                      </div>
+                    </div>
+                  </label>
+                </li>
+              ))}
+            </ul>
+
+            <div className="p-2 border-t border-gray-100 dark:border-gray-800">
+              <button
+                onClick={handleLink}
+                disabled={linking || selected.size === 0}
+                className="w-full text-xs px-2 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded"
+              >
+                {linking ? 'Linking…' : `Link ${selected.size} selected`}
+              </button>
+            </div>
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>
