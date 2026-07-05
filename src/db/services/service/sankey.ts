@@ -45,8 +45,11 @@ async function getData(
   ctx: RequestContext,
   dateRange?: { start: string | null; end: string },
 ): Promise<SankeyData> {
-  const { categories, legs, relations, childLegs } = await querySankeyLegs(ctx.workspaceId, dateRange)
-  const nettedLegs = applyRelationsToLegs(legs, relations, childLegs)
+  const { categories, legs, relations, childLegs, repaymentEventIds } = await querySankeyLegs(
+    ctx.workspaceId,
+    dateRange,
+  )
+  const nettedLegs = applyRelationsToLegs(legs, relations, childLegs, repaymentEventIds)
 
   if (!categories.length || !nettedLegs.length) {
     return { nodes: [], links: [], totalIncome: 0, totalExpense: 0 }

@@ -60,6 +60,13 @@ The schema (`src/db/schema.ts`) is built around `users`, `accounts`, `instrument
   refund, making the spending analytics relation-aware — transfers are excluded
   and reimbursements/refunds offset the linked expense (see
   [docs/6-relations.md](docs/6-relations.md)).
+- `statements` and `repaymentStatements` model credit-account billing cycles
+  (e.g. Amex) separately from receipt-style decomposition: a `statement` groups
+  the purchase `legs` tagged with its `statementId`, and `repaymentStatements`
+  links a repayment event to the statement(s) it settles with an `amountApplied`
+  — so a repayment never double-counts purchases that already exist
+  independently on the credit account (see
+  [docs/2-transactions.md](docs/2-transactions.md#statements--repayments)).
 
 ### Service layer
 

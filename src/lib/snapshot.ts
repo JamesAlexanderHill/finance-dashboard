@@ -11,6 +11,8 @@ import {
   instruments,
   legs,
   lineItems,
+  repaymentStatements,
+  statements,
   timelineAnnotations,
   workspaces,
 } from '~/db/schema'
@@ -25,6 +27,8 @@ import type {
   InstrumentRate,
   Leg,
   LineItem,
+  RepaymentStatement,
+  Statement,
   TimelineAnnotation,
 } from '~/db/schema'
 import { clearWorkspaceData } from '~/lib/seed'
@@ -59,6 +63,8 @@ export interface WorkspaceSnapshot {
   events: Jsonify<Event>[]
   legs: Jsonify<Leg>[]
   lineItems: Jsonify<LineItem>[]
+  statements: Jsonify<Statement>[]
+  repaymentStatements: Jsonify<RepaymentStatement>[]
   instrumentCheckpoints: Jsonify<InstrumentCheckpoint>[]
   instrumentRates: Jsonify<InstrumentRate>[]
   timelineAnnotations: Jsonify<TimelineAnnotation>[]
@@ -96,6 +102,8 @@ export async function exportWorkspaceSnapshot(workspaceId: string): Promise<Work
     eventRows,
     legRows,
     lineItemRows,
+    statementRows,
+    repaymentStatementRows,
     checkpointRows,
     rateRows,
     annotationRows,
@@ -108,6 +116,8 @@ export async function exportWorkspaceSnapshot(workspaceId: string): Promise<Work
     db.select().from(events).where(eq(events.workspaceId, workspaceId)),
     db.select().from(legs).where(eq(legs.workspaceId, workspaceId)),
     db.select().from(lineItems).where(eq(lineItems.workspaceId, workspaceId)),
+    db.select().from(statements).where(eq(statements.workspaceId, workspaceId)),
+    db.select().from(repaymentStatements).where(eq(repaymentStatements.workspaceId, workspaceId)),
     db.select().from(instrumentCheckpoints).where(eq(instrumentCheckpoints.workspaceId, workspaceId)),
     db.select().from(instrumentRates).where(eq(instrumentRates.workspaceId, workspaceId)),
     db.select().from(timelineAnnotations).where(eq(timelineAnnotations.workspaceId, workspaceId)),
@@ -131,6 +141,8 @@ export async function exportWorkspaceSnapshot(workspaceId: string): Promise<Work
     events: eventRows.map(serializeRow),
     legs: legRows.map(serializeRow),
     lineItems: lineItemRows.map(serializeRow),
+    statements: statementRows.map(serializeRow),
+    repaymentStatements: repaymentStatementRows.map(serializeRow),
     instrumentCheckpoints: checkpointRows.map(serializeRow),
     instrumentRates: rateRows.map(serializeRow),
     timelineAnnotations: annotationRows.map(serializeRow),
@@ -148,6 +160,8 @@ const SNAPSHOT_ARRAYS = [
   'events',
   'legs',
   'lineItems',
+  'statements',
+  'repaymentStatements',
   'instrumentCheckpoints',
   'instrumentRates',
   'timelineAnnotations',
@@ -214,6 +228,21 @@ export async function importWorkspaceSnapshot(
       }
     }
 
+    // statements — inserted before legs so legs.statementId can reference them.
+    if (snapshot.statements.length) {
+      await tx.insert(statements).values(
+        snapshot.statements.map((s) => ({
+          id: s.id,
+          workspaceId: ws,
+          accountId: s.accountId,
+          periodStart: new Date(s.periodStart),
+          periodEnd: new Date(s.periodEnd),
+          closingBalance: BigInt(s.closingBalance),
+          createdAt: new Date(s.createdAt),
+        })),
+      )
+    }
+
     // categories — parentId is set after all rows exist (self-referential FK).
     if (snapshot.categories.length) {
       await tx.insert(categories).values(
@@ -272,6 +301,7 @@ export async function importWorkspaceSnapshot(
           unitCount: BigInt(l.unitCount),
           categoryId: l.categoryId,
           description: l.description,
+          statementId: l.statementId,
           createdAt: new Date(l.createdAt),
         })),
       )
@@ -339,6 +369,19 @@ export async function importWorkspaceSnapshot(
           parentEventId: er.parentEventId,
           childEventId: er.childEventId,
           relationType: er.relationType,
+        })),
+      )
+    }
+
+    if (snapshot.repaymentStatements.length) {
+      await tx.insert(repaymentStatements).values(
+        snapshot.repaymentStatements.map((rs) => ({
+          id: rs.id,
+          workspaceId: ws,
+          repaymentEventId: rs.repaymentEventId,
+          statementId: rs.statementId,
+          amountApplied: BigInt(rs.amountApplied),
+          createdAt: new Date(rs.createdAt),
         })),
       )
     }

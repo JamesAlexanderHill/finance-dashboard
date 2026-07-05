@@ -248,6 +248,9 @@ export const legs = pgTable('legs', {
   unitCount: bigint('unit_count', { mode: 'bigint' }).notNull(),
   categoryId: text('category_id').references((): AnyPgColumn => categories.id),
   description: text('description'),
+  // Set on purchase legs of a credit-style account (e.g. Amex) to tag which
+  // billing cycle they belong to. Null for everything else. See `statements`.
+  statementId: text('statement_id').references((): AnyPgColumn => statements.id),
   createdAt: createdAt(),
 })
 
@@ -303,6 +306,52 @@ export const lineItems = pgTable('line_items', {
   categoryId: text('category_id').references((): AnyPgColumn => categories.id),
   description: text('description'),
 })
+
+// ─── Statements ───────────────────────────────────────────────────────────────
+
+// A billing cycle on a credit-style account (e.g. Amex). Purchase legs on that
+// account are tagged with `statementId`; a repayment doesn't decompose into
+// those purchases, it settles them via `repaymentStatements`. See docs/2-transactions.md.
+export const statements = pgTable(
+  'statements',
+  {
+    id: id(),
+    workspaceId: workspaceId().references(() => workspaces.id),
+    accountId: text('account_id')
+      .notNull()
+      .references(() => accounts.id),
+    periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
+    // Exclusive-ish label for the cycle's close; also the natural uniqueness key
+    // per account (an account can't close two statements on the same date).
+    periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+    closingBalance: bigint('closing_balance', { mode: 'bigint' }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [unique().on(t.accountId, t.periodEnd)],
+)
+
+// ─── Repayment Statements ─────────────────────────────────────────────────────
+
+// Joins a repayment event (an inflow that pays down a credit account) to the
+// statement(s) it settles. `amountApplied` supports partial, full, or
+// multi-cycle repayments — the repayment never decomposes into the underlying
+// purchases, it just settles some amount against each linked statement.
+export const repaymentStatements = pgTable(
+  'repayment_statements',
+  {
+    id: id(),
+    workspaceId: workspaceId().references(() => workspaces.id),
+    repaymentEventId: text('repayment_event_id')
+      .notNull()
+      .references(() => events.id),
+    statementId: text('statement_id')
+      .notNull()
+      .references(() => statements.id),
+    amountApplied: bigint('amount_applied', { mode: 'bigint' }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [unique().on(t.repaymentEventId, t.statementId)],
+)
 
 // ─── Timeline Annotations ─────────────────────────────────────────────────────
 
@@ -364,6 +413,7 @@ export const workspaceMembersRelations = relations(workspaceMembers, ({ one }) =
 export const accountsRelations = relations(accounts, ({ one, many }) => ({
   instruments: many(instruments, { relationName: 'accountInstruments' }),
   annotations: many(timelineAnnotations),
+  statements: many(statements),
 
   defaultInstrument: one(instruments, {
     fields: [accounts.defaultInstrumentId],
@@ -415,6 +465,8 @@ export const eventsRelations = relations(events, ({ one, many }) => ({
   parentRelations: many(eventRelations, { relationName: 'parentEvent' }),
   // eventRelations where this event is the child
   childRelations: many(eventRelations, { relationName: 'childEvent' }),
+  // repaymentStatements where this event is the repayment
+  repaymentStatements: many(repaymentStatements),
 }))
 
 export const legsRelations = relations(legs, ({ one, many }) => ({
@@ -422,11 +474,29 @@ export const legsRelations = relations(legs, ({ one, many }) => ({
   instrument: one(instruments, { fields: [legs.instrumentId], references: [instruments.id] }),
   category: one(categories, { fields: [legs.categoryId], references: [categories.id] }),
   lineItems: many(lineItems),
+  statement: one(statements, { fields: [legs.statementId], references: [statements.id] }),
 }))
 
 export const lineItemsRelations = relations(lineItems, ({ one }) => ({
   leg: one(legs, { fields: [lineItems.legId], references: [legs.id] }),
   category: one(categories, { fields: [lineItems.categoryId], references: [categories.id] }),
+}))
+
+export const statementsRelations = relations(statements, ({ one, many }) => ({
+  account: one(accounts, { fields: [statements.accountId], references: [accounts.id] }),
+  legs: many(legs),
+  repaymentStatements: many(repaymentStatements),
+}))
+
+export const repaymentStatementsRelations = relations(repaymentStatements, ({ one }) => ({
+  repaymentEvent: one(events, {
+    fields: [repaymentStatements.repaymentEventId],
+    references: [events.id],
+  }),
+  statement: one(statements, {
+    fields: [repaymentStatements.statementId],
+    references: [statements.id],
+  }),
 }))
 
 export const timelineAnnotationsRelations = relations(timelineAnnotations, ({ one }) => ({
@@ -474,6 +544,8 @@ export type InstrumentCheckpoint = typeof instrumentCheckpoints.$inferSelect
 export type InstrumentRate = typeof instrumentRates.$inferSelect
 export type RateSource = (typeof rateSourceEnum.enumValues)[number]
 export type LineItem = typeof lineItems.$inferSelect
+export type Statement = typeof statements.$inferSelect
+export type RepaymentStatement = typeof repaymentStatements.$inferSelect
 export type EventRelation = typeof eventRelations.$inferSelect
 export type EventRelationType = (typeof eventRelationTypeEnum.enumValues)[number]
 export type TimelineAnnotation = typeof timelineAnnotations.$inferSelect

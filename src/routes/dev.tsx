@@ -284,7 +284,7 @@ function DevPage() {
     },
     {
       label: 'Seed sample events',
-      description: 'Create 4 accounts (CommBank, AMEX, Wise, Vanguard), 7 instruments, 12 categories, and ~30 events spanning Aug 2025–May 2026. Covers all 6 event types, legs with categories & descriptions, lineItems, 3 transfer pairs, and a simulated import file.',
+      description: 'Create 4 accounts (CommBank, AMEX, Wise, Vanguard), 7 instruments, 12 categories, and ~30 events spanning Aug 2025–May 2026. Covers all 6 event types, legs with categories & descriptions, lineItems, 3 transfer pairs, an Amex statement settled by a repayment, and a simulated import file.',
       action: seedEventsAction,
     },
     {
@@ -439,8 +439,8 @@ function DevPage() {
           <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Export / import workspace snapshot</p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
             Download the current workspace's full data graph (accounts, instruments, events, legs, categories,
-            line items, checkpoints, rates, annotations) as a JSON file, or restore it from one. Importing wipes
-            the current workspace before restoring.
+            line items, statements, repayment links, checkpoints, rates, annotations) as a JSON file, or restore
+            it from one. Importing wipes the current workspace before restoring.
           </p>
           <div className="flex flex-wrap gap-2">
             <button

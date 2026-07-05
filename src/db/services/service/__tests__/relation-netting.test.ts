@@ -147,4 +147,27 @@ describe('applyRelationsToLegs', () => {
     // child is not netted against it.
     expect(result).toHaveLength(0)
   })
+
+  test('drops a repayment leg entirely, leaving the Amex purchases it settles intact', () => {
+    const legs: Leg[] = [
+      // Amex purchases — count once, on their own.
+      { eventId: 'netflix', categoryId: 'lifestyle', unitCount: -2299n, effectiveAt: JAN },
+      { eventId: 'danmurphys', categoryId: 'lifestyle', unitCount: -9500n, effectiveAt: JAN },
+      // CommBank → Amex repayment settling the statement above.
+      { eventId: 'repay', categoryId: null, unitCount: 11799n, effectiveAt: FEB },
+    ]
+    const result = applyRelationsToLegs(legs, [], [], ['repay'])
+    expect(result).toHaveLength(2)
+    expect(sumByCategory(result)).toEqual({ lifestyle: -11799n })
+  })
+
+  test('drops a repayment leg even when it was mistakenly categorised', () => {
+    const legs: Leg[] = [
+      { eventId: 'purchase', categoryId: 'lifestyle', unitCount: -5000n, effectiveAt: JAN },
+      { eventId: 'repay', categoryId: 'income', unitCount: 5000n, effectiveAt: FEB },
+    ]
+    const result = applyRelationsToLegs(legs, [], [], ['repay'])
+    expect(result).toHaveLength(1)
+    expect(sumByCategory(result)).toEqual({ lifestyle: -5000n })
+  })
 })

@@ -42,8 +42,25 @@ Each leg records:
 - `unitCount` — Signed amount in minor units (e.g. cents for AUD; whole numbers for shares). Negative = outflow, positive = inflow.
 - `categoryId` — Optional category tag (see [Categories](./categories.md))
 - `description` — Optional per-leg note
+- `statementId` — Optional tag linking a purchase leg to the billing cycle it belongs to (see [Statements & Repayments](#statements--repayments) below)
 
 Legs can also be subdivided into **line items** for itemized splits within a single leg (e.g. a $127.50 supermarket leg split into $48.50 groceries + $52.00 produce + $27.00 dairy).
+
+### Statements & Repayments
+
+A Coles receipt and an Amex bill payment look superficially similar — one transaction, one total — but they represent opposite relationships, and the schema models them with different pieces:
+
+- A **receipt** *decomposes*: the $127.50 Woolworths leg splits into $48.50 groceries + $52.00 produce + $27.00 dairy that sum back to the leg's total. This is what **line items** are for (above) — pure decomposition, FK'd to one leg, no effect on balances.
+- An **Amex bill payment** *groups*: the repayment doesn't decompose into the purchases it covers — those purchases already exist as their own categorised legs on the Amex account. The repayment just **settles** some amount of one or more billing cycles.
+
+Two tables model the "settles" relationship:
+
+- **`statements`** — one row per billing cycle on a credit-style account (`accountId`, `periodStart`, `periodEnd`, `closingBalance`). Amex purchase legs are tagged with `legs.statementId` so they can be grouped by cycle.
+- **`repaymentStatements`** — joins a repayment event to the statement(s) it settles, with an `amountApplied` per link. A single repayment can partially settle a statement, fully settle it, or span multiple cycles; a statement can be settled by more than one repayment over time.
+
+A repayment is still linked to its source account movement the normal way — as a `transfer` [relation](./6-relations.md) between the outflow (e.g. CommBank) and the inflow (the Amex-side repayment leg). `repaymentStatements` adds the extra, Amex-specific detail of *which statement(s)* that inflow pays down; it doesn't replace the transfer relation.
+
+In the event drawer, both line items and linked-statement legs are surfaced through the same generic "expand" toggle on a leg: the leg carries a computed `expandable` flag and a `breakdownKind` (`'items'` or `'statement'`), and the UI renders the matching breakdown without needing to special-case Amex or any other account by name or type.
 
 ### Deduplication
 

@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, lte, notInArray, or, sql } from 'drizzle-orm'
 import { db } from '~/db'
-import { eventRelations, events, legs, type EventRelationType } from '~/db/schema'
+import { eventRelations, events, legs, repaymentStatements, type EventRelationType } from '~/db/schema'
 
 // Decoration shared by both directions of a relation and by the link picker, so
 // the drawer can render the related event's account, amounts, and categories.
@@ -147,7 +147,11 @@ export type AnalyticsChildLeg = {
 export async function queryAnalyticsRelations(
   workspaceId: string,
   dateRange?: { start: string | null; end: string },
-): Promise<{ relations: AnalyticsRelation[]; childLegs: AnalyticsChildLeg[] }> {
+): Promise<{
+  relations: AnalyticsRelation[]
+  childLegs: AnalyticsChildLeg[]
+  repaymentEventIds: string[]
+}> {
   // event_relations has no workspace column — scope through the parent event
   // (both sides of a relation always share a workspace).
   const relations = await db
@@ -203,5 +207,12 @@ export async function queryAnalyticsRelations(
     })
   }
 
-  return { relations, childLegs }
+  // Events that are the "repayment" side of at least one repayment_statements
+  // link — settlement legs, never spend, even if mistakenly categorised.
+  const repaymentEventRows = await db
+    .selectDistinct({ repaymentEventId: repaymentStatements.repaymentEventId })
+    .from(repaymentStatements)
+    .where(eq(repaymentStatements.workspaceId, workspaceId))
+
+  return { relations, childLegs, repaymentEventIds: repaymentEventRows.map((r) => r.repaymentEventId) }
 }

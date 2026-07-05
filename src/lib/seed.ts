@@ -11,6 +11,8 @@ import {
   instruments,
   legs,
   lineItems,
+  repaymentStatements,
+  statements,
   timelineAnnotations,
   users,
   workspaceMembers,
@@ -23,9 +25,13 @@ import { createUserWithPersonalWorkspace } from '~/db/services'
 /** Delete all data in dependency order. Dev-only. */
 export async function clearAllData(): Promise<void> {
   await db.delete(eventRelations)
+  await db.delete(repaymentStatements)
   await db.delete(lineItems)
   await db.delete(instrumentCheckpoints)
   await db.delete(instrumentRates)
+  // Clear legs.statementId before deleting statements (circular FK)
+  await db.update(legs).set({ statementId: null })
+  await db.delete(statements)
   await db.delete(legs)
   await db.delete(events)
   await db.delete(files)
@@ -59,9 +65,13 @@ export async function clearWorkspaceData(workspaceId: string, executor: DbOrTx =
   if (eventIds.length > 0) {
     await executor.delete(eventRelations).where(inArray(eventRelations.parentEventId, eventIds))
   }
+  await executor.delete(repaymentStatements).where(eq(repaymentStatements.workspaceId, workspaceId))
   await executor.delete(lineItems).where(eq(lineItems.workspaceId, workspaceId))
   await executor.delete(instrumentCheckpoints).where(eq(instrumentCheckpoints.workspaceId, workspaceId))
   await executor.delete(instrumentRates).where(eq(instrumentRates.workspaceId, workspaceId))
+  // Clear legs.statementId before deleting statements (circular FK).
+  await executor.update(legs).set({ statementId: null }).where(eq(legs.workspaceId, workspaceId))
+  await executor.delete(statements).where(eq(statements.workspaceId, workspaceId))
   await executor.delete(legs).where(eq(legs.workspaceId, workspaceId))
   await executor.delete(events).where(eq(events.workspaceId, workspaceId))
   await executor.delete(files).where(eq(files.workspaceId, workspaceId))
@@ -269,11 +279,11 @@ export async function seedSampleEvents(workspaceId: string): Promise<void> {
     description: 'NETFLIX.COM',
     dedupeKey: 'seed:bill_payment:netflix:2025-09',
   }).returning()
-  await db.insert(legs).values({
+  const [sep25NetflixLeg] = await db.insert(legs).values({
     workspaceId, eventId: sep25Netflix.id,
     instrumentId: amexAud.id, unitCount: BigInt(-2299), categoryId: lifestyle.id,
     description: 'Monthly streaming subscription',
-  })
+  }).returning()
 
   // transfer: CommBank → Wise $1,500 (eventRelation pair)
   const [sep25TransOut] = await db.insert(events).values({
@@ -340,9 +350,56 @@ export async function seedSampleEvents(workspaceId: string): Promise<void> {
     description: 'DAN MURPHYS PARRAMATTA',
     dedupeKey: 'seed:purchase:danmurphys:2025-10',
   }).returning()
-  await db.insert(legs).values({
+  const [oct25DanMurphysLeg] = await db.insert(legs).values({
     workspaceId, eventId: oct25DanMurphys.id,
     instrumentId: amexAud.id, unitCount: BigInt(-9500), categoryId: lifestyle.id,
+  }).returning()
+
+  // statement: Amex Sep–Oct 2025 cycle, closing $117.99 owed (Netflix + Dan Murphy's)
+  const [amexOctStatement] = await db.insert(statements).values({
+    workspaceId, accountId: amex.id,
+    periodStart: new Date('2025-09-01T00:00:00Z'),
+    periodEnd: new Date('2025-10-25T00:00:00Z'),
+    closingBalance: BigInt(-11799),
+  }).returning()
+  await db.update(legs)
+    .set({ statementId: amexOctStatement.id })
+    .where(inArray(legs.id, [sep25NetflixLeg.id, oct25DanMurphysLeg.id]))
+
+  // transfer: CommBank → Amex repayment settling the Sep–Oct statement in full.
+  // This is a grouping, not a decomposition — the repayment never re-lists
+  // "Netflix" / "Dan Murphy's" as its own line items, it just settles the
+  // statement via `repaymentStatements`. See docs/2-transactions.md.
+  const [oct25RepayOut] = await db.insert(events).values({
+    workspaceId, accountId: commbank.id,
+    effectiveAt: new Date('2025-10-28T00:00:00Z'),
+    postedAt: new Date('2025-10-28T00:00:00Z'),
+    description: 'AMEX AUTOPAY',
+    dedupeKey: 'seed:transfer:commbank-amex-out:2025-10',
+  }).returning()
+  await db.insert(legs).values({
+    workspaceId, eventId: oct25RepayOut.id,
+    instrumentId: commbankAud.id, unitCount: BigInt(-11799),
+  })
+  const [oct25RepayIn] = await db.insert(events).values({
+    workspaceId, accountId: amex.id,
+    effectiveAt: new Date('2025-10-28T00:00:00Z'),
+    postedAt: new Date('2025-10-28T00:00:00Z'),
+    description: 'AUTOPAY PAYMENT RECEIVED - THANK YOU',
+    dedupeKey: 'seed:transfer:commbank-amex-in:2025-10',
+  }).returning()
+  await db.insert(legs).values({
+    workspaceId, eventId: oct25RepayIn.id,
+    instrumentId: amexAud.id, unitCount: BigInt(11799),
+  })
+  await db.insert(eventRelations).values({
+    parentEventId: oct25RepayOut.id, childEventId: oct25RepayIn.id, relationType: 'transfer',
+  })
+  await db.insert(repaymentStatements).values({
+    workspaceId,
+    repaymentEventId: oct25RepayIn.id,
+    statementId: amexOctStatement.id,
+    amountApplied: BigInt(11799),
   })
 
   // ══════════════════════════════════════════════════════════════════════════

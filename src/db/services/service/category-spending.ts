@@ -54,11 +54,11 @@ async function getByPeriod(
   dateRange: { start: string | null; end: string },
   period: BalanceHistoryPeriod,
 ): Promise<CategoryBarData> {
-  const { categories, legs, relations, childLegs } = await queryCategoryLegsByDate(
+  const { categories, legs, relations, childLegs, repaymentEventIds } = await queryCategoryLegsByDate(
     ctx.workspaceId,
     dateRange,
   )
-  const nettedLegs = applyRelationsToLegs(legs, relations, childLegs)
+  const nettedLegs = applyRelationsToLegs(legs, relations, childLegs, repaymentEventIds)
 
   if (!categories.length || !nettedLegs.length) return { categories: [], data: [] }
 

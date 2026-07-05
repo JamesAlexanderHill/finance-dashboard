@@ -41,27 +41,35 @@ export type NettingRelation = {
  * @param childLegs Legs of reimbursement/refund *child* events, included even
  *                  when uncategorised since they are netted, not aggregated
  *                  directly. May overlap with `legs`; duplicates are handled.
+ * @param repaymentEventIds Events that are the "repayment" side of a
+ *                  `repayment_statements` link (e.g. paying down an Amex
+ *                  statement). These legs settle purchases that already count
+ *                  independently on the credit account, so — like transfers —
+ *                  they are dropped entirely rather than aggregated, even if a
+ *                  leg was mistakenly given a category.
  */
 export function applyRelationsToLegs<T extends NettingLeg>(
   legs: T[],
   relations: NettingRelation[],
   childLegs: T[],
+  repaymentEventIds: Iterable<string> = [],
 ): T[] {
-  // Events whose legs are fully excluded from spend/income.
-  const transferEventIds = new Set<string>()
+  // Events whose legs are fully excluded from spend/income: transfer
+  // participants and repayment (statement-settling) events.
+  const excludedEventIds = new Set<string>(repaymentEventIds)
   for (const r of relations) {
     if (r.relationType === 'transfer') {
-      transferEventIds.add(r.parentEventId)
-      transferEventIds.add(r.childEventId)
+      excludedEventIds.add(r.parentEventId)
+      excludedEventIds.add(r.childEventId)
     }
   }
 
   // child event id -> parent event id, for reimbursements/refunds. A transfer
-  // link on either side wins, so such relations are skipped here.
+  // or repayment link on either side wins, so such relations are skipped here.
   const offsetParentByChild = new Map<string, string>()
   for (const r of relations) {
     if (r.relationType !== 'reimbursement' && r.relationType !== 'refund') continue
-    if (transferEventIds.has(r.parentEventId) || transferEventIds.has(r.childEventId)) continue
+    if (excludedEventIds.has(r.parentEventId) || excludedEventIds.has(r.childEventId)) continue
     offsetParentByChild.set(r.childEventId, r.parentEventId)
   }
 
@@ -76,11 +84,11 @@ export function applyRelationsToLegs<T extends NettingLeg>(
 
   const result: T[] = []
 
-  // Keep every leg except transfers and reimbursement/refund child legs (the
-  // latter are re-attributed below, so we drop them here to avoid double counting
-  // when the child happened to be categorised).
+  // Keep every leg except transfers/repayments and reimbursement/refund child
+  // legs (the latter are re-attributed below, so we drop them here to avoid
+  // double counting when the child happened to be categorised).
   for (const leg of legs) {
-    if (transferEventIds.has(leg.eventId)) continue
+    if (excludedEventIds.has(leg.eventId)) continue
     if (offsetParentByChild.has(leg.eventId)) continue
     result.push(leg)
   }
@@ -88,7 +96,7 @@ export function applyRelationsToLegs<T extends NettingLeg>(
   // Re-attribute reimbursement/refund child inflows onto the parent's category
   // and period, keeping the child's (positive) amount.
   for (const leg of childLegs) {
-    if (transferEventIds.has(leg.eventId)) continue
+    if (excludedEventIds.has(leg.eventId)) continue
     const parentId = offsetParentByChild.get(leg.eventId)
     if (!parentId) continue
     const rep = parentRepLeg.get(parentId)

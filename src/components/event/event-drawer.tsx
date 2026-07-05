@@ -8,7 +8,14 @@ import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
 import { events, legs, lineItems, categories } from '~/db/schema'
 import type { EventRelationType } from '~/db/schema'
-import { checkpointService, rateService, getSession, relationService } from '~/db/services'
+import {
+  checkpointService,
+  rateService,
+  getSession,
+  relationService,
+  statementService,
+  repaymentStatementService,
+} from '~/db/services'
 import { formatCurrency } from '~/lib/format-currency'
 import cn from '~/lib/class-merge'
 import Badge from '~/components/ui/badge'
@@ -38,6 +45,7 @@ const getEventDrawerData = createServerFn({ method: 'GET' })
             instrument: true,
             category: true,
             lineItems: { with: { category: true } },
+            statement: { with: { account: true } },
           },
         },
       },
@@ -52,7 +60,58 @@ const getEventDrawerData = createServerFn({ method: 'GET' })
 
     const relations = await relationService.listForEvent(session.ctx, data.id)
 
-    return { event, userCategories, workspaceId: session.workspace.id, relations }
+    // A repayment doesn't decompose into the purchases it settles — it's a
+    // grouping, not a decomposition — so its "expand" breakdown is the linked
+    // statement's legs, fetched separately from lineItems.
+    const repaymentStatements = await repaymentStatementService.listForEvent(session.ctx, data.id)
+    const linkedStatements = await Promise.all(
+      repaymentStatements.map((link) => statementService.get(session.ctx, link.statementId)),
+    )
+
+    // Generic "is this leg expandable, and via which breakdown" so the UI never
+    // has to special-case Amex/receipts by account or event type.
+    const legsWithExpand = event.legs.map((leg) => ({
+      ...leg,
+      expandable: leg.lineItems.length > 0 || repaymentStatements.length > 0,
+      breakdownKind: leg.lineItems.length > 0 ? ('items' as const) : repaymentStatements.length > 0 ? ('statement' as const) : null,
+    }))
+
+    return {
+      event: { ...event, legs: legsWithExpand },
+      userCategories,
+      workspaceId: session.workspace.id,
+      relations,
+      repaymentStatements: repaymentStatements.map((link) => ({
+        ...link,
+        statementDetail: linkedStatements.find((s) => s?.id === link.statementId) ?? null,
+      })),
+    }
+  })
+
+const searchStatementsForLinking = createServerFn({ method: 'GET' })
+  .inputValidator((data: unknown) => data as { accountId?: string })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    return statementService.searchCandidates(session.ctx, { accountId: data.accountId })
+  })
+
+const linkStatement = createServerFn({ method: 'POST' })
+  .inputValidator(
+    (data: unknown) => data as { repaymentEventId: string; statementId: string; amountApplied: string },
+  )
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    await repaymentStatementService.link(session.ctx, data)
+  })
+
+const unlinkStatement = createServerFn({ method: 'POST' })
+  .inputValidator((data: unknown) => data as { repaymentEventId: string; statementId: string })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) throw new Error('No user')
+    await repaymentStatementService.unlink(session.ctx, data)
   })
 
 const softDeleteEvent = createServerFn({ method: 'POST' })
@@ -225,6 +284,18 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
     await refreshAfterRelationChange()
   }
 
+  async function handleLinkStatement(statementId: string, amountApplied: string) {
+    if (!data?.event) return
+    await linkStatement({ data: { repaymentEventId: data.event.id, statementId, amountApplied } })
+    await refreshAfterRelationChange()
+  }
+
+  async function handleUnlinkStatement(statementId: string) {
+    if (!data?.event) return
+    await unlinkStatement({ data: { repaymentEventId: data.event.id, statementId } })
+    await refreshAfterRelationChange()
+  }
+
   const relationRows = data?.event ? buildRelationRows(data.event, data.relations) : []
   const excludeIds = data?.event ? [data.event.id, ...relationRows.map((r) => r.other.id)] : []
 
@@ -305,6 +376,11 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
                           <Badge color='yellow' className="shrink-0">
                             {leg.instrument.ticker}
                           </Badge>
+                          {leg.statement && (
+                            <Badge color="gray" className="shrink-0">
+                              Statement · {formatMonthYear(leg.statement.periodEnd)}
+                            </Badge>
+                          )}
                           <span
                             className={[
                               'text-sm font-medium tabular-nums flex-1',
@@ -326,18 +402,22 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
                             categories={data.userCategories}
                           />
 
-                          {/* Expand line items */}
-                          <button
-                            onClick={() => setExpandedLegId(isExpanded ? null : leg.id)}
-                            className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 whitespace-nowrap"
-                          >
-                            Items ({leg.lineItems.length})
-                            {isExpanded ? ' ▲' : ' ▼'}
-                          </button>
+                          {/* Generic expand: items (decomposition) or linked-statement legs (grouping) */}
+                          {leg.expandable && (
+                            <button
+                              onClick={() => setExpandedLegId(isExpanded ? null : leg.id)}
+                              className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 whitespace-nowrap"
+                            >
+                              {leg.breakdownKind === 'items'
+                                ? `Items (${leg.lineItems.length})`
+                                : `Settled purchases (${data.repaymentStatements.reduce((n: number, r: any) => n + (r.statementDetail?.legs.length ?? 0), 0)})`}
+                              {isExpanded ? ' ▲' : ' ▼'}
+                            </button>
+                          )}
                         </div>
 
-                        {/* Line items */}
-                        {isExpanded && (
+                        {/* Breakdown: line items (decomposition) or statement legs (grouping) */}
+                        {isExpanded && leg.breakdownKind === 'items' && (
                           <LineItemEditor
                             leg={leg}
                             userCategories={data.userCategories}
@@ -346,6 +426,9 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
                               queryClient.invalidateQueries({ queryKey: ['event-drawer', eventId] })
                             }}
                           />
+                        )}
+                        {isExpanded && leg.breakdownKind === 'statement' && (
+                          <StatementLegsBreakdown repaymentStatements={data.repaymentStatements} />
                         )}
                       </div>
                     )
@@ -406,6 +489,50 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
                   />
                 )}
               </Section>
+
+              {/* Statements — this event settling one or more Amex-style billing cycles */}
+              <Section title={`Statements settled (${data.repaymentStatements.length})`}>
+                <div className="space-y-2">
+                  {data.repaymentStatements.length === 0 && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                      Not linked to any statement. If this transaction repays a credit account,
+                      link it to the statement(s) it settles.
+                    </p>
+                  )}
+                  {data.repaymentStatements.map((link: any) => (
+                    <div
+                      key={link.statementId}
+                      className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Badge color="gray" className="shrink-0">
+                            {link.statementDetail?.account.name}
+                          </Badge>
+                          <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
+                            {link.statementDetail
+                              ? `${formatMonthYear(link.statementDetail.periodStart)} – ${formatMonthYear(link.statementDetail.periodEnd)}`
+                              : 'Statement'}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                          Applied {formatCurrency(link.amountApplied, { exponent: 2, ticker: 'AUD' })}
+                          {link.statementDetail &&
+                            ` of ${formatCurrency(0n - link.statementDetail.closingBalance, { exponent: 2, ticker: 'AUD' })} closing balance`}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleUnlinkStatement(link.statementId)}
+                        aria-label="Unlink statement"
+                        className="shrink-0 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <StatementPicker onLink={handleLinkStatement} />
+              </Section>
             </div>
           </>
         )}
@@ -424,6 +551,10 @@ function formatDate(d: Date | string) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function formatMonthYear(d: Date | string) {
+  return new Date(d).toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -568,6 +699,45 @@ function LineItemEditor({
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── StatementLegsBreakdown ─────────────────────────────────────────────────────
+
+// The grouping counterpart to LineItemEditor: read-only, since a repayment
+// doesn't decompose into these purchases — it settles legs that already exist
+// independently on the credit account.
+function StatementLegsBreakdown({ repaymentStatements }: { repaymentStatements: any[] }) {
+  return (
+    <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 space-y-3">
+      {repaymentStatements.map((link) => {
+        const statement = link.statementDetail
+        if (!statement) return null
+        return (
+          <div key={link.statementId}>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+              {statement.account.name} · {formatMonthYear(statement.periodStart)} –{' '}
+              {formatMonthYear(statement.periodEnd)}
+            </p>
+            <div className="space-y-1">
+              {statement.legs.map((leg: any) => (
+                <div key={leg.id} className="flex items-center justify-between text-xs gap-2">
+                  <span className="text-gray-600 dark:text-gray-300 truncate">
+                    {leg.event.description}
+                  </span>
+                  <span className="tabular-nums text-gray-500 dark:text-gray-400 shrink-0">
+                    {formatCurrency(leg.unitCount, { exponent: leg.instrument.exponent, ticker: leg.instrument.ticker })}
+                  </span>
+                </div>
+              ))}
+              {statement.legs.length === 0 && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 italic">No purchases tagged yet.</p>
+              )}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -780,6 +950,116 @@ function RelationPicker({
                 </li>
               ))}
             </ul>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  )
+}
+
+// ─── StatementPicker ──────────────────────────────────────────────────────────
+
+function StatementPicker({
+  onLink,
+}: {
+  onLink: (statementId: string, amountApplied: string) => Promise<void>
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [selected, setSelected] = React.useState<any | null>(null)
+  const [amount, setAmount] = React.useState('')
+  const [linking, setLinking] = React.useState(false)
+
+  const { data: statements, isFetching } = useQuery({
+    queryKey: ['statement-search'],
+    queryFn: () => searchStatementsForLinking({ data: {} }),
+    enabled: open,
+  })
+
+  async function handleLink() {
+    if (!selected || !amount) return
+    setLinking(true)
+    try {
+      await onLink(selected.id, amount)
+      setOpen(false)
+      setSelected(null)
+      setAmount('')
+    } finally {
+      setLinking(false)
+    }
+  }
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger className="mt-3 inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline outline-none">
+        <Plus className="size-3" />
+        Link statement
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner sideOffset={6} align="start" className="z-50">
+          <Popover.Popup className="w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg overflow-hidden">
+            {!selected && (
+              <ul className="max-h-64 overflow-y-auto py-1">
+                {isFetching && (
+                  <li className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">Loading…</li>
+                )}
+                {!isFetching && (statements?.length ?? 0) === 0 && (
+                  <li className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
+                    No statements yet.
+                  </li>
+                )}
+                {statements?.map((s: any) => (
+                  <li key={s.id}>
+                    <button
+                      onClick={() => setSelected(s)}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors outline-none"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-gray-800 dark:text-gray-200 truncate">
+                          {s.account.name}
+                        </span>
+                        <span className="text-xs tabular-nums shrink-0 text-gray-500 dark:text-gray-400">
+                          {formatCurrency(s.closingBalance, { exponent: 2, ticker: 'AUD' })}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500">
+                        {formatMonthYear(s.periodStart)} – {formatMonthYear(s.periodEnd)}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {selected && (
+              <div className="p-3 space-y-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {selected.account.name} · {formatMonthYear(selected.periodStart)} –{' '}
+                  {formatMonthYear(selected.periodEnd)}
+                </p>
+                <input
+                  type="number"
+                  autoFocus
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="Amount applied (minor units)"
+                  className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelected(null)}
+                    className="text-xs text-gray-500 dark:text-gray-400 hover:underline"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={handleLink}
+                    disabled={linking || !amount}
+                    className="ml-auto text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded"
+                  >
+                    {linking ? 'Linking…' : 'Link'}
+                  </button>
+                </div>
+              </div>
+            )}
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

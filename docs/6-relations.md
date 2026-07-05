@@ -21,6 +21,13 @@ workspace through their events.
 analytics; the difference is only who sent the money back (a person vs. the
 merchant).
 
+A credit-account repayment (e.g. paying off an Amex bill from CommBank) is a
+`transfer` like any other internal movement. If you also want to record *which
+billing cycle(s)* that repayment settles — so the drawer can show the
+underlying purchases and partial/multi-cycle payments are tracked precisely —
+link the repayment event to one or more `statements` via `repaymentStatements`.
+See [Statements & Repayments](./2-transactions.md#statements--repayments).
+
 ## Directionality
 
 Every relation has a **parent** and a **child**. The convention is the same for

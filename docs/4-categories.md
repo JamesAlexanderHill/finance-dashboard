@@ -106,3 +106,9 @@ Both visualizations are also aware of [transaction relations](./6-relations.md):
 - **Reimbursement** and **refund** inflows are netted against the category of the expense they offset, in that expense's period — a $300 dinner with a $200 repayment contributes −$100 to its category rather than −$300.
 
 This netting is applied by `applyRelationsToLegs` before aggregation, so it affects every period bucket and Sankey flow.
+
+### The Statement-Settling Rule
+
+An Amex repayment leg is excluded from spend/income the same way a transfer is — never aggregated, regardless of category. This matters because an Amex purchase (e.g. "Dan Murphy's", −$95, tagged "Lifestyle") already counts once as its own categorised leg on the Amex account; if the repayment that later settles it were also aggregated, the same spend would count twice.
+
+`applyRelationsToLegs` takes the set of "repayment" event ids — every event that appears as the repayment side of a `repaymentStatements` link (see [Statements & Repayments](./2-transactions.md#statements--repayments)) — and drops their legs entirely, the same way transfer participants are dropped. This holds even if a repayment leg was mistakenly given a category: the exclusion is unconditional, not just an artifact of repayment legs usually being uncategorised.
