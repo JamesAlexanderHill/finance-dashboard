@@ -1,6 +1,7 @@
 import { eq, and, inArray } from 'drizzle-orm'
 import { db } from '~/db'
 import { files, events, legs } from '~/db/schema'
+import { deleteObject, getSignedDownloadUrl } from '~/lib/storage'
 import type { RequestContext } from '../utils/context'
 import { buildPaginatedResult, type PaginationOptions } from '../utils/pagination'
 import {
@@ -14,6 +15,13 @@ import { rateService } from './rate'
 
 async function getById(ctx: RequestContext, fileId: string) {
   return queryFileById(ctx.workspaceId, fileId)
+}
+
+/** Returns a short-lived download URL for a file's stored original, or null if none. */
+async function getDownloadUrl(ctx: RequestContext, fileId: string): Promise<string | null> {
+  const file = await queryFileById(ctx.workspaceId, fileId)
+  if (!file || !file.storageKey) return null
+  return getSignedDownloadUrl(file.storageKey, file.filename)
 }
 
 async function listByUser(ctx: RequestContext, opts: PaginationOptions = {}) {
@@ -63,10 +71,19 @@ async function remove(ctx: RequestContext, fileId: string) {
     return instrumentIds
   })
 
+  // Remove the stored original (best-effort — the import is already deleted).
+  if (file.storageKey) {
+    try {
+      await deleteObject(file.storageKey)
+    } catch (err) {
+      console.error(`Failed to delete stored file ${file.storageKey}: ${String(err)}`)
+    }
+  }
+
   for (const instrumentId of affectedInstrumentIds) {
     await checkpointService.refresh(ctx, instrumentId)
     await rateService.refresh(ctx, instrumentId)
   }
 }
 
-export const fileService = { getById, listByUser, listByAccount, countsByAccount, delete: remove }
+export const fileService = { getById, getDownloadUrl, listByUser, listByAccount, countsByAccount, delete: remove }

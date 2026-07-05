@@ -1,6 +1,6 @@
 # Dev Tools
 
-The `/dev` page is a development-only control panel for seeding, inspecting, and resetting workspace data. It is hidden outside dev mode and every action is destructive or irreversible, so it never ships to production use. This document covers the page's status panel, its data-management actions, and the workspace snapshot export/import.
+The `/dev` page is a development-only control panel for seeding, inspecting, and resetting workspace data. It is hidden outside dev mode and every action is destructive or irreversible, so it never ships to production use. This document covers the page's status panel, its data-management actions, the canonical-CSV quick import, and the workspace snapshot export/import.
 
 ## Access and Safety
 
@@ -29,6 +29,12 @@ The counts are loaded by the `getDevStatus` server function and refresh after ev
 | **Create additional user** | A small form (name, email, home currency) that creates a new user with their own personal workspace, for testing scenarios beyond the two demo users. |
 
 Seeding and clearing are backed by `seedBase()`, `seedSampleEvents()`, and `clearAllData()`; the recompute actions call `checkpointService.refreshAll()` and `rateService.refreshAll()`.
+
+## Import Canonical CSV
+
+The **"Import canonical CSV"** card loads a CSV that is already in the [canonical event/leg format](./7-imports.md#canonical-format) straight into an account, skipping the multi-step Import Wizard. Pick a target account, paste the CSV (or choose a file), and import.
+
+It reuses the normal commit path: instruments are auto-resolved (existing tickers are reused; unknown tickers are created with `exponent = 2`), the run is recorded as a `files` row with `parserId = 'canonical'`, and deduplication applies as usual — handy for quickly reloading a fixture during development. Backed by the `devImportCanonicalCsv` server function in `src/routes/dev.tsx`.
 
 ## Workspace Snapshots (Export / Import)
 

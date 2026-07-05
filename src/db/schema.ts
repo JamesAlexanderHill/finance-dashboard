@@ -202,6 +202,12 @@ export const files = pgTable('files', {
     .notNull()
     .references(() => accounts.id),
   filename: text('filename').notNull(),
+  // Which parser produced this import's events (e.g. 'canonical', 'amex-pdf').
+  parserId: text('parser_id'),
+  // Reference to the stored raw upload (object-storage key), when one was kept.
+  storageKey: text('storage_key'),
+  contentType: text('content_type'),
+  byteSize: integer('byte_size'),
   createdAt: createdAt(),
   importedCount: integer('imported_count').notNull().default(0),
   skippedCount: integer('skipped_count').notNull().default(0),

@@ -3,6 +3,7 @@ import { db } from '~/db'
 import { events, files, instruments, legs } from '~/db/schema'
 import type { Category } from '~/db/schema'
 import { computeDedupeKey } from '~/lib/dedupe'
+import { putObject } from '~/lib/storage'
 import type { ParsedEvent } from '~/importers/canonical'
 import type { RequestContext } from '../utils/context'
 import { queryAccountById } from '../query/account'
@@ -19,19 +20,31 @@ export interface InstrumentDraft {
   existingId?: string
 }
 
+/** Raw uploaded file bytes (base64) to store alongside the import run. */
+export interface RawContent {
+  base64: string
+  contentType: string
+}
+
 export interface CommitImportParams {
   accountId: string
+  /** Which parser produced these events (e.g. 'canonical', 'amex-pdf'). */
+  parserId?: string
   filename: string
   events: ParsedEvent[]
   instrumentDrafts: InstrumentDraft[]
   /** eventGroup_legIndex → category path (e.g. "food:coffee") */
   categoryAssignments: Record<string, string | null>
   restoreDeletedChosen: boolean
+  /** Raw upload to store and link to this import (PDF parsers only). */
+  rawContent?: RawContent | null
 }
 
 export interface BulkImportFile {
   filename: string
   events: ParsedEvent[]
+  parserId?: string
+  rawContent?: RawContent | null
 }
 
 export interface CommitBulkImportParams {
@@ -128,6 +141,8 @@ async function commitEventsForFile(
   ctx: RequestContext,
   accountId: string,
   filename: string,
+  parserId: string | null,
+  rawContent: RawContent | null,
   parsedEvents: ParsedEvent[],
   instrumentMap: Map<string, string>,
   categoryAssignments: Record<string, string | null>,
@@ -142,6 +157,7 @@ async function commitEventsForFile(
       workspaceId,
       accountId,
       filename,
+      parserId,
       importedCount: 0,
       skippedCount: 0,
       restoredCount: 0,
@@ -151,6 +167,22 @@ async function commitEventsForFile(
     })
     .returning({ id: files.id })
   const fileId = file.id
+
+  // Store the raw upload (best-effort — non-fatal so events still import).
+  if (rawContent) {
+    try {
+      const bytes = new Uint8Array(Buffer.from(rawContent.base64, 'base64'))
+      const ext = rawContent.contentType === 'application/pdf' ? 'pdf' : 'bin'
+      const storageKey = `workspaces/${workspaceId}/files/${fileId}.${ext}`
+      await putObject(storageKey, bytes, rawContent.contentType)
+      await db
+        .update(files)
+        .set({ storageKey, contentType: rawContent.contentType, byteSize: bytes.byteLength })
+        .where(eq(files.id, fileId))
+    } catch (err) {
+      console.error(`Failed to store raw file for import ${fileId}: ${String(err)}`)
+    }
+  }
 
   let importedCount = 0
   let skippedCount = 0
@@ -253,6 +285,8 @@ async function commitImport(ctx: RequestContext, params: CommitImportParams): Pr
     ctx,
     accountId,
     filename,
+    params.parserId ?? null,
+    params.rawContent ?? null,
     sortEventsForImport(params.events),
     instrumentMap,
     params.categoryAssignments,
@@ -285,6 +319,8 @@ async function commitBulkImport(ctx: RequestContext, params: CommitBulkImportPar
       ctx,
       accountId,
       file.filename,
+      file.parserId ?? null,
+      file.rawContent ?? null,
       sortEventsForImport(file.events),
       instrumentMap,
       {},

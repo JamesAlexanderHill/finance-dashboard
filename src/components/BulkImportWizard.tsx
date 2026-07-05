@@ -2,9 +2,11 @@ import * as React from 'react'
 import { createServerFn } from '@tanstack/react-start'
 import { parseCanonicalCsv } from '~/importers/canonical'
 import type { ParseError, ParsedEvent } from '~/importers/canonical'
+import { PARSER_OPTIONS, DEFAULT_PARSER_ID } from '~/importers/parser-options'
+import type { ParserId } from '~/importers/parser-options'
 import { importService, getSession } from '~/db/services'
 import type { CommitBulkImportParams, FileImportResult, InstrumentDraft } from '~/db/services'
-import { getAccountInstruments, InstrumentReview } from '~/components/ImportWizard'
+import { getAccountInstruments, InstrumentReview, doParseFile, fileToBase64 } from '~/components/ImportWizard'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -24,10 +26,13 @@ interface ParsedFile {
   filename: string
   events: ParsedEvent[]
   errors: ParseError[]
+  /** Raw uploaded file kept for storage at commit (PDF parsers only). */
+  rawFile: File | null
 }
 
 interface WizardState {
   step: WizardStep
+  parserId: ParserId
   parsedFiles: ParsedFile[]
   instrumentDrafts: InstrumentDraft[]
   restoreDeletedChosen: boolean
@@ -37,6 +42,7 @@ interface WizardState {
 
 const EMPTY_WIZARD: WizardState = {
   step: 1,
+  parserId: DEFAULT_PARSER_ID,
   parsedFiles: [],
   instrumentDrafts: [],
   restoreDeletedChosen: false,
@@ -63,11 +69,28 @@ export function BulkImportWizard({ accountId, accountName, onClose, onSuccess }:
     const fileList = e.target.files
     if (!fileList || fileList.length === 0) return
 
+    const option = PARSER_OPTIONS.find((o) => o.id === wizard.parserId)
     const parsedFiles: ParsedFile[] = []
     for (const file of Array.from(fileList)) {
-      const text = await file.text()
-      const result = parseCanonicalCsv(text)
-      parsedFiles.push({ filename: file.name, events: result.events, errors: result.errors })
+      if (option?.kind === 'pdf') {
+        const parsed = await doParseFile({
+          data: { parserId: wizard.parserId, filename: file.name, contentBase64: await fileToBase64(file) },
+        })
+        if (parsed.error || parsed.canonicalCsv == null) {
+          parsedFiles.push({
+            filename: file.name,
+            events: [],
+            errors: [{ line: 0, message: parsed.error ?? 'Failed to parse file' }],
+            rawFile: null,
+          })
+          continue
+        }
+        const result = parseCanonicalCsv(parsed.canonicalCsv)
+        parsedFiles.push({ filename: file.name, events: result.events, errors: result.errors, rawFile: file })
+      } else {
+        const result = parseCanonicalCsv(await file.text())
+        parsedFiles.push({ filename: file.name, events: result.events, errors: result.errors, rawFile: null })
+      }
     }
     parsedFiles.sort((a, b) => a.filename.localeCompare(b.filename))
 
@@ -96,14 +119,24 @@ export function BulkImportWizard({ accountId, accountName, onClose, onSuccess }:
   async function handleCommit() {
     setWizard((w) => ({ ...w, committing: true }))
     try {
+      const files = await Promise.all(
+        wizard.parsedFiles
+          .filter((f) => f.events.length > 0)
+          .map(async (f) => ({
+            filename: f.filename,
+            events: f.events,
+            parserId: wizard.parserId,
+            rawContent: f.rawFile
+              ? { base64: await fileToBase64(f.rawFile), contentType: f.rawFile.type || 'application/pdf' }
+              : null,
+          })),
+      )
       const results = await doCommitBulkImport({
         data: {
           accountId,
           instrumentDrafts: wizard.instrumentDrafts,
           restoreDeletedChosen: wizard.restoreDeletedChosen,
-          files: wizard.parsedFiles
-            .filter((f) => f.events.length > 0)
-            .map((f) => ({ filename: f.filename, events: f.events })),
+          files,
         },
       })
       setWizard((w) => ({ ...w, committing: false, results }))
@@ -117,6 +150,7 @@ export function BulkImportWizard({ accountId, accountName, onClose, onSuccess }:
   const filesWithEvents = wizard.parsedFiles.filter((f) => f.events.length > 0)
   const filesWithErrors = wizard.parsedFiles.filter((f) => f.errors.length > 0)
   const totalEvents = filesWithEvents.reduce((sum, f) => sum + f.events.length, 0)
+  const selectedOption = PARSER_OPTIONS.find((o) => o.id === wizard.parserId) ?? PARSER_OPTIONS[0]
 
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
@@ -149,16 +183,34 @@ export function BulkImportWizard({ accountId, accountName, onClose, onSuccess }:
         {wizard.step === 1 && (
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-              Step 1 — Select CSV files for {accountName}
+              Step 1 — Select files for {accountName}
             </h3>
 
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                CSV Files
+                Parser
+              </label>
+              <select
+                value={wizard.parserId}
+                onChange={(e) => setWizard((w) => ({ ...w, parserId: e.target.value as ParserId }))}
+                className="text-sm border border-gray-200 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {PARSER_OPTIONS.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{selectedOption.description}</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                Files
               </label>
               <input
                 type="file"
-                accept=".csv,text/csv"
+                accept={selectedOption.accept}
                 multiple
                 onChange={handleFilesSelect}
                 className="text-sm text-gray-700 dark:text-gray-300 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 dark:file:bg-blue-950 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100"
@@ -166,8 +218,8 @@ export function BulkImportWizard({ accountId, accountName, onClose, onSuccess }:
             </div>
 
             <div className="text-xs text-gray-400 dark:text-gray-500 pt-2">
-              Select multiple canonical CSV files (same columns as the single-file import). Each
-              file is committed as a separate import run, sharing one instrument review step.
+              One parser applies to all selected files. Each file is committed as a separate import
+              run, sharing one instrument review step.
             </div>
           </div>
         )}
