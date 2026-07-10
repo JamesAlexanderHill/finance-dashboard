@@ -16,9 +16,23 @@ const relatedEventWith = {
   },
 }
 
-/** An event that already has a parent — used to exclude it from candidate sets. */
-function notAlreadyChild(eventIdColumn = events.id) {
-  return sql`NOT EXISTS (SELECT 1 FROM ${subEventLinks} WHERE ${subEventLinks.childEventId} = ${eventIdColumn})`
+/**
+ * An event that already has a parent — used to exclude it from candidate
+ * sets, and (via `excludeSubEventChildren`, reused by `query/event.ts`) from
+ * top-level event listings, since a linked sub-event is only ever browsed
+ * nested under its parent. A plain `notInArray` subquery rather than a raw
+ * `NOT EXISTS` `sql` fragment: interpolating a bare column reference via the
+ * `sql` tag renders with whatever table alias drizzle's relational query
+ * builder has in scope at that point (observed rendering
+ * `events.child_event_id` instead of `sub_event_links.child_event_id` when
+ * nested inside `db.query.events.findMany`), so it silently breaks depending
+ * on the surrounding query shape.
+ */
+export function excludeSubEventChildren() {
+  return notInArray(
+    events.id,
+    db.select({ id: subEventLinks.childEventId }).from(subEventLinks),
+  )
 }
 
 /** All sub-events linked under `parentEventId`, decorated for display, oldest first. */
@@ -87,7 +101,7 @@ export async function queryEventsForSubEventPicker(
     isNull(events.deletedAt),
     accountId ? eq(events.accountId, accountId) : undefined,
     excludeEventIds.length ? notInArray(events.id, excludeEventIds) : undefined,
-    notAlreadyChild(),
+    excludeSubEventChildren(),
   ]
 
   let idRows: { id: string }[]
@@ -148,7 +162,7 @@ export async function querySubEventCandidates(
       gte(events.effectiveAt, start),
       lte(events.effectiveAt, end),
       excludeEventIds.length ? notInArray(events.id, excludeEventIds) : undefined,
-      notAlreadyChild(),
+      excludeSubEventChildren(),
     ),
     orderBy: [desc(events.effectiveAt)],
     with: relatedEventWith,
