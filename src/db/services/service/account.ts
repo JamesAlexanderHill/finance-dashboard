@@ -4,7 +4,7 @@ import { accounts } from '~/db/schema'
 import type { AccountColorName } from '~/lib/chart-colors'
 import type { RequestContext } from '../utils/context'
 import { buildPaginatedResult, type PaginationOptions } from '../utils/pagination'
-import { queryAccountsByWorkspace, queryAccountById } from '../query/account'
+import { queryAccountsByWorkspace, queryAccountById, queryCreditAccounts } from '../query/account'
 
 type ListAccountsOptions = PaginationOptions & {
   accountIds?: string[]
@@ -27,7 +27,12 @@ async function create(ctx: RequestContext, data: { name: string }) {
 async function update(
   ctx: RequestContext,
   accountId: string,
-  data: { name: string; defaultInstrumentId: string | null; color?: AccountColorName | null },
+  data: {
+    name: string
+    defaultInstrumentId: string | null
+    color?: AccountColorName | null
+    isCredit?: boolean
+  },
 ) {
   const existing = await queryAccountById(ctx.workspaceId, accountId)
   if (!existing) throw new Error(`Account not found: ${accountId}`)
@@ -38,6 +43,7 @@ async function update(
       name: data.name.trim(),
       defaultInstrumentId: data.defaultInstrumentId || null,
       color: data.color ?? null,
+      isCredit: data.isCredit ?? existing.isCredit,
     })
     .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, ctx.workspaceId)))
 }
@@ -46,4 +52,9 @@ async function getById(ctx: RequestContext, accountId: string) {
   return queryAccountById(ctx.workspaceId, accountId)
 }
 
-export const accountService = { getById, list, create, update }
+/** Credit accounts eligible as the target of a repayment import, optionally excluding one. */
+async function listCredit(ctx: RequestContext, excludeAccountId?: string) {
+  return queryCreditAccounts(ctx.workspaceId, excludeAccountId)
+}
+
+export const accountService = { getById, list, create, update, listCredit }

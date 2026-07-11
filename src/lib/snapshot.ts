@@ -200,6 +200,7 @@ export async function importWorkspaceSnapshot(
           name: a.name,
           defaultInstrumentId: null,
           color: a.color,
+          isCredit: a.isCredit,
           createdAt: new Date(a.createdAt),
         })),
       )

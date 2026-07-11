@@ -275,10 +275,7 @@ async function commitEventsForFile(
   return { fileId, filename, importedCount, skippedCount, restoredCount, errorCount, eventIds }
 }
 
-async function commitImport(
-  ctx: RequestContext,
-  params: CommitImportParams,
-): Promise<{ fileId: string; eventIds: string[] }> {
+async function commitImport(ctx: RequestContext, params: CommitImportParams): Promise<FileImportResult> {
   const { accountId, filename, restoreDeletedChosen } = params
   const { workspaceId } = ctx
 
@@ -306,7 +303,7 @@ async function commitImport(
     await rateService.refresh(ctx, instrumentId)
   }
 
-  return { fileId: result.fileId, eventIds: result.eventIds }
+  return result
 }
 
 /** Commit several canonical CSV files in one run, sharing a single instrument resolution pass. */

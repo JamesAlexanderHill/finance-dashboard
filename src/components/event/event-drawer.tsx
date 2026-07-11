@@ -9,11 +9,13 @@ import { db } from '~/db'
 import { events, legs, lineItems, categories } from '~/db/schema'
 import type { EventRelationType } from '~/db/schema'
 import { checkpointService, rateService, getSession, relationService, subEventService } from '~/db/services'
+import { assignTransferParentChild } from '~/db/services/service/relation-suggestions'
 import { formatCurrency } from '~/lib/format-currency'
 import cn from '~/lib/class-merge'
 import Badge from '~/components/ui/badge'
 import { CategorySelector } from '~/components/ui/category-selector'
 import { EventLegBar } from '~/components/event/event-leg-bar'
+import { RepaymentImportWizard } from '~/components/event/repayment-import-wizard'
 import {
   Sheet,
   SheetContent,
@@ -224,6 +226,7 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
   const queryClient = useQueryClient()
   const router = useRouter()
   const [expandedLegId, setExpandedLegId] = React.useState<string | null>(null)
+  const [showRepaymentImport, setShowRepaymentImport] = React.useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['event-drawer', eventId],
@@ -259,7 +262,7 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
 
   async function handleLinkCandidate(candidate: any, relationType: EventRelationType) {
     if (!data?.event) return
-    const pair = assignParentChild(data.event, candidate)
+    const pair = assignTransferParentChild(data.event, candidate)
     await createRelation({ data: { ...pair, relationType } })
     await refreshAfterRelationChange()
   }
@@ -287,7 +290,10 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+      <SheetContent
+        side="right"
+        className={`w-full overflow-y-auto ${showRepaymentImport ? 'sm:max-w-3xl' : 'sm:max-w-lg'}`}
+      >
         {isLoading && (
           <div className="p-6 text-gray-500 dark:text-gray-400 text-sm">Loading...</div>
         )}
@@ -298,7 +304,24 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
           </div>
         )}
 
-        {data?.event && (
+        {data?.event && showRepaymentImport && (
+          <div className="p-4">
+            <RepaymentImportWizard
+              parentEvent={{
+                id: data.event.id,
+                description: data.event.description,
+                accountId: data.event.accountId,
+              }}
+              onClose={() => setShowRepaymentImport(false)}
+              onSuccess={async () => {
+                setShowRepaymentImport(false)
+                await refreshAfterRelationChange()
+              }}
+            />
+          </div>
+        )}
+
+        {data?.event && !showRepaymentImport && (
           <>
             <SheetHeader>
               <SheetTitle
@@ -515,11 +538,20 @@ export function EventDrawer({ eventId, onClose, onOpenRelated }: EventDrawerProp
                   ))}
                 </div>
                 {data.event && !data.subEventParent && (
-                  <SubEventPicker
-                    anchor={data.event}
-                    excludeIds={[data.event.id, ...data.subEventChildren.map((c: any) => c.id)]}
-                    onLink={handleLinkSubEvents}
-                  />
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <SubEventPicker
+                      anchor={data.event}
+                      excludeIds={[data.event.id, ...data.subEventChildren.map((c: any) => c.id)]}
+                      onLink={handleLinkSubEvents}
+                    />
+                    <button
+                      onClick={() => setShowRepaymentImport(true)}
+                      className="mt-3 inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline outline-none"
+                    >
+                      <Plus className="size-3" />
+                      Import statement
+                    </button>
+                  </div>
                 )}
               </Section>
             </div>
@@ -749,24 +781,6 @@ function formatEventNet(ev: any): string {
     .filter((l: any) => l.instrumentId === inst.id)
     .reduce((sum: bigint, l: any) => sum + BigInt(l.unitCount), BigInt(0))
   return formatCurrency(net, { exponent: inst.exponent, ticker: inst.ticker })
-}
-
-// Convention: parent = the outflow (negative net), child = the inflow (positive).
-// This keeps reimbursement/refund netting correct (the inflow offsets the
-// expense). Same-sign or ambiguous pairs keep the open event as the parent.
-function assignParentChild(
-  anchor: any,
-  candidate: any,
-): { parentEventId: string; childEventId: string } {
-  const anchorNet = netUnitCount(anchor.legs)
-  const candNet = netUnitCount(candidate.legs)
-  if (anchorNet < BigInt(0) && candNet >= BigInt(0)) {
-    return { parentEventId: anchor.id, childEventId: candidate.id }
-  }
-  if (candNet < BigInt(0) && anchorNet >= BigInt(0)) {
-    return { parentEventId: candidate.id, childEventId: anchor.id }
-  }
-  return { parentEventId: anchor.id, childEventId: candidate.id }
 }
 
 // ─── RelationPicker ───────────────────────────────────────────────────────────

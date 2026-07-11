@@ -168,6 +168,9 @@ export const accounts = pgTable('accounts', {
   defaultInstrumentId: text('default_instrument_id').references((): AnyPgColumn => instruments.id),
   // Base chart hue for this account's instruments. null = auto-assigned by account order.
   color: accountColorEnum('color'),
+  // Credit card / line-of-credit accounts are eligible as the target of a
+  // "repayment import" (see src/db/services/service/repayment-import.ts).
+  isCredit: boolean('is_credit').notNull().default(false),
   createdAt: createdAt(),
 })
 

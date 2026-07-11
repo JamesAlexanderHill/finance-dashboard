@@ -115,6 +115,19 @@ The account detail page (`/accounts/$accountId`) has an **Import** button that o
 
 The **Bulk import** button opens a parallel wizard. One parser applies to all selected files; each file is parsed (PDFs server-side, one per file), then committed as its own `files` row so per-file history is preserved. Step 3 lists every file with its event and error counts; files with errors are flagged but not blocked (zero-event files are skipped). After commit, the same suggested-links review (above) runs once across every committed file's events before the final per-file results table (`importedCount`, `skippedCount`, `restoredCount`, `errorCount`) is shown.
 
+## Repayment Imports
+
+Both wizards above are entered from an account page and always import into
+that account. There's a second entry point: from a **repayment event's
+drawer**, "Import statement" launches the same file → instruments → review →
+commit steps against a chosen **credit account**, but routes every committed
+event as a sub-event of that repayment (except the transfer counterpart,
+linked as a relation) instead of leaving them as independent transactions.
+The import is recorded in `files` exactly the same way — this is an entry
+point, not a different import mechanism. See
+[Sub-Events → Repayment Imports](./8-sub-events.md#repayment-imports) for the
+full flow.
+
 ## Import History
 
 Past imports are listed at `/accounts/$accountId/files`. Opening one shows the file detail page:

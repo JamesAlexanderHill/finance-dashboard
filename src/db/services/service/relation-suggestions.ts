@@ -20,6 +20,28 @@ function netUnitCount(legs: { unitCount: bigint }[]): bigint {
   return legs.reduce((sum, l) => sum + BigInt(l.unitCount), 0n)
 }
 
+/**
+ * Assigns parent/child for a relation between `anchor` and `candidate` by the
+ * documented convention: parent = the anchor/original outflow, child = the
+ * offsetting/destination inflow. Same-sign or ambiguous pairs keep `anchor`
+ * as the parent. Shared by the event drawer's relation picker and the
+ * repayment-import flow so both apply the exact same rule.
+ */
+export function assignTransferParentChild(
+  anchor: SuggestionEvent,
+  candidate: SuggestionEvent,
+): { parentEventId: string; childEventId: string } {
+  const anchorNet = netUnitCount(anchor.legs)
+  const candNet = netUnitCount(candidate.legs)
+  if (anchorNet < 0n && candNet >= 0n) {
+    return { parentEventId: anchor.id, childEventId: candidate.id }
+  }
+  if (candNet < 0n && anchorNet >= 0n) {
+    return { parentEventId: candidate.id, childEventId: anchor.id }
+  }
+  return { parentEventId: anchor.id, childEventId: candidate.id }
+}
+
 // Whole-calendar-day difference a − b (UTC), so "within N days" matches user
 // intuition regardless of intraday timestamps.
 function calendarDayDiff(a: Date, b: Date): number {

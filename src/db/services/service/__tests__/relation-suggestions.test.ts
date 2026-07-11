@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { suggestRelations, type SuggestionEvent } from '../relation-suggestions'
+import { suggestRelations, assignTransferParentChild, type SuggestionEvent } from '../relation-suggestions'
 
 function ev(
   id: string,
@@ -83,5 +83,34 @@ describe('suggestRelations — refund', () => {
       ev('over', 'amex', '2026-01-12T00:00:00Z', 9000n),
     ]
     expect(ids(suggestRelations(purchase, candidates, 'refund'))).toEqual(['full'])
+  })
+})
+
+describe('assignTransferParentChild', () => {
+  test('an outflow anchor becomes the parent of an inflow candidate', () => {
+    const anchor = ev('out', 'commbank', '2026-02-03T00:00:00Z', -59400n)
+    const candidate = ev('in', 'amex', '2026-02-03T00:00:00Z', 59400n)
+    expect(assignTransferParentChild(anchor, candidate)).toEqual({
+      parentEventId: 'out',
+      childEventId: 'in',
+    })
+  })
+
+  test('an inflow anchor becomes the child of an outflow candidate', () => {
+    const anchor = ev('in', 'amex', '2026-02-03T00:00:00Z', 59400n)
+    const candidate = ev('out', 'commbank', '2026-02-03T00:00:00Z', -59400n)
+    expect(assignTransferParentChild(anchor, candidate)).toEqual({
+      parentEventId: 'out',
+      childEventId: 'in',
+    })
+  })
+
+  test('same-sign or ambiguous pairs keep the anchor as parent', () => {
+    const anchor = ev('a', 'commbank', '2026-02-03T00:00:00Z', 100n)
+    const candidate = ev('b', 'amex', '2026-02-03T00:00:00Z', 200n)
+    expect(assignTransferParentChild(anchor, candidate)).toEqual({
+      parentEventId: 'a',
+      childEventId: 'b',
+    })
   })
 })

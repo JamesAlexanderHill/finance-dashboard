@@ -75,6 +75,52 @@ linking that transfer plus the suggested sub-event grouping. Nothing is
 linked automatically — the user reviews and approves (or skips) each group,
 the same suggest-then-approve pattern used everywhere else in the app.
 
+## Repayment Imports
+
+The flow above only works once *both* sides of the repayment are already in
+the database — it can't suggest sub-events for a statement you haven't
+imported yet. **Repayment imports** invert the direction: instead of
+importing a file first and hoping the app finds the repayment afterward, you
+start from the repayment and pull in its statement directly.
+
+From any event's drawer, the **Sub-events** section offers **"Import
+statement"** (next to "Link sub-events") whenever the event isn't itself
+already a sub-event:
+
+1. **Choose the credit account** the statement belongs to — a card or line of
+   credit, from the accounts flagged **Credit account** in their settings
+   (see [Transactions → Accounts](./2-transactions.md#accounts)). The
+   repayment's own account is excluded from the list.
+2. **Import the file** — the same parser-select → file → instrument review →
+   event review → commit steps as the regular [Import Wizard](./7-imports.md),
+   reusing its components verbatim. The import is recorded in the `files`
+   table exactly like any other import (`importedCount`/`skippedCount`/etc.,
+   visible in [Import History](./7-imports.md#import-history)) — this is a
+   different *entry point*, not a different kind of import.
+3. **On commit**, every newly imported event is automatically routed to
+   exactly one of two places, with no separate approval step (choosing this
+   specific parent + account combination *is* the confirmation):
+   - The one event that looks like the repayment's own transfer counterpart
+     (opposite-signed, same magnitude, within a few days — the identical rule
+     `suggestRelations('transfer', …)` already uses) is linked as an
+     `eventRelations` **transfer** against the repayment, so it nets out of
+     spend/income analytics instead of appearing as a purchase.
+   - Every other imported event is linked as a **sub-event** of the
+     repayment.
+4. A result screen reports the counters, which event (if any) was linked as
+   the transfer, and how many were linked as sub-events — if no transfer
+   match was found, it says so and the pairing can still be made by hand from
+   the drawer.
+
+Implementation: `repaymentImportService.commit`
+(`src/db/services/service/repayment-import.ts`) wraps the ordinary
+`importService.commitImport`, then re-decorates the committed events to run
+the same `suggestRelations`/`assignTransferParentChild` logic the drawer's
+relation picker uses. UI: `RepaymentImportWizard`
+(`src/components/event/repayment-import-wizard.tsx`), which reuses
+`ImportWizard`'s `Step1`/`InstrumentReview`/`Step3`/`Step4` components with
+its own account-selection step prepended.
+
 ## Display Logic
 
 Until linked, every event displays as an independent row, exactly as before —
@@ -124,3 +170,8 @@ and shared by the UI and (steps 1–2 only, see below) analytics.
   approving.
 - Only net-outflow candidates are suggested; a card's own credits or refunds
   within the statement window are not proposed as sub-events.
+- Repayment imports use `suggestRelations` with `limit = 1` internally — if
+  a statement contains more than one plausible transfer counterpart (e.g. two
+  same-amount credits within the window), only the first is picked and the
+  rest become sub-events by default; check the result screen and re-link by
+  hand if that's wrong for a given statement.

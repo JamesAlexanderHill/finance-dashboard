@@ -295,7 +295,7 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
 
 // ─── Wizard Steps ─────────────────────────────────────────────────────────────
 
-function Step1({
+export function Step1({
   accountName,
   parserId,
   parseErrors,
@@ -449,7 +449,7 @@ export function InstrumentReview({
   )
 }
 
-function Step3({
+export function Step3({
   events,
   instrumentDrafts,
   categoryAssignments,
@@ -646,13 +646,21 @@ function Step3({
   )
 }
 
-function Step4({
+export interface Step4WizardState {
+  filename: string
+  parsedEvents: ParsedEvent[]
+  instrumentDrafts: InstrumentDraft[]
+  restoreDeletedChosen: boolean
+  committing: boolean
+}
+
+export function Step4({
   wizard,
   accountName,
   onBack,
   onCommit,
 }: {
-  wizard: WizardState
+  wizard: Step4WizardState
   accountName: string
   onBack: () => void
   onCommit: () => void
@@ -703,7 +711,7 @@ function Step4({
   )
 }
 
-function WizardNav({
+export function WizardNav({
   onBack,
   onNext,
   nextLabel,

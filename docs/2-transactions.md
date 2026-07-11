@@ -89,6 +89,7 @@ An **account** represents a financial institution or wallet (e.g. CommBank, Amex
 - **Name** — User-assigned label (e.g. "CommBank Everyday").
 - **Color/hue** — One of eight base colors (blue, emerald, amber, rose, violet, cyan, orange, fuchsia), used for chart coloring. If unset, a color is auto-assigned by position.
 - **Default instrument** — The primary currency or asset for the account. Used as the display default in the UI.
+- **Credit account** — A checkbox marking a card or line-of-credit account. Enables the account as a target for [repayment imports](./8-sub-events.md#repayment-imports) — importing a statement directly against a repayment transaction rather than as a standalone file.
 
 ### Chart Coloring
 
