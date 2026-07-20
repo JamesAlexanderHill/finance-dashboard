@@ -1,4 +1,4 @@
-import { eq, and, inArray, count } from 'drizzle-orm'
+import { eq, and, inArray, count, ne } from 'drizzle-orm'
 import { db } from '~/db'
 import { accounts } from '~/db/schema'
 import type { PaginationOptions } from '../utils/pagination'
@@ -30,4 +30,19 @@ export async function queryAccountById(workspaceId: string, accountId: string) {
     .where(and(eq(accounts.id, accountId), eq(accounts.workspaceId, workspaceId)))
 
   return account ?? null
+}
+
+/** Accounts flagged as credit (card / line-of-credit), optionally excluding one — used to pick the target of a repayment import. */
+export async function queryCreditAccounts(workspaceId: string, excludeAccountId?: string) {
+  return db
+    .select()
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.workspaceId, workspaceId),
+        eq(accounts.isCredit, true),
+        excludeAccountId ? ne(accounts.id, excludeAccountId) : undefined,
+      ),
+    )
+    .orderBy(accounts.name)
 }

@@ -48,7 +48,16 @@ const getData = createServerFn({ method: 'GET' })
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { id: string; name: string; defaultInstrumentId: string | null; color: AccountColorName | null })
+  .inputValidator(
+    (data: unknown) =>
+      data as {
+        id: string
+        name: string
+        defaultInstrumentId: string | null
+        color: AccountColorName | null
+        isCredit: boolean
+      },
+  )
   .handler(async ({ data }) => {
     const session = await getSession()
     if (!session) throw new Error('No user found')
@@ -56,6 +65,7 @@ const updateAccount = createServerFn({ method: 'POST' })
       name: data.name,
       defaultInstrumentId: data.defaultInstrumentId,
       color: data.color,
+      isCredit: data.isCredit,
     })
   })
 
@@ -158,6 +168,7 @@ function AccountDetailPage() {
         name: String(fd.get('name')),
         defaultInstrumentId: String(fd.get('defaultInstrumentId')) || null,
         color: (String(fd.get('color')) || null) as AccountColorName | null,
+        isCredit: fd.get('isCredit') === 'on',
       },
     })
     setEditing(false)
@@ -265,6 +276,22 @@ function AccountDetailPage() {
               </select>
             </div>
             <AccountColorSelect name="color" defaultValue={account.color} />
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="isCredit"
+                name="isCredit"
+                defaultChecked={account.isCredit}
+                className="rounded"
+              />
+              <label htmlFor="isCredit" className="text-sm text-gray-700 dark:text-gray-300">
+                Credit account (card or line of credit)
+              </label>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
+              Enables importing a statement directly against a repayment transaction — see the "Import
+              statement" action in that transaction's drawer.
+            </p>
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -294,6 +321,11 @@ function AccountDetailPage() {
                     <span className="text-gray-400 dark:text-gray-500">None</span>
                   )}
                 </span>
+                {account.isCredit && (
+                  <span className="px-1.5 py-0.5 text-xs rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                    Credit account
+                  </span>
+                )}
               </div>
             </div>
             <button

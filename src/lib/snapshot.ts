@@ -11,6 +11,7 @@ import {
   instruments,
   legs,
   lineItems,
+  subEventLinks,
   timelineAnnotations,
   workspaces,
 } from '~/db/schema'
@@ -25,6 +26,7 @@ import type {
   InstrumentRate,
   Leg,
   LineItem,
+  SubEventLink,
   TimelineAnnotation,
 } from '~/db/schema'
 import { clearWorkspaceData } from '~/lib/seed'
@@ -63,6 +65,7 @@ export interface WorkspaceSnapshot {
   instrumentRates: Jsonify<InstrumentRate>[]
   timelineAnnotations: Jsonify<TimelineAnnotation>[]
   eventRelations: EventRelation[]
+  subEventLinks: Jsonify<SubEventLink>[]
 }
 
 export interface ImportCounts {
@@ -120,6 +123,11 @@ export async function exportWorkspaceSnapshot(workspaceId: string): Promise<Work
     ? await db.select().from(eventRelations).where(inArray(eventRelations.parentEventId, eventIds))
     : []
 
+  // sub_event_links also carries no workspace_id — same scoping approach.
+  const subEventLinkRows = eventIds.length
+    ? await db.select().from(subEventLinks).where(inArray(subEventLinks.parentEventId, eventIds))
+    : []
+
   return {
     version: 1,
     exportedAt: new Date().toISOString(),
@@ -135,6 +143,7 @@ export async function exportWorkspaceSnapshot(workspaceId: string): Promise<Work
     instrumentRates: rateRows.map(serializeRow),
     timelineAnnotations: annotationRows.map(serializeRow),
     eventRelations: relationRows,
+    subEventLinks: subEventLinkRows.map(serializeRow),
   }
 }
 
@@ -152,6 +161,7 @@ const SNAPSHOT_ARRAYS = [
   'instrumentRates',
   'timelineAnnotations',
   'eventRelations',
+  'subEventLinks',
 ] as const
 
 /** Throws a friendly error if the parsed object isn't a v1 snapshot with the expected arrays. */
@@ -190,6 +200,7 @@ export async function importWorkspaceSnapshot(
           name: a.name,
           defaultInstrumentId: null,
           color: a.color,
+          isCredit: a.isCredit,
           createdAt: new Date(a.createdAt),
         })),
       )
@@ -339,6 +350,16 @@ export async function importWorkspaceSnapshot(
           parentEventId: er.parentEventId,
           childEventId: er.childEventId,
           relationType: er.relationType,
+        })),
+      )
+    }
+
+    if (snapshot.subEventLinks.length) {
+      await tx.insert(subEventLinks).values(
+        snapshot.subEventLinks.map((s) => ({
+          parentEventId: s.parentEventId,
+          childEventId: s.childEventId,
+          createdAt: new Date(s.createdAt),
         })),
       )
     }

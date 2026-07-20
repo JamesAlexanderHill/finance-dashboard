@@ -67,6 +67,7 @@ Clicking any event row anywhere in the app opens the **event drawer** — a slid
 - **Legs** — each leg is listed with its instrument ticker, signed amount, and a category selector. Changing the category updates `legs.categoryId` in place without affecting the event's other fields.
 - **Line items** — each leg has an expandable line-item editor. Clicking "Items (N)" expands a panel where sub-splits can be added, edited, or removed. Each line item has an amount (in minor units), an optional category, and an optional description. The line-item total must equal the parent leg's `unitCount` before saving is allowed.
 - **Relations** — linked transactions (transfers, reimbursements, refunds). Each relation shows the other event with a direction-aware label and can be opened or removed. The "Link transaction" picker suggests likely matches for the chosen relation type and lets you search for any other event. See [Relations](./6-relations.md).
+- **Sub-events** — an event (e.g. a card repayment) can decompose into the many child events that make it up (e.g. the prior statement's purchases). The "Link sub-events" picker suggests a whole prior-statement grouping to approve at once, and a linked child shows a "Part of: …" breadcrumb back to its parent. See [Sub-Events](./8-sub-events.md).
 
 ### Events Pages
 
@@ -88,6 +89,7 @@ An **account** represents a financial institution or wallet (e.g. CommBank, Amex
 - **Name** — User-assigned label (e.g. "CommBank Everyday").
 - **Color/hue** — One of eight base colors (blue, emerald, amber, rose, violet, cyan, orange, fuchsia), used for chart coloring. If unset, a color is auto-assigned by position.
 - **Default instrument** — The primary currency or asset for the account. Used as the display default in the UI.
+- **Credit account** — A checkbox marking a card or line-of-credit account. Enables the account as a target for [repayment imports](./8-sub-events.md#repayment-imports) — importing a statement directly against a repayment transaction rather than as a standalone file.
 
 ### Chart Coloring
 

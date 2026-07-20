@@ -6,6 +6,7 @@ export type NettingLeg = {
   eventId: string
   categoryId: string | null
   unitCount: bigint
+  lineItems: { categoryId: string | null; unitCount: bigint }[]
 }
 
 export type NettingRelation = {
@@ -93,7 +94,11 @@ export function applyRelationsToLegs<T extends NettingLeg>(
     if (!parentId) continue
     const rep = parentRepLeg.get(parentId)
     if (!rep) continue
-    result.push({ ...rep, unitCount: leg.unitCount })
+    // The synthetic leg's amount is the *child's* netted inflow, not the
+    // parent's — so it must fall back to `rep.categoryId` rather than
+    // inheriting the parent's own line-item breakdown, which would fan the
+    // netted amount out by the wrong (parent-side) proportions.
+    result.push({ ...rep, unitCount: leg.unitCount, lineItems: [] })
   }
 
   return result

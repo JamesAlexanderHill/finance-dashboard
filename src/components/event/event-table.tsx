@@ -1,5 +1,6 @@
+import * as React from 'react'
 import { useRouter } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueries } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
 import { eq, and } from 'drizzle-orm'
 import { db } from '~/db'
@@ -10,7 +11,8 @@ import formatDate from '~/lib/format-date'
 import Badge from '../ui/badge'
 import { formatChange } from '~/lib/format'
 import { PaginationData } from '~/db/services/utils/pagination'
-import { categoryService, getSession } from '~/db/services'
+import { categoryService, subEventService, getSession } from '~/db/services'
+import { querySubEventCountsForEvents } from '~/db/services/query/sub-event'
 import { CategorySelector } from '~/components/ui/category-selector'
 import { EventLegBar } from '~/components/event/event-leg-bar'
 
@@ -33,6 +35,23 @@ const updateLegCategory = createServerFn({ method: 'POST' })
       .where(and(eq(legs.id, data.legId), eq(legs.workspaceId, session.workspace.id)))
   })
 
+const getSubEventCounts = createServerFn({ method: 'GET' })
+  .inputValidator((d: unknown) => d as { eventIds: string[] })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) return []
+    const counts = await querySubEventCountsForEvents(session.workspace.id, data.eventIds)
+    return [...counts.entries()]
+  })
+
+const getSubEventChildren = createServerFn({ method: 'GET' })
+  .inputValidator((d: unknown) => d as { parentEventId: string })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) return []
+    return subEventService.listChildren(session.ctx, data.parentEventId)
+  })
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 type EventTableProps = {
@@ -43,6 +62,11 @@ type EventTableProps = {
   onRowClick?: (row: DecoratedEvent) => void
 }
 
+// A parent's linked sub-events, flattened into the table as indented child
+// rows immediately below it when expanded. Purely a display concern — page
+// size/`pagination.total` still count only top-level events.
+type DisplayRow = DecoratedEvent & { isSubEventChild?: boolean }
+
 export default function EventTable({
   events,
   pagination,
@@ -51,6 +75,7 @@ export default function EventTable({
   onPaginationChange,
 }: EventTableProps) {
   const router = useRouter()
+  const [expandedParents, setExpandedParents] = React.useState<Set<string>>(new Set())
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
@@ -58,12 +83,57 @@ export default function EventTable({
     staleTime: 60_000,
   })
 
+  const eventIds = React.useMemo(() => events.map((e) => e.id), [events])
+  const { data: subEventCountRows = [] } = useQuery({
+    queryKey: ['sub-event-counts', eventIds],
+    queryFn: () => getSubEventCounts({ data: { eventIds } }),
+    enabled: eventIds.length > 0,
+  })
+  const subEventCounts = React.useMemo(() => new Map(subEventCountRows), [subEventCountRows])
+
+  const expandedIds = [...expandedParents]
+  const childQueries = useQueries({
+    queries: expandedIds.map((parentEventId) => ({
+      queryKey: ['sub-event-children', parentEventId],
+      queryFn: () => getSubEventChildren({ data: { parentEventId } }),
+    })),
+  })
+  const childrenByParent = React.useMemo(() => {
+    const map = new Map<string, DecoratedEvent[]>()
+    expandedIds.forEach((parentEventId, i) => {
+      const data = childQueries[i]?.data
+      if (data) map.set(parentEventId, data as DecoratedEvent[])
+    })
+    return map
+  }, [expandedIds, childQueries])
+
+  function toggleExpanded(eventId: string) {
+    setExpandedParents((prev) => {
+      const next = new Set(prev)
+      if (next.has(eventId)) next.delete(eventId)
+      else next.add(eventId)
+      return next
+    })
+  }
+
   async function handleCategoryChange(legId: string, categoryId: string | null) {
     await updateLegCategory({ data: { legId, categoryId } })
     router.invalidate()
   }
 
-  const columns: ColumnDef<DecoratedEvent>[] = [
+  const displayRows: DisplayRow[] = React.useMemo(() => {
+    const rows: DisplayRow[] = []
+    for (const event of events) {
+      rows.push(event)
+      if (expandedParents.has(event.id)) {
+        const children = childrenByParent.get(event.id) ?? []
+        for (const child of children) rows.push({ ...child, isSubEventChild: true })
+      }
+    }
+    return rows
+  }, [events, expandedParents, childrenByParent])
+
+  const columns: ColumnDef<DisplayRow>[] = [
     {
       id: 'date',
       header: 'Date',
@@ -85,14 +155,44 @@ export default function EventTable({
     {
       id: 'description',
       header: 'Description',
-      cell: ({ row }) => (
-        <div>
-          <span className="text-gray-900 dark:text-gray-100 font-medium">
-            {row.original.description}
-          </span>
-          <EventLegBar legs={row.original.legs} categories={categories} />
-        </div>
-      ),
+      cell: ({ row }) => {
+        const childCount = subEventCounts.get(row.original.id) ?? 0
+        const isExpanded = expandedParents.has(row.original.id)
+        const childEvents = childrenByParent.get(row.original.id)
+        return (
+          <div className={row.original.isSubEventChild ? 'pl-4 border-l-2 border-gray-100 dark:border-gray-800' : undefined}>
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-900 dark:text-gray-100 font-medium">
+                {row.original.description}
+              </span>
+              {childCount > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    toggleExpanded(row.original.id)
+                  }}
+                  className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 inline-flex items-center gap-0.5"
+                >
+                  {childCount}
+                  <svg
+                    className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            <EventLegBar
+              legs={row.original.legs}
+              categories={categories}
+              childEvents={childCount > 0 ? childEvents : undefined}
+            />
+          </div>
+        )
+      },
     },
     {
       id: 'category',
@@ -157,7 +257,7 @@ export default function EventTable({
 
   return (
     <Table
-      data={events}
+      data={displayRows}
       columns={columns}
       onRowClick={onRowClick}
       getRowId={(row) => row.id}

@@ -1,5 +1,6 @@
 import * as React from 'react'
 import type { Category } from '~/db/schema'
+import { resolveEventCategoryBreakdown, type RollupEvent } from '~/db/services/service/category-rollup'
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
@@ -26,62 +27,67 @@ export function buildCategoryColorMap(categories: Category[]): Map<string, strin
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type BarLeg = {
-  categoryId: string | null
-  category: Category | null
-  unitCount: bigint
-}
+type BarLeg = RollupEvent['legs'][number]
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function EventLegBar({ legs, categories }: { legs: BarLeg[]; categories: Category[] }) {
+export function EventLegBar({
+  legs,
+  categories,
+  childEvents,
+}: {
+  legs: BarLeg[]
+  categories: Category[]
+  /** Linked sub-events, consulted only when `legs` are entirely uncategorized. */
+  childEvents?: RollupEvent[]
+}) {
   const [hoveredIdx, setHoveredIdx] = React.useState<number | null>(null)
 
   const colorMap = React.useMemo(() => buildCategoryColorMap(categories), [categories])
+  const categoryMap = React.useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories])
 
   if (legs.length === 0) return null
 
-  const x = legs.length
-  const keyOrder: string[] = []
-  const groups = new Map<string, { count: number; color: string; label: string }>()
+  const shares = resolveEventCategoryBreakdown({ legs }, childEvents)
+  const total = shares.reduce((sum, s) => sum + (s.amount < 0n ? -s.amount : s.amount), 0n)
+  if (total === 0n) return null
 
-  for (const leg of legs) {
-    const key = leg.categoryId ?? '__none__'
+  const keyOrder: string[] = []
+  const groups = new Map<string, { amount: bigint; color: string; label: string }>()
+
+  for (const share of shares) {
+    const key = share.categoryId ?? '__none__'
     if (!groups.has(key)) {
       keyOrder.push(key)
       groups.set(key, {
-        count: 0,
-        color: leg.categoryId ? (colorMap.get(leg.categoryId) ?? UNCATEGORIZED_COLOR) : UNCATEGORIZED_COLOR,
-        label: leg.category?.name ?? 'Uncategorized',
+        amount: 0n,
+        color: share.categoryId ? (colorMap.get(share.categoryId) ?? UNCATEGORIZED_COLOR) : UNCATEGORIZED_COLOR,
+        label: share.categoryId ? (categoryMap.get(share.categoryId)?.name ?? 'Uncategorized') : 'Uncategorized',
       })
     }
-    groups.get(key)!.count++
+    const abs = share.amount < 0n ? -share.amount : share.amount
+    groups.get(key)!.amount += abs
   }
 
-  let cumCount = 0
+  const totalNum = Number(total)
+  let cumPct = 0
   const segs = keyOrder.map((key) => {
     const g = groups.get(key)!
-    const centerPct = ((cumCount + g.count / 2) / x) * 100
-    cumCount += g.count
-    return { key, count: g.count, color: g.color, label: g.label, centerPct }
+    const widthPct = (Number(g.amount) / totalNum) * 100
+    const centerPct = cumPct + widthPct / 2
+    cumPct += widthPct
+    return { key, widthPct, color: g.color, label: g.label, centerPct }
   })
 
   const hovered = hoveredIdx !== null ? (segs[hoveredIdx] ?? null) : null
 
   return (
     <div className="relative mt-1.5 py-2 -my-2" onMouseLeave={() => setHoveredIdx(null)}>
-      <div
-        className="h-[5px] rounded-full overflow-hidden"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${x}, 1fr)`,
-          columnGap: '1.5px',
-        }}
-      >
+      <div className="h-[5px] rounded-full overflow-hidden flex gap-[1.5px]">
         {segs.map((seg, i) => (
           <div
             key={seg.key}
-            style={{ gridColumn: `span ${seg.count}`, backgroundColor: seg.color }}
+            style={{ width: `${seg.widthPct}%`, backgroundColor: seg.color }}
             className="h-full cursor-default"
             onMouseEnter={() => setHoveredIdx(i)}
           />

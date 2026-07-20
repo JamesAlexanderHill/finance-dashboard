@@ -2,15 +2,25 @@ import { eq, and, desc, count, inArray, isNull, ne, or, sql } from 'drizzle-orm'
 import { db } from '~/db'
 import { events, legs } from '~/db/schema'
 import type { PaginationOptions } from '../utils/pagination'
+import { excludeSubEventChildren } from './sub-event'
 
 const eventWith = {
   account: true as const,
-  legs: { with: { instrument: true as const, category: true as const } },
+  legs: {
+    with: {
+      instrument: true as const,
+      category: true as const,
+      lineItems: { with: { category: true as const } },
+    },
+  },
 }
 
+// A linked sub-event is only ever browsed nested under its parent (see
+// `excludeSubEventChildren`), so top-level listings exclude it — otherwise it
+// would appear twice: once independently, once again when its parent expands.
 export async function queryEventsByAccount(workspaceId: string, accountId: string, opts: PaginationOptions = {}) {
   const { limit = 20, offset = 0 } = opts
-  const where = and(eq(events.workspaceId, workspaceId), eq(events.accountId, accountId))
+  const where = and(eq(events.workspaceId, workspaceId), eq(events.accountId, accountId), excludeSubEventChildren())
 
   const [data, [{ total }]] = await Promise.all([
     db.query.events.findMany({ where, orderBy: [desc(events.effectiveAt)], limit, offset, with: eventWith }),
@@ -22,7 +32,7 @@ export async function queryEventsByAccount(workspaceId: string, accountId: strin
 
 export async function queryEventsByFile(workspaceId: string, fileId: string, opts: PaginationOptions = {}) {
   const { limit = 20, offset = 0 } = opts
-  const where = and(eq(events.workspaceId, workspaceId), eq(events.fileId, fileId))
+  const where = and(eq(events.workspaceId, workspaceId), eq(events.fileId, fileId), excludeSubEventChildren())
 
   const [data, [{ total }]] = await Promise.all([
     db.query.events.findMany({ where, orderBy: [desc(events.effectiveAt)], limit, offset, with: eventWith }),
@@ -40,6 +50,7 @@ export async function queryAllEvents(
   const where = and(
     eq(events.workspaceId, workspaceId),
     accountId ? eq(events.accountId, accountId) : undefined,
+    excludeSubEventChildren(),
   )
 
   const [data, [{ total }]] = await Promise.all([
@@ -88,7 +99,7 @@ export async function queryEventsByInstrument(
       account: true,
       legs: {
         where: eq(legs.instrumentId, instrumentId),
-        with: { instrument: true, category: true },
+        with: { instrument: true, category: true, lineItems: { with: { category: true } } },
       },
     },
   })

@@ -61,6 +61,7 @@ export interface FileImportResult {
   skippedCount: number
   restoredCount: number
   errorCount: number
+  eventIds: string[]
 }
 
 /**
@@ -190,6 +191,7 @@ async function commitEventsForFile(
   let errorCount = 0
   const skippedKeys: string[] = []
   const importErrors: Array<{ line: number; message: string; phase: string }> = []
+  const eventIds: string[] = []
 
   for (let evIdx = 0; evIdx < parsedEvents.length; evIdx++) {
     const parsed = parsedEvents[evIdx]
@@ -216,6 +218,7 @@ async function commitEventsForFile(
         if (restoreDeletedChosen) {
           await db.update(events).set({ deletedAt: null }).where(eq(events.id, existing.id))
           restoredCount++
+          eventIds.push(existing.id)
         } else {
           skippedCount++
           skippedKeys.push(dedupeKey)
@@ -254,6 +257,7 @@ async function commitEventsForFile(
             categoryId,
           })
         }
+        eventIds.push(newEvent.id)
       })
 
       importedCount++
@@ -268,10 +272,10 @@ async function commitEventsForFile(
     .set({ importedCount, skippedCount, restoredCount, errorCount, skippedKeys, errors: importErrors })
     .where(eq(files.id, fileId))
 
-  return { fileId, filename, importedCount, skippedCount, restoredCount, errorCount }
+  return { fileId, filename, importedCount, skippedCount, restoredCount, errorCount, eventIds }
 }
 
-async function commitImport(ctx: RequestContext, params: CommitImportParams): Promise<string> {
+async function commitImport(ctx: RequestContext, params: CommitImportParams): Promise<FileImportResult> {
   const { accountId, filename, restoreDeletedChosen } = params
   const { workspaceId } = ctx
 
@@ -299,7 +303,7 @@ async function commitImport(ctx: RequestContext, params: CommitImportParams): Pr
     await rateService.refresh(ctx, instrumentId)
   }
 
-  return result.fileId
+  return result
 }
 
 /** Commit several canonical CSV files in one run, sharing a single instrument resolution pass. */

@@ -7,6 +7,7 @@ import { PARSER_OPTIONS, DEFAULT_PARSER_ID } from '~/importers/parser-options'
 import type { ParserId } from '~/importers/parser-options'
 import { importService, instrumentService, getSession } from '~/db/services'
 import type { CommitImportParams, InstrumentDraft } from '~/db/services'
+import { PostImportSuggestions } from '~/components/event/post-import-suggestions'
 
 /** Base64-encodes a File in chunks (avoids arg-count limits on large PDFs). */
 export async function fileToBase64(file: File): Promise<string> {
@@ -58,7 +59,7 @@ export const doParseFile = createServerFn({ method: 'POST' })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type WizardStep = 0 | 1 | 2 | 3 | 4
+type WizardStep = 0 | 1 | 2 | 3 | 4 | 5
 
 interface WizardState {
   step: WizardStep
@@ -73,6 +74,8 @@ interface WizardState {
   categoryAssignments: Record<string, string | null>
   restoreDeletedChosen: boolean
   committing: boolean
+  committedFileId: string
+  committedEventIds: string[]
 }
 
 const EMPTY_WIZARD: WizardState = {
@@ -87,6 +90,8 @@ const EMPTY_WIZARD: WizardState = {
   categoryAssignments: {},
   restoreDeletedChosen: false,
   committing: false,
+  committedFileId: '',
+  committedEventIds: [],
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -173,7 +178,7 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
       const rawContent = wizard.rawFile
         ? { base64: await fileToBase64(wizard.rawFile), contentType: wizard.rawFile.type || 'application/pdf' }
         : null
-      const runId = await doCommitImport({
+      const result = await doCommitImport({
         data: {
           accountId: wizard.accountId,
           parserId: wizard.parserId,
@@ -185,7 +190,13 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
           rawContent,
         },
       })
-      onSuccess(runId)
+      setWizard((w) => ({
+        ...w,
+        committing: false,
+        step: 5,
+        committedFileId: result.fileId,
+        committedEventIds: result.eventIds,
+      }))
     } catch (err) {
       setWizard((w) => ({ ...w, committing: false }))
       alert(`Import failed: ${String(err)}`)
@@ -197,7 +208,7 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
       {/* Wizard header */}
       <div className="px-5 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          {([1, 2, 3, 4] as const).map((s) => (
+          {([1, 2, 3, 4, 5] as const).map((s) => (
             <span
               key={s}
               className={[
@@ -210,7 +221,7 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
               ].join(' ')}
             >
               {s}.{' '}
-              {['Select file', 'Instruments', 'Review', 'Commit'][s - 1]}
+              {['Select file', 'Instruments', 'Review', 'Commit', 'Suggested links'][s - 1]}
             </span>
           ))}
         </div>
@@ -269,6 +280,14 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
             onCommit={handleCommit}
           />
         )}
+
+        {/* Step 5 */}
+        {wizard.step === 5 && (
+          <PostImportSuggestions
+            eventIds={wizard.committedEventIds}
+            onDone={() => onSuccess(wizard.committedFileId)}
+          />
+        )}
       </div>
     </div>
   )
@@ -276,7 +295,7 @@ export function ImportWizard({ accountId, accountName, onClose, onSuccess }: Imp
 
 // ─── Wizard Steps ─────────────────────────────────────────────────────────────
 
-function Step1({
+export function Step1({
   accountName,
   parserId,
   parseErrors,
@@ -430,7 +449,7 @@ export function InstrumentReview({
   )
 }
 
-function Step3({
+export function Step3({
   events,
   instrumentDrafts,
   categoryAssignments,
@@ -627,13 +646,21 @@ function Step3({
   )
 }
 
-function Step4({
+export interface Step4WizardState {
+  filename: string
+  parsedEvents: ParsedEvent[]
+  instrumentDrafts: InstrumentDraft[]
+  restoreDeletedChosen: boolean
+  committing: boolean
+}
+
+export function Step4({
   wizard,
   accountName,
   onBack,
   onCommit,
 }: {
-  wizard: WizardState
+  wizard: Step4WizardState
   accountName: string
   onBack: () => void
   onCommit: () => void
@@ -684,7 +711,7 @@ function Step4({
   )
 }
 
-function WizardNav({
+export function WizardNav({
   onBack,
   onNext,
   nextLabel,

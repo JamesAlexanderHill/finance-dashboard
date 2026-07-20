@@ -103,16 +103,30 @@ The single-file wizard can attach a category to each leg via a `categoryAssignme
 
 ## Import Wizard (single file)
 
-The account detail page (`/accounts/$accountId`) has an **Import** button that opens a 4-step wizard inline:
+The account detail page (`/accounts/$accountId`) has an **Import** button that opens a 5-step wizard inline:
 
 1. **Select file** — Pick a **parser** from the dropdown, then choose a file (the file input's accepted types follow the parser). Canonical CSVs are parsed in the browser; PDFs are sent to the server parser. Parse errors are shown before you can proceed, and the raw PDF is held for storage on commit.
 2. **Instruments** — Every ticker referenced is listed. Existing instruments are read-only; new ones expose editable name and exponent fields before they're created on commit.
 3. **Review** — Events are shown as a collapsible accordion; expanding one reveals its legs, each with an optional category path input. A "Restore soft-deleted duplicates" checkbox controls whether incoming events matching a deleted dedupe key are restored rather than skipped.
-4. **Commit** — A summary shows the account, filename, event count, new instruments, and restore setting. "Import" runs the flow server-side and returns the file ID; the wizard closes and the page refreshes.
+4. **Commit** — A summary shows the account, filename, event count, new instruments, and restore setting. "Import" runs the flow server-side and returns the file ID and the committed event ids.
+5. **Suggested links** — For each just-committed event that looks like a repayment (a net outflow with one unambiguous `transfer` suggestion), proposes linking that transfer plus a [sub-event](./8-sub-events.md) grouping of the prior statement's purchases on the paired account. Nothing links automatically — approve or skip each group, then finish to close the wizard.
 
 ## Bulk Import Wizard (multiple files)
 
-The **Bulk import** button opens a parallel 4-step wizard. One parser applies to all selected files; each file is parsed (PDFs server-side, one per file), then committed as its own `files` row so per-file history is preserved. Step 3 lists every file with its event and error counts; files with errors are flagged but not blocked (zero-event files are skipped). Step 4 shows a per-file results table (`importedCount`, `skippedCount`, `restoredCount`, `errorCount`).
+The **Bulk import** button opens a parallel wizard. One parser applies to all selected files; each file is parsed (PDFs server-side, one per file), then committed as its own `files` row so per-file history is preserved. Step 3 lists every file with its event and error counts; files with errors are flagged but not blocked (zero-event files are skipped). After commit, the same suggested-links review (above) runs once across every committed file's events before the final per-file results table (`importedCount`, `skippedCount`, `restoredCount`, `errorCount`) is shown.
+
+## Repayment Imports
+
+Both wizards above are entered from an account page and always import into
+that account. There's a second entry point: from a **repayment event's
+drawer**, "Import statement" launches the same file → instruments → review →
+commit steps against a chosen **credit account**, but routes every committed
+event as a sub-event of that repayment (except the transfer counterpart,
+linked as a relation) instead of leaving them as independent transactions.
+The import is recorded in `files` exactly the same way — this is an entry
+point, not a different import mechanism. See
+[Sub-Events → Repayment Imports](./8-sub-events.md#repayment-imports) for the
+full flow.
 
 ## Import History
 

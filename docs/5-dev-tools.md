@@ -51,10 +51,11 @@ The snapshot captures every workspace-scoped table:
 
 ```
 accounts, instruments, categories, files, events, legs, lineItems,
-instrumentCheckpoints, instrumentRates, timelineAnnotations, eventRelations
+instrumentCheckpoints, instrumentRates, timelineAnnotations, eventRelations,
+subEventLinks
 ```
 
-`eventRelations` (see [Relations](./6-relations.md)) is the only one with no `workspaceId` column, so it is scoped indirectly via the workspace's events.
+`eventRelations` (see [Relations](./6-relations.md)) and `subEventLinks` (see [Sub-Events](./8-sub-events.md)) are the only two with no `workspaceId` column, so they are scoped indirectly via the workspace's events.
 
 ### Snapshot Format
 
