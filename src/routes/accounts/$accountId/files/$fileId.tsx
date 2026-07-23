@@ -1,14 +1,19 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import EventTable from '~/components/event/event-table'
-import { parserLabel } from '~/importers/parser-options'
-import { accountService, eventService, fileService, getSession } from '~/db/services'
+import EventTable from '~/features/transactions/ui/event-table'
+import { eventService } from '~/features/transactions/domain/event-service'
+import { parserLabel } from '~/features/imports/infrastructure/parsers/parser-options'
+import { fileService } from '~/features/imports/domain/file-service'
+import { accountService } from '~/features/accounts/domain/account-service'
+import { getSession } from '~/core/session'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getFilesDetailData = createServerFn({ method: 'GET' })
-  .inputValidator((data: unknown) => data as { accountId: string; fileId: string; page?: number; pageSize?: number })
+  .inputValidator(
+    (data: unknown) => data as { accountId: string; fileId: string; page?: number; pageSize?: number },
+  )
   .handler(async ({ data }) => {
     const session = await getSession()
     if (!session) return { user: null, account: null, file: null, fileEvents: null }
@@ -63,7 +68,9 @@ export const Route = createFileRoute('/accounts/$accountId/files/$fileId')({
   }),
   loaderDeps: ({ search }) => ({ page: search.page, pageSize: search.pageSize }),
   loader: ({ params, deps }) =>
-    getFilesDetailData({ data: { accountId: params.accountId, fileId: params.fileId, page: deps.page, pageSize: deps.pageSize } }),
+    getFilesDetailData({
+      data: { accountId: params.accountId, fileId: params.fileId, page: deps.page, pageSize: deps.pageSize },
+    }),
   component: FileDetailPage,
 })
 

@@ -19,6 +19,7 @@ import { Route as AccountsRouteRouteImport } from './routes/accounts/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as AccountsIndexRouteImport } from './routes/accounts/index'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as AccountsAccountIdRouteRouteImport } from './routes/accounts/$accountId/route'
 import { Route as AccountsAccountIdIndexRouteImport } from './routes/accounts/$accountId/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -80,6 +81,11 @@ const AccountsIndexRoute = AccountsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AccountsRouteRoute,
+} as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AccountsAccountIdRouteRoute = AccountsAccountIdRouteRouteImport.update({
   id: '/$accountId',
@@ -155,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/workspaces': typeof WorkspacesRoute
   '/accounts/$accountId': typeof AccountsAccountIdRouteRouteWithChildren
+  '/api/health': typeof ApiHealthRoute
   '/accounts/': typeof AccountsIndexRoute
   '/events/': typeof EventsIndexRoute
   '/accounts/$accountId/events': typeof AccountsAccountIdEventsRouteRouteWithChildren
@@ -175,6 +182,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/workspaces': typeof WorkspacesRoute
+  '/api/health': typeof ApiHealthRoute
   '/accounts': typeof AccountsIndexRoute
   '/events': typeof EventsIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/workspaces': typeof WorkspacesRoute
   '/accounts/$accountId': typeof AccountsAccountIdRouteRouteWithChildren
+  '/api/health': typeof ApiHealthRoute
   '/accounts/': typeof AccountsIndexRoute
   '/events/': typeof EventsIndexRoute
   '/accounts/$accountId/events': typeof AccountsAccountIdEventsRouteRouteWithChildren
@@ -221,6 +230,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/workspaces'
     | '/accounts/$accountId'
+    | '/api/health'
     | '/accounts/'
     | '/events/'
     | '/accounts/$accountId/events'
@@ -241,6 +251,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/settings'
     | '/workspaces'
+    | '/api/health'
     | '/accounts'
     | '/events'
     | '/api/auth/$'
@@ -261,6 +272,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/workspaces'
     | '/accounts/$accountId'
+    | '/api/health'
     | '/accounts/'
     | '/events/'
     | '/accounts/$accountId/events'
@@ -284,6 +296,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
   WorkspacesRoute: typeof WorkspacesRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
@@ -358,6 +371,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/accounts/'
       preLoaderRoute: typeof AccountsIndexRouteImport
       parentRoute: typeof AccountsRouteRoute
+    }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/accounts/$accountId': {
       id: '/accounts/$accountId'
@@ -545,6 +565,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
   WorkspacesRoute: WorkspacesRoute,
+  ApiHealthRoute: ApiHealthRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport

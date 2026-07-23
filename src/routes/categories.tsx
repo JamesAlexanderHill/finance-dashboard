@@ -2,10 +2,10 @@ import * as React from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { Plus, Pencil, Trash2, Check, X } from 'lucide-react'
-import type { Category } from '~/db/schema'
-import { categoryService, getSession } from '~/db/services'
-import { Button } from '~/components/ui/button'
-import { CategoryAssignWidget } from '~/components/category-assign-widget'
+import type { Category } from '~/core/database/schema'
+import { categoryService, CategoryAssignWidget } from '~/features/categories'
+import { getSession } from '~/core/session'
+import { Button } from '~/shared/components/ui/button'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -132,14 +132,16 @@ function CategoriesPage() {
   const sharedProps = {
     allCategories: categories,
     state,
-    onStartEdit: (cat: Category) => patch({ editingId: cat.id, editName: cat.name, confirmDeleteId: null, addingParentId: undefined }),
+    onStartEdit: (cat: Category) =>
+      patch({ editingId: cat.id, editName: cat.name, confirmDeleteId: null, addingParentId: undefined }),
     onEditNameChange: (v: string) => patch({ editName: v }),
     onConfirmRename: handleRename,
     onCancelEdit: () => patch({ editingId: null, editName: '' }),
     onStartDelete: (id: string) => patch({ confirmDeleteId: id, editingId: null, addingParentId: undefined }),
     onConfirmDelete: handleDelete,
     onCancelDelete: () => patch({ confirmDeleteId: null }),
-    onStartAdd: (parentId: string) => patch({ addingParentId: parentId, editingId: null, confirmDeleteId: null, newName: '' }),
+    onStartAdd: (parentId: string) =>
+      patch({ addingParentId: parentId, editingId: null, confirmDeleteId: null, newName: '' }),
     onNewNameChange: (v: string) => patch({ newName: v }),
     onConfirmAdd: handleCreate,
     onCancelAdd: () => patch({ addingParentId: undefined, newName: '' }),
@@ -158,7 +160,9 @@ function CategoriesPage() {
             </h2>
             <Button
               size="sm"
-              onClick={() => patch({ addingParentId: null, newName: '', editingId: null, confirmDeleteId: null })}
+              onClick={() =>
+                patch({ addingParentId: null, newName: '', editingId: null, confirmDeleteId: null })
+              }
             >
               <Plus className="size-3.5" />
               Add
@@ -263,9 +267,7 @@ function CategoryTree({
               className="flex items-center gap-2 px-4 py-2.5 group"
               style={{ paddingLeft: `${16 + indent}px` }}
             >
-              {depth > 0 && (
-                <span className="text-gray-300 dark:text-gray-600 text-xs shrink-0">└</span>
-              )}
+              {depth > 0 && <span className="text-gray-300 dark:text-gray-600 text-xs shrink-0">└</span>}
 
               {isEditing ? (
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
@@ -418,10 +420,7 @@ function AddForm({
       >
         <Check className="size-4" />
       </button>
-      <button
-        onClick={onCancel}
-        className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-      >
+      <button onClick={onCancel} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
         <X className="size-4" />
       </button>
     </div>

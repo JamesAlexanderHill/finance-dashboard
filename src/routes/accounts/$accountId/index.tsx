@@ -1,18 +1,22 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { ImportWizard } from '~/components/ImportWizard'
-import { BulkImportWizard } from '~/components/BulkImportWizard'
-import InstrumentCard from '~/components/instrument-card'
-import BalanceHistogram, { type InstrumentRates } from '~/components/balance-histogram'
-import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
-import EventPreviewTable from '~/components/event/event-preview-table'
-import { accountService, annotationService, eventService, fileService, instrumentService, rateService, getSession } from '~/db/services'
-import type { TimelineAnnotation } from '~/db/schema'
-import type { RecurrenceRule } from '~/lib/timeline-annotations'
-import { defaultBalanceHistoryRange, serializeRange } from '~/lib/date-range'
-import AccountColorSelect from '~/components/ui/account-color-select'
-import type { AccountColorName } from '~/lib/chart-colors'
+import { ImportWizard, BulkImportWizard, fileService } from '~/features/imports'
+import {
+  InstrumentCard,
+  AccountColorSelect,
+  accountService,
+  instrumentService,
+  rateService,
+} from '~/features/accounts'
+import { BalanceHistogram, type InstrumentRates, annotationService } from '~/features/dashboard'
+import PaginatedTable, { type ColumnDef } from '~/shared/components/ui/table'
+import { EventPreviewTable, eventService } from '~/features/transactions'
+import { getSession } from '~/core/session'
+import type { TimelineAnnotation } from '~/core/database/schema'
+import type { RecurrenceRule } from '~/shared/types/recurrence'
+import { defaultBalanceHistoryRange, serializeRange } from '~/shared/utilities/date-range'
+import type { AccountColorName } from '~/shared/utilities/chart-colors'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -20,35 +24,92 @@ const getData = createServerFn({ method: 'GET' })
   .inputValidator((data: unknown) => data as { accountId: string })
   .handler(async ({ data }) => {
     const session = await getSession()
-    if (!session) return { user: null, workspace: null, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [], balanceHistory: [], chartInstrument: null, rates: {} as InstrumentRates }
+    if (!session)
+      return {
+        user: null,
+        workspace: null,
+        account: null,
+        accountInstruments: [],
+        recentAccountfiles: [],
+        recentAccountEvents: [],
+        balanceHistory: [],
+        chartInstrument: null,
+        rates: {} as InstrumentRates,
+      }
 
     const { ctx, user, workspace } = session
     const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, workspace, account: null, accountInstruments: [], recentAccountfiles: [], recentAccountEvents: [], balanceHistory: [], chartInstrument: null, rates: {} as InstrumentRates }
+    if (!account)
+      return {
+        user,
+        workspace,
+        account: null,
+        accountInstruments: [],
+        recentAccountfiles: [],
+        recentAccountEvents: [],
+        balanceHistory: [],
+        chartInstrument: null,
+        rates: {} as InstrumentRates,
+      }
 
     const accountInstruments = await instrumentService.list(ctx, { accountIds: [data.accountId] })
 
     const chartInstrument =
-      accountInstruments.data.find((i) => i.id === account.defaultInstrumentId) ?? accountInstruments.data[0] ?? null
+      accountInstruments.data.find((i) => i.id === account.defaultInstrumentId) ??
+      accountInstruments.data[0] ??
+      null
 
-    const [recentAccountfiles, recentAccountEvents, balanceHistory, ratesMap, annotations] = await Promise.all([
-      fileService.listByAccount(ctx, data.accountId, { limit: 5 }),
-      eventService.listByAccount(ctx, data.accountId, { limit: 10 }),
-      chartInstrument ? instrumentService.getBalanceHistory(ctx, chartInstrument.id, serializeRange(defaultBalanceHistoryRange()), 'day') : Promise.resolve([]),
-      rateService.getRates(ctx, accountInstruments.data.map((i) => i.id)),
-      annotationService.listByAccount(ctx, data.accountId),
-    ]);
+    const [recentAccountfiles, recentAccountEvents, balanceHistory, ratesMap, annotations] =
+      await Promise.all([
+        fileService.listByAccount(ctx, data.accountId, { limit: 5 }),
+        eventService.listByAccount(ctx, data.accountId, { limit: 10 }),
+        chartInstrument
+          ? instrumentService.getBalanceHistory(
+              ctx,
+              chartInstrument.id,
+              serializeRange(defaultBalanceHistoryRange()),
+              'day',
+            )
+          : Promise.resolve([]),
+        rateService.getRates(
+          ctx,
+          accountInstruments.data.map((i) => i.id),
+        ),
+        annotationService.listByAccount(ctx, data.accountId),
+      ])
 
     const rates: InstrumentRates = Object.fromEntries(
-      Array.from(ratesMap.entries()).map(([id, r]) => [id, { rate: r.rate, asOf: r.asOf.toISOString(), source: r.source }]),
+      Array.from(ratesMap.entries()).map(([id, r]) => [
+        id,
+        { rate: r.rate, asOf: r.asOf.toISOString(), source: r.source },
+      ]),
     )
 
-    return { user, workspace, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument, rates, annotations }
+    return {
+      user,
+      workspace,
+      account,
+      accountInstruments,
+      recentAccountfiles,
+      recentAccountEvents,
+      balanceHistory,
+      chartInstrument,
+      rates,
+      annotations,
+    }
   })
 
 const updateAccount = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { id: string; name: string; defaultInstrumentId: string | null; color: AccountColorName | null })
+  .inputValidator(
+    (data: unknown) =>
+      data as {
+        id: string
+        name: string
+        defaultInstrumentId: string | null
+        color: AccountColorName | null
+      },
+  )
   .handler(async ({ data }) => {
     const session = await getSession()
     if (!session) throw new Error('No user found')
@@ -60,7 +121,16 @@ const updateAccount = createServerFn({ method: 'POST' })
   })
 
 const createAnnotation = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { accountId: string; label: string; date: string; endDate: string | null; recurrence: RecurrenceRule | null })
+  .inputValidator(
+    (data: unknown) =>
+      data as {
+        accountId: string
+        label: string
+        date: string
+        endDate: string | null
+        recurrence: RecurrenceRule | null
+      },
+  )
   .handler(async ({ data }) => {
     const session = await getSession()
     if (!session) throw new Error('No user found')
@@ -74,7 +144,16 @@ const createAnnotation = createServerFn({ method: 'POST' })
   })
 
 const updateAnnotation = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as { id: string; label: string; date: string; endDate: string | null; recurrence: RecurrenceRule | null })
+  .inputValidator(
+    (data: unknown) =>
+      data as {
+        id: string
+        label: string
+        date: string
+        endDate: string | null
+        recurrence: RecurrenceRule | null
+      },
+  )
   .handler(async ({ data }) => {
     const session = await getSession()
     if (!session) throw new Error('No user found')
@@ -116,7 +195,18 @@ function formatDateTime(d: Date | string) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function AccountDetailPage() {
-  const { user, workspace, account, accountInstruments, recentAccountfiles, recentAccountEvents, balanceHistory, chartInstrument, rates, annotations } = Route.useLoaderData()
+  const {
+    user,
+    workspace,
+    account,
+    accountInstruments,
+    recentAccountfiles,
+    recentAccountEvents,
+    balanceHistory,
+    chartInstrument,
+    rates,
+    annotations,
+  } = Route.useLoaderData()
   const { accountId } = Route.useParams()
   const router = useRouter()
   const [editing, setEditing] = React.useState(false)
@@ -170,8 +260,8 @@ function AccountDetailPage() {
     if (a.id === account.defaultInstrumentId) return -1
     if (b.id === account.defaultInstrumentId) return 1
     // Then by balance (higher first)
-    const balA = BigInt(a.balance);
-    const balB = BigInt(b.balance);
+    const balA = BigInt(a.balance)
+    const balB = BigInt(b.balance)
     if (balB > balA) return 1
     if (balB < balA) return -1
     return 0
@@ -179,7 +269,7 @@ function AccountDetailPage() {
 
   const defaultInstrument = accountInstruments.data.find((i) => i.id === account.defaultInstrumentId)
 
-  const filesColumns: ColumnDef<typeof recentAccountfiles.data[number]>[] = [
+  const filesColumns: ColumnDef<(typeof recentAccountfiles.data)[number]>[] = [
     {
       id: 'date',
       header: 'Date',
@@ -195,9 +285,7 @@ function AccountDetailPage() {
       header: 'Filename',
       accessorKey: 'filename',
       cell: ({ row }) => (
-        <span className="text-gray-900 dark:text-gray-100 font-medium">
-          {row.original.filename}
-        </span>
+        <span className="text-gray-900 dark:text-gray-100 font-medium">{row.original.filename}</span>
       ),
     },
     {
@@ -219,7 +307,7 @@ function AccountDetailPage() {
         </div>
       ),
     },
-  ];
+  ]
 
   return (
     <div className="max-w-5xl space-y-8">
@@ -237,9 +325,7 @@ function AccountDetailPage() {
         {editing ? (
           <form onSubmit={handleUpdate} className="space-y-4 max-w-md">
             <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Name
-              </label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Name</label>
               <input
                 name="name"
                 defaultValue={account.name}
@@ -355,7 +441,9 @@ function AccountDetailPage() {
         )}
 
         {annotations.data.length === 0 && !showAnnotationForm ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">No annotations yet. Add one to mark events on the chart.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            No annotations yet. Add one to mark events on the chart.
+          </p>
         ) : (
           <div className="mt-2 space-y-2">
             {annotations.data.map((annotation) => (
@@ -367,8 +455,13 @@ function AccountDetailPage() {
                   <span className="inline-block w-3 border-t border-dashed border-amber-400 dark:border-amber-500" />
                   <span className="font-medium text-gray-900 dark:text-gray-100">{annotation.label}</span>
                   <span className="text-gray-500 dark:text-gray-400">
-                    {new Date(annotation.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    {annotation.endDate && ` – ${new Date(annotation.endDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                    {new Date(annotation.date).toLocaleDateString('en-AU', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                    {annotation.endDate &&
+                      ` – ${new Date(annotation.endDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`}
                   </span>
                   {annotation.recurrence ? (
                     <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
@@ -421,8 +514,8 @@ function AccountDetailPage() {
         ) : (
           <div className="flex gap-4 overflow-x-auto pb-2 -mx-2 px-2">
             {sortedInstruments.map((instrument) => {
-              const balance = instrument.balance;
-              const amountMinor = BigInt(balance ?? '0');
+              const balance = instrument.balance
+              const amountMinor = BigInt(balance ?? '0')
               const neg = amountMinor < 0
               const abs = neg ? -amountMinor : amountMinor
               const isDefault = instrument.id === account.defaultInstrumentId
@@ -531,7 +624,7 @@ function AccountDetailPage() {
         </div>
 
         <EventPreviewTable
-          hideColumns={["account"]} // hide account filter since we are already scoped to an account
+          hideColumns={['account']} // hide account filter since we are already scoped to an account
           events={recentAccountEvents.data}
           onRowClick={(event) => navigate({ search: (prev) => ({ ...prev, viewEvent: event.id }) })}
         />
@@ -564,7 +657,12 @@ function AnnotationForm({
 }: {
   accountId: string
   annotation: TimelineAnnotation | null
-  onSave: (data: { label: string; date: string; endDate: string | null; recurrence: RecurrenceRule | null }) => Promise<void>
+  onSave: (data: {
+    label: string
+    date: string
+    endDate: string | null
+    recurrence: RecurrenceRule | null
+  }) => Promise<void>
   onCancel: () => void
 }) {
   const [submitting, setSubmitting] = React.useState(false)
@@ -592,9 +690,7 @@ function AnnotationForm({
     ? new Date(annotation.date).toISOString().slice(0, 10)
     : new Date().toISOString().slice(0, 10)
 
-  const defaultEndDate = annotation?.endDate
-    ? new Date(annotation.endDate).toISOString().slice(0, 10)
-    : ''
+  const defaultEndDate = annotation?.endDate ? new Date(annotation.endDate).toISOString().slice(0, 10) : ''
 
   const defaultRecurrence = annotation?.recurrence?.frequency ?? ''
 
@@ -612,7 +708,9 @@ function AnnotationForm({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Start date</label>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+            Start date
+          </label>
           <input
             name="date"
             type="date"
@@ -622,7 +720,9 @@ function AnnotationForm({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">End date <span className="font-normal text-gray-400">(optional)</span></label>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+            End date <span className="font-normal text-gray-400">(optional)</span>
+          </label>
           <input
             name="endDate"
             type="date"

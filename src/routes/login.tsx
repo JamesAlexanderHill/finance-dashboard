@@ -1,9 +1,9 @@
 import * as React from 'react'
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { KeyRound } from 'lucide-react'
-import { Button } from '~/components/ui/button'
-import { authClient } from '~/lib/auth-client'
-import { fetchAuthUser } from '~/lib/auth-guard'
+import { Button } from '~/shared/components/ui/button'
+import { authClient } from '~/core/auth/auth-client'
+import { fetchAuthUser } from '~/core/auth/auth-guard'
 
 export const Route = createFileRoute('/login')({
   beforeLoad: async () => {

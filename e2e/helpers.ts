@@ -1,8 +1,7 @@
 import { Client } from 'pg'
 import type { Page } from '@playwright/test'
 
-const TEST_DATABASE_URL =
-  process.env.DATABASE_URL ?? 'postgresql://dev:development@localhost:5332/db_test'
+const TEST_DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://dev:development@localhost:5332/db_test'
 
 async function withDb<T>(fn: (c: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: TEST_DATABASE_URL })
@@ -49,10 +48,9 @@ export function deleteUser(email: string): Promise<void> {
          (SELECT id FROM workspaces WHERE owner_id IN (SELECT id FROM users WHERE email = $1))`,
       [email],
     )
-    await c.query(
-      `DELETE FROM workspace_members WHERE user_id IN (SELECT id FROM users WHERE email = $1)`,
-      [email],
-    )
+    await c.query(`DELETE FROM workspace_members WHERE user_id IN (SELECT id FROM users WHERE email = $1)`, [
+      email,
+    ])
     await c.query(`DELETE FROM workspaces WHERE owner_id IN (SELECT id FROM users WHERE email = $1)`, [email])
     await c.query(`DELETE FROM verifications WHERE value LIKE $1`, [`%${email}%`])
     await c.query(`DELETE FROM users WHERE email = $1`, [email]) // cascades sessions/passkeys/auth_accounts

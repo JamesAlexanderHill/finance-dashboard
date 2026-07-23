@@ -1,5 +1,14 @@
 import { test, expect, type Page } from '@playwright/test'
-import { RANGE_PRESETS, addDays, addMonths, defaultBalanceHistoryRange, formatRange, startOfMonth, todayUTC, toISODate } from '../src/lib/date-range'
+import {
+  RANGE_PRESETS,
+  addDays,
+  addMonths,
+  defaultBalanceHistoryRange,
+  formatRange,
+  startOfMonth,
+  todayUTC,
+  toISODate,
+} from '../src/shared/utilities/date-range'
 
 /**
  * End-to-end tests for the balance history chart's controls: the period
@@ -69,7 +78,10 @@ test.describe('balance history chart controls', () => {
     await gotoAccount(page, 'CommBank')
     const chart = chartSection(page)
 
-    const trigger = chart.getByRole('button', { name: formatRange(defaultBalanceHistoryRange()), exact: true })
+    const trigger = chart.getByRole('button', {
+      name: formatRange(defaultBalanceHistoryRange()),
+      exact: true,
+    })
     await trigger.click()
 
     await page.getByRole('button', { name: 'Last 7 days', exact: true }).click()
@@ -89,7 +101,10 @@ test.describe('balance history chart controls', () => {
     await gotoAccount(page, 'CommBank')
     const chart = chartSection(page)
 
-    const trigger = chart.getByRole('button', { name: formatRange(defaultBalanceHistoryRange()), exact: true })
+    const trigger = chart.getByRole('button', {
+      name: formatRange(defaultBalanceHistoryRange()),
+      exact: true,
+    })
     await trigger.click()
 
     await page.getByRole('button', { name: 'All time', exact: true }).click()
@@ -103,7 +118,10 @@ test.describe('balance history chart controls', () => {
     await gotoAccount(page, 'CommBank')
     const chart = chartSection(page)
 
-    const trigger = chart.getByRole('button', { name: formatRange(defaultBalanceHistoryRange()), exact: true })
+    const trigger = chart.getByRole('button', {
+      name: formatRange(defaultBalanceHistoryRange()),
+      exact: true,
+    })
     await trigger.click()
 
     // Pin the calendar's visible month to the current month via the "This month" preset.
@@ -127,7 +145,10 @@ test.describe('balance history chart controls', () => {
     await gotoAccount(page, 'CommBank')
     const chart = chartSection(page)
 
-    const trigger = chart.getByRole('button', { name: formatRange(defaultBalanceHistoryRange()), exact: true })
+    const trigger = chart.getByRole('button', {
+      name: formatRange(defaultBalanceHistoryRange()),
+      exact: true,
+    })
     await trigger.click()
 
     await page.getByRole('button', { name: 'This month', exact: true }).click()
@@ -151,7 +172,10 @@ test.describe('balance history chart controls', () => {
     await gotoAccount(page, 'CommBank')
     const chart = chartSection(page)
 
-    const trigger = chart.getByRole('button', { name: formatRange(defaultBalanceHistoryRange()), exact: true })
+    const trigger = chart.getByRole('button', {
+      name: formatRange(defaultBalanceHistoryRange()),
+      exact: true,
+    })
     await trigger.click()
 
     // Pin to the current month, then navigate back one month.

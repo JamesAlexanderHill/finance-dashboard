@@ -4,11 +4,11 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
 import { eq } from 'drizzle-orm'
 import { KeyRound, Trash2 } from 'lucide-react'
-import { db } from '~/db'
-import { passkeys as passkeysTable } from '~/db/schema'
-import { getSession } from '~/db/services'
-import { Button } from '~/components/ui/button'
-import { authClient } from '~/lib/auth-client'
+import { db } from '~/core/database'
+import { passkeys as passkeysTable } from '~/core/database/schema'
+import { getSession } from '~/core/session'
+import { Button } from '~/shared/components/ui/button'
+import { authClient } from '~/core/auth'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 

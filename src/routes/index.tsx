@@ -3,26 +3,25 @@ import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useQuery } from '@tanstack/react-query'
 import { ParentSize } from '@visx/responsive'
+import { accountService, instrumentService, rateService } from '~/features/accounts'
 import {
-  accountService,
   annotationService,
-  instrumentService,
-  rateService,
   sankeyService,
-  getSession,
-} from '~/db/services'
-import { formatCurrency } from '~/lib/format-currency'
-import { balanceColorClass } from '~/lib/format'
-import BalanceHistogram, { type InstrumentRates } from '~/components/balance-histogram'
-import { SankeyChart } from '~/components/charts/sankey-chart'
-import type { AccountColorName } from '~/lib/chart-colors'
+  BalanceHistogram,
+  type InstrumentRates,
+  SankeyChart,
+} from '~/features/dashboard'
+import { getSession } from '~/core/session'
+import { formatCurrency } from '~/shared/utilities/format-currency'
+import { balanceColorClass } from '~/shared/utilities/format'
+import type { AccountColorName } from '~/shared/utilities/chart-colors'
 import {
   todayUTC,
   startOfMonth,
   startOfFinancialYear,
   addMonths,
   toISODate,
-} from '~/lib/date-range'
+} from '~/shared/utilities/date-range'
 
 type AccountSummary = { id: string; color: AccountColorName | null }
 
@@ -65,7 +64,16 @@ const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
     ]),
   )
 
-  return { user, workspace, balances, instruments: instrumentsResult.data, accounts, accountNames, rates, annotations }
+  return {
+    user,
+    workspace,
+    balances,
+    instruments: instrumentsResult.data,
+    accounts,
+    accountNames,
+    rates,
+    annotations,
+  }
 })
 
 const getSankeyWidgetData = createServerFn({ method: 'GET' })
@@ -118,17 +126,14 @@ function DashboardPage() {
 
   const { data: sankeyData } = useQuery({
     queryKey: ['sankey-widget', selectedPeriod.start, selectedPeriod.end],
-    queryFn: () =>
-      getSankeyWidgetData({ data: { start: selectedPeriod.start, end: selectedPeriod.end } }),
+    queryFn: () => getSankeyWidgetData({ data: { start: selectedPeriod.start, end: selectedPeriod.end } }),
     enabled: !!user,
   })
 
   if (!user || !workspace) {
     return (
       <div className="max-w-lg mx-auto mt-16 text-center">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
-          No data yet
-        </h1>
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">No data yet</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
           Use the{' '}
           <a href="/dev" className="text-blue-600 dark:text-blue-400 underline">
@@ -168,15 +173,8 @@ function DashboardPage() {
 
       {/* Net worth */}
       <div className="mb-6 p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-          Net Worth ({homeCurrency})
-        </p>
-        <p
-          className={[
-            'text-3xl font-bold tabular-nums',
-            balanceColorClass(netWorthMinor),
-          ].join(' ')}
-        >
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Net Worth ({homeCurrency})</p>
+        <p className={['text-3xl font-bold tabular-nums', balanceColorClass(netWorthMinor)].join(' ')}>
           {formatCurrency(netWorthMinor, {
             exponent: homeMinorUnit,
             ticker: homeCurrency,
@@ -307,20 +305,15 @@ function DashboardPage() {
                 key={accountId}
                 className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4"
               >
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  {accountName}
-                </p>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">{accountName}</p>
                 <div className="space-y-1.5">
                   {accountBalances.map((b) => (
                     <div key={b.instrumentId} className="flex items-center justify-between">
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {b.instrumentTicker}
-                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{b.instrumentTicker}</span>
                       <span
-                        className={[
-                          'text-sm font-medium tabular-nums',
-                          balanceColorClass(b.unitCount),
-                        ].join(' ')}
+                        className={['text-sm font-medium tabular-nums', balanceColorClass(b.unitCount)].join(
+                          ' ',
+                        )}
                       >
                         {formatCurrency(b.unitCount, {
                           exponent: b.instrumentExponent,

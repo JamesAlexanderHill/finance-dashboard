@@ -23,8 +23,7 @@ export default defineConfig({
       // Auth must point at the test server's own origin so magic-link URLs and
       // passkey (WebAuthn) origin/rpID validation line up with the browser.
       BETTER_AUTH_URL: `http://localhost:${PORT}`,
-      BETTER_AUTH_SECRET:
-        process.env.BETTER_AUTH_SECRET ?? 'test-secret-please-change-at-least-32-chars',
+      BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET ?? 'test-secret-please-change-at-least-32-chars',
       PASSKEY_RP_ID: 'localhost',
     },
   },

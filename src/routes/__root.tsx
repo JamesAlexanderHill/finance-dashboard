@@ -18,14 +18,15 @@ import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { LogOut, Settings, ChevronsUpDown, Building2 } from 'lucide-react'
 import * as React from 'react'
 import type { QueryClient } from '@tanstack/react-query'
-import { workspaceService, getSession, setCurrentWorkspaceId } from '~/db/services'
-import { fetchAuthUser } from '~/lib/auth-guard'
-import { authClient } from '~/lib/auth-client'
-import { DefaultCatchBoundary } from '~/components/DefaultCatchBoundary'
-import { NotFound } from '~/components/NotFound'
-import { EventDrawer } from '~/components/event/event-drawer'
-import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from '~/components/ui/select'
-import { Menu, MenuTrigger, MenuPopup, MenuItem, MenuSeparator } from '~/components/ui/menu'
+import { workspaceService } from '~/core/workspaces'
+import { getSession, setCurrentWorkspaceId } from '~/core/session'
+import { fetchAuthUser, authClient } from '~/core/auth'
+import { DefaultCatchBoundary } from '~/shared/components/DefaultCatchBoundary'
+import { NotFound } from '~/shared/components/NotFound'
+import { EventDrawer } from '~/features/transactions'
+import { appNav } from '~/app/features'
+import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from '~/shared/components/ui/select'
+import { Menu, MenuTrigger, MenuPopup, MenuItem, MenuSeparator } from '~/shared/components/ui/menu'
 import appCss from '~/styles/app.css?url'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
@@ -108,19 +109,13 @@ function RootComponent() {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-
-const NAV_LINKS = [
-  { to: '/', label: 'Dashboard', exact: true },
-  { to: '/accounts', label: 'Accounts', exact: false },
-  { to: '/events', label: 'Events', exact: false },
-  { to: '/categories', label: 'Categories', exact: false },
-] as const
-
-const DEV_LINK = { to: '/dev', label: 'Dev Tools', exact: false } as const
+//
+// The link list isn't hardcoded here — each feature contributes its own entry
+// via `register(context)` (see `~/app/features`), so adding or removing a
+// feature automatically adds or removes it from the sidebar.
 
 function Sidebar() {
-  const isDev = import.meta.env.DEV
-  const links = isDev ? [...NAV_LINKS, DEV_LINK] : NAV_LINKS
+  const links = appNav.filter((link) => !link.devOnly || import.meta.env.DEV)
   const router = useRouter()
   const queryClient = useQueryClient()
 
@@ -141,9 +136,7 @@ function Sidebar() {
     <aside className="fixed inset-y-0 left-0 w-56 flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 z-10">
       {/* Logo */}
       <div className="flex items-center gap-2 px-4 h-14 border-b border-gray-200 dark:border-gray-800">
-        <span className="text-base font-semibold text-gray-900 dark:text-gray-100">
-          Finance
-        </span>
+        <span className="text-base font-semibold text-gray-900 dark:text-gray-100">Finance</span>
       </div>
 
       {/* Workspace switcher */}
@@ -213,7 +206,9 @@ function UserMenu({ name, email }: { name: string; email: string }) {
             {initials}
           </span>
           <span className="flex-1 min-w-0">
-            <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">{name}</span>
+            <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+              {name}
+            </span>
             <span className="block truncate text-xs text-gray-500 dark:text-gray-400">{email}</span>
           </span>
           <ChevronsUpDown className="size-4 shrink-0 text-gray-400" />

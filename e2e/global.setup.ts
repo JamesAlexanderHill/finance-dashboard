@@ -2,8 +2,7 @@ import { test as setup } from '@playwright/test'
 import { execSync } from 'node:child_process'
 import { loginWithMagicLink, getSharedWorkspaceId } from './helpers'
 
-const TEST_DATABASE_URL =
-  process.env.DATABASE_URL ?? 'postgresql://dev:development@localhost:5332/db_test'
+const TEST_DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://dev:development@localhost:5332/db_test'
 const AUTH_STATE = 'e2e/.auth/demo-user.json'
 
 /**
