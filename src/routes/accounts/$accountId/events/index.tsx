@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { accountService, eventService, getSession } from '~/db/services'
-import EventTable from '~/components/event/event-table'
+import { accountService } from '~/features/accounts'
+import { getSession } from '~/core/session'
+import { EventTable, eventService } from '~/features/transactions'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 

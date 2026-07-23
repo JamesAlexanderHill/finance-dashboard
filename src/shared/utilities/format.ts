@@ -1,0 +1,89 @@
+import { Instrument } from '~/core/database/schema'
+import scaleUnit from '~/shared/utilities/scale-unit'
+
+type FormatBalanceOptions = {
+  convertTo?: {
+    ticker: string
+    exponent: number
+    conversionRate: number
+  }
+  numberFormatOptions?: Intl.NumberFormatOptions
+}
+
+/**
+ * Returns a formatted string representing a balance for a given instrument,
+ * including the currency symbol (if applicable), and ticker.
+ *
+ * @param balance - A bigint value representing the lowest nominal value (e.g. cents for AUD)
+ * @param instrument - The instrument associated with the balance, which includes the ticker and exponent for formatting
+ *
+ * @returns A formatted string representing the balance
+ *
+ * Examples:
+ * const aud: Instrument = { id: '1', userId: 'u1', accountId: 'a1', name: 'Australian Dollar', ticker: 'AUD', exponent: 2 }
+ * const vhy: Instrument = { id: '2', userId: 'u1', accountId: 'a1', name: 'Vanguard High Yield ETF', ticker: 'VHY', exponent: 0 }
+ * formatBalance(12345n, aud) => "AUD 123.45"
+ * formatBalance(-6789n, aud) => "-AUD 67.89"
+ * formatBalance(1000n, vhy) => "VHY 1000"
+ * formatBalance(-500n, vhy) => "-VHY 500"
+ */
+export function formatBalance(
+  balance: bigint,
+  instrument: Instrument,
+  options?: FormatBalanceOptions,
+): string {
+  // split options
+  const { convertTo, numberFormatOptions = {} } = options || {}
+
+  // UI-only: convert to Number for toFixed/adaptive rules
+  const major = scaleUnit(balance, instrument.exponent)
+  // if needed, convert to another currency for display purposes (e.g. show VHY balance in AUD)
+  const convertedMajor = major * (convertTo?.conversionRate || 1)
+
+  try {
+    const formatter = new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: convertTo?.ticker ?? instrument.ticker,
+      currencyDisplay: 'code',
+      minimumFractionDigits: convertTo?.exponent ?? instrument.exponent,
+      maximumFractionDigits: convertTo?.exponent ?? instrument.exponent,
+      ...numberFormatOptions,
+    })
+    return formatter.format(convertedMajor)
+  } catch (err) {
+    console.error('Error formatting currency for UI:', err)
+
+    // Fallback to a simple format if Intl fails (e.g., due to unsupported currency code)
+    return `${convertTo?.ticker ?? instrument.ticker} ${convertedMajor.toFixed(convertTo?.exponent ?? instrument.exponent)}`
+  }
+}
+
+/**
+ * Returns a formatted string representing a change in balance for a given instrument,
+ * including the appropriate sign, currency symbol (if applicable), and ticker.
+ *
+ * @param unitCount - A bigint value representing the lowest nominal value (e.g. cents for AUD)
+ * @param instrument - The instrument associated with the unit count, which includes the ticker and exponent for formatting
+ * @returns A formatted string representing the change, prefixed with '+' for positive changes and '-' for negative changes
+ *
+ * Examples:
+ * const aud: Instrument = { id: '1', userId: 'u1', accountId: 'a1', name: 'Australian Dollar', ticker: 'AUD', exponent: 2 }
+ * const vhy: Instrument = { id: '2', userId: 'u1', accountId: 'a1', name: 'Vanguard High Yield ETF', ticker: 'VHY', exponent: 0 }
+ * formatChange(12345n, aud) => "+AUD 123.45"
+ * formatChange(-6789n, aud) => "-AUD 67.89"
+ * formatChange(1000n, vhy) => "+VHY 1000"
+ * formatChange(-500n, vhy) => "-VHY 500"
+ */
+export function formatChange(unitCount: bigint, instrument: Instrument): string {
+  return formatBalance(unitCount, instrument, { numberFormatOptions: { signDisplay: 'exceptZero' } })
+}
+
+/**
+ * Returns Tailwind text color classes for a balance: green when positive,
+ * red when negative, and the neutral gray/foreground color when zero.
+ */
+export function balanceColorClass(value: bigint | number): string {
+  if (value > 0) return 'text-green-600 dark:text-green-400'
+  if (value < 0) return 'text-red-600 dark:text-red-400'
+  return 'text-gray-900 dark:text-gray-100'
+}

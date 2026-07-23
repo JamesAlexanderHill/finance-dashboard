@@ -48,7 +48,9 @@ test.describe('core flows', () => {
     await page.waitForLoadState('networkidle')
 
     // Click the first event row in the "Recent Events" table
-    const eventsSection = page.locator('section', { has: page.getByRole('heading', { name: 'Recent Events' }) })
+    const eventsSection = page.locator('section', {
+      has: page.getByRole('heading', { name: 'Recent Events' }),
+    })
     await eventsSection.getByRole('row').nth(1).click()
 
     await expect(page.getByRole('dialog')).toBeVisible()

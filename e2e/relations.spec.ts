@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test'
 /**
  * End-to-end tests for transaction relations — linking events as internal
  * transfers, reimbursements, or refunds from the event drawer. The netting maths
- * is covered by unit tests (src/db/services/service/__tests__/relation-netting.test.ts);
+ * is covered by unit tests (src/features/relations/domain/__tests__/relation-netting.test.ts);
  * here we exercise the drawer UI against the seeded sample data.
  */
 test.use({ storageState: 'e2e/.auth/demo-user.json' })
@@ -34,7 +34,10 @@ test.describe('transaction relations', () => {
     await page.waitForLoadState('networkidle')
 
     // Open the Wise side of a seeded CommBank → Wise transfer (the inflow).
-    await page.getByRole('row', { name: /Received from CommBank/ }).first().click()
+    await page
+      .getByRole('row', { name: /Received from CommBank/ })
+      .first()
+      .click()
     await expect(page.getByRole('dialog')).toBeVisible()
 
     // The inflow is the child of the transfer, shown as "Transfer from".

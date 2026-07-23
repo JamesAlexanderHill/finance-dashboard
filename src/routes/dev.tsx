@@ -2,7 +2,7 @@ import * as React from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { eq, count } from 'drizzle-orm'
-import { db } from '~/db'
+import { db } from '~/core/database'
 import {
   users,
   workspaces,
@@ -11,20 +11,23 @@ import {
   legs,
   instrumentCheckpoints,
   instrumentRates,
-} from '~/db/schema'
+} from '~/core/database/schema'
+import { checkpointService } from '~/features/accounts/domain/checkpoint-service'
+import { rateService } from '~/features/accounts/domain/rate-service'
+import { instrumentService } from '~/features/accounts/domain/instrument-service'
+import { createUserWithPersonalWorkspace } from '~/core/workspaces'
+import { getSession } from '~/core/session'
+import { importService } from '~/features/imports/domain/import-service'
+import type { InstrumentDraft } from '~/features/imports/domain/import-service'
+import { parseCanonicalCsv } from '~/features/imports/infrastructure/parsers/canonical'
 import {
-  checkpointService,
-  rateService,
-  createUserWithPersonalWorkspace,
-  getSession,
-  importService,
-  instrumentService,
-} from '~/db/services'
-import type { InstrumentDraft } from '~/db/services'
-import { parseCanonicalCsv } from '~/importers/canonical'
-import { clearAllData, seedBase, seedSampleEvents } from '~/lib/seed'
-import { exportWorkspaceSnapshot, importWorkspaceSnapshot } from '~/lib/snapshot'
-import type { WorkspaceSnapshot } from '~/lib/snapshot'
+  clearAllData,
+  seedBase,
+  seedSampleEvents,
+  exportWorkspaceSnapshot,
+  importWorkspaceSnapshot,
+} from '~/features/dev-tools'
+import type { WorkspaceSnapshot } from '~/features/dev-tools'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -59,7 +62,10 @@ const devSeedSampleEvents = createServerFn({ method: 'POST' }).handler(async () 
     .limit(1)
   if (!sharedWorkspace) return { ok: false, message: 'No shared workspace found. Run "Seed Base" first.' }
 
-  const [{ n: eventCount }] = await db.select({ n: count() }).from(events).where(eq(events.workspaceId, sharedWorkspace.id))
+  const [{ n: eventCount }] = await db
+    .select({ n: count() })
+    .from(events)
+    .where(eq(events.workspaceId, sharedWorkspace.id))
   if (Number(eventCount) > 0) return { ok: false, message: 'Events already exist. Clear data and re-seed.' }
 
   await seedSampleEvents(sharedWorkspace.id)
@@ -85,9 +91,15 @@ const getDevStatus = createServerFn({ method: 'GET' }).handler(async () => {
     db.select({ n: count() }).from(events).where(eq(events.workspaceId, workspace.id)),
     db.select({ n: count() }).from(legs).where(eq(legs.workspaceId, workspace.id)),
     db.select({ n: count() }).from(accounts).where(eq(accounts.workspaceId, workspace.id)),
-    db.select({ n: count() }).from(instrumentCheckpoints).where(eq(instrumentCheckpoints.workspaceId, workspace.id)),
+    db
+      .select({ n: count() })
+      .from(instrumentCheckpoints)
+      .where(eq(instrumentCheckpoints.workspaceId, workspace.id)),
     db.select({ n: count() }).from(instrumentRates).where(eq(instrumentRates.workspaceId, workspace.id)),
-    db.select({ id: accounts.id, name: accounts.name }).from(accounts).where(eq(accounts.workspaceId, workspace.id)),
+    db
+      .select({ id: accounts.id, name: accounts.name })
+      .from(accounts)
+      .where(eq(accounts.workspaceId, workspace.id)),
   ])
 
   return {
@@ -312,8 +324,10 @@ function DevPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     const safeName =
-      (r.workspaceName || 'workspace').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() ||
-      'workspace'
+      (r.workspaceName || 'workspace')
+        .replace(/[^a-z0-9]+/gi, '-')
+        .replace(/^-+|-+$/g, '')
+        .toLowerCase() || 'workspace'
     a.href = url
     a.download = `snapshot-${safeName}-${new Date().toISOString().slice(0, 10)}.json`
     document.body.appendChild(a)
@@ -352,18 +366,21 @@ function DevPage() {
   const actions = [
     {
       label: 'Clear all data',
-      description: 'Delete everything — users, workspaces, accounts, events, legs, files, checkpoints — in dependency order.',
+      description:
+        'Delete everything — users, workspaces, accounts, events, legs, files, checkpoints — in dependency order.',
       action: clearAction,
       danger: true,
     },
     {
       label: 'Seed base',
-      description: 'Create Demo User A & B, each with a personal workspace, plus a shared "Joint Finances" workspace (A as owner, B as member).',
+      description:
+        'Create Demo User A & B, each with a personal workspace, plus a shared "Joint Finances" workspace (A as owner, B as member).',
       action: seedBaseAction,
     },
     {
       label: 'Seed sample events',
-      description: 'Create 4 accounts (CommBank, AMEX, Wise, Vanguard), 7 instruments, 12 categories, and ~30 events spanning Aug 2025–May 2026. Covers all 6 event types, legs with categories & descriptions, lineItems, 3 transfer pairs, and a simulated import file.',
+      description:
+        'Create 4 accounts (CommBank, AMEX, Wise, Vanguard), 7 instruments, 12 categories, and ~30 events spanning Aug 2025–May 2026. Covers all 6 event types, legs with categories & descriptions, lineItems, 3 transfer pairs, and a simulated import file.',
       action: seedEventsAction,
     },
     {
@@ -373,7 +390,8 @@ function DevPage() {
     },
     {
       label: 'Recompute rates',
-      description: 'Rebuild transaction-derived currency rates for every instrument (manual rates are preserved).',
+      description:
+        'Rebuild transaction-derived currency rates for every instrument (manual rates are preserved).',
       action: recomputeRatesAction,
     },
   ]
@@ -384,12 +402,10 @@ function DevPage() {
       <div className="mb-6 flex items-start gap-3 p-4 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-xl">
         <span className="text-yellow-600 dark:text-yellow-400 text-lg">⚠</span>
         <div>
-          <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-300">
-            Dev tools only
-          </p>
+          <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-300">Dev tools only</p>
           <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
-            This page is only visible in development mode. All actions are destructive or
-            irreversible and should not be used in production.
+            This page is only visible in development mode. All actions are destructive or irreversible and
+            should not be used in production.
           </p>
         </div>
       </div>
@@ -466,7 +482,8 @@ function DevPage() {
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
           <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Create additional user</p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
-            Create a new user with their own personal workspace. Use this to test scenarios beyond the two demo users seeded by "Seed Base".
+            Create a new user with their own personal workspace. Use this to test scenarios beyond the two
+            demo users seeded by "Seed Base".
           </p>
           <div className="flex flex-wrap gap-2">
             <input
@@ -517,8 +534,8 @@ function DevPage() {
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
           <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Import canonical CSV</p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
-            Quick-import a CSV already in the canonical event/leg format into an account, skipping the
-            wizard. New instruments default to exponent 2.
+            Quick-import a CSV already in the canonical event/leg format into an account, skipping the wizard.
+            New instruments default to exponent 2.
           </p>
           <div className="space-y-2">
             <div className="flex flex-wrap gap-2">
@@ -584,11 +601,13 @@ function DevPage() {
 
         {/* Export / import workspace snapshot */}
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Export / import workspace snapshot</p>
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            Export / import workspace snapshot
+          </p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
             Download the current workspace's full data graph (accounts, instruments, events, legs, categories,
-            line items, checkpoints, rates, annotations) as a JSON file, or restore it from one. Importing wipes
-            the current workspace before restoring.
+            line items, checkpoints, rates, annotations) as a JSON file, or restore it from one. Importing
+            wipes the current workspace before restoring.
           </p>
           <div className="flex flex-wrap gap-2">
             <button
@@ -646,9 +665,7 @@ function DevPage() {
 function Stat({ label, value }: { label: string; value: number | undefined }) {
   return (
     <div>
-      <p className="text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums">
-        {value ?? '—'}
-      </p>
+      <p className="text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums">{value ?? '—'}</p>
       <p className="text-xs text-gray-400 dark:text-gray-500">{label}</p>
     </div>
   )

@@ -23,11 +23,18 @@ export default defineConfig({
     // executes in the browser — this keeps Rollup happy at build time.
     // The ssr.external config below overrides this for the server environment.
     alias: {
-      pg: path.resolve(__dirname, 'src/db/browser-stub.ts'),
+      pg: path.resolve(__dirname, 'src/core/database/browser-stub.ts'),
     },
   },
   ssr: {
     // In the SSR/server environment, use the real pg package (not the alias).
-    external: ['pg', 'drizzle-orm', 'drizzle-orm/node-postgres', 'uuidv7', 'better-auth', '@better-auth/passkey'],
+    external: [
+      'pg',
+      'drizzle-orm',
+      'drizzle-orm/node-postgres',
+      'uuidv7',
+      'better-auth',
+      '@better-auth/passkey',
+    ],
   },
 })

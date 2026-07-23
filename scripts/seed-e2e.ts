@@ -8,7 +8,7 @@
  * Prints the shared workspace id (which holds the sample accounts/events) as
  * JSON on the last line so callers can select it.
  */
-import { clearAllData, seedBase, seedSampleEvents } from '~/lib/seed'
+import { clearAllData, seedBase, seedSampleEvents } from '~/features/dev-tools'
 
 await clearAllData()
 const { workspaceId } = await seedBase()

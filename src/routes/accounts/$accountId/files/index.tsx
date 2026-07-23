@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { accountService, fileService, getSession } from '~/db/services'
-import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
+import { accountService } from '~/features/accounts'
+import { fileService } from '~/features/imports'
+import { getSession } from '~/core/session'
+import PaginatedTable, { type ColumnDef } from '~/shared/components/ui/table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -87,7 +89,7 @@ function FilesPage() {
     )
   }
 
-  const columns: ColumnDef<typeof accountFiles.data[0]>[] = [
+  const columns: ColumnDef<(typeof accountFiles.data)[0]>[] = [
     {
       id: 'date',
       header: 'File Date/Time',
@@ -103,9 +105,7 @@ function FilesPage() {
       header: 'File Name',
       accessorKey: 'filename',
       cell: ({ row }) => (
-        <span className="text-gray-900 dark:text-gray-100 font-medium">
-          {row.original.filename}
-        </span>
+        <span className="text-gray-900 dark:text-gray-100 font-medium">{row.original.filename}</span>
       ),
     },
     {
@@ -113,9 +113,7 @@ function FilesPage() {
       header: 'Imported',
       accessorKey: 'importedCount',
       cell: ({ getValue }) => (
-        <span className="text-green-700 dark:text-green-400 tabular-nums">
-          {getValue() as number}
-        </span>
+        <span className="text-green-700 dark:text-green-400 tabular-nums">{getValue() as number}</span>
       ),
     },
     {
@@ -123,9 +121,7 @@ function FilesPage() {
       header: 'Skipped',
       accessorKey: 'skippedCount',
       cell: ({ getValue }) => (
-        <span className="text-gray-500 dark:text-gray-400 tabular-nums">
-          {getValue() as number}
-        </span>
+        <span className="text-gray-500 dark:text-gray-400 tabular-nums">{getValue() as number}</span>
       ),
     },
     {

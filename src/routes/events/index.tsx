@@ -1,14 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import EventTable from '~/components/event/event-table'
-import { eventService, accountService, getSession } from '~/db/services'
+import { EventTable, eventService } from '~/features/transactions'
+import { accountService } from '~/features/accounts'
+import { getSession } from '~/core/session'
 
 const DEFAULT_PAGE_SIZE = 10
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getData = createServerFn({ method: 'GET' })
-  .inputValidator((data: unknown) => data as { page?: number, pageSize?: number, accountId?: string })
+  .inputValidator((data: unknown) => data as { page?: number; pageSize?: number; accountId?: string })
   .handler(async ({ data }) => {
     const session = await getSession()
     if (!session) return { user: null, events: [], accounts: [] }

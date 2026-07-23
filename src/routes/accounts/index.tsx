@@ -1,46 +1,50 @@
 import * as React from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
-import { accountService, instrumentService, fileService, getSession } from '~/db/services'
-import Badge from '~/components/ui/badge'
-import { formatBalance } from '~/lib/format'
+import PaginatedTable, { type ColumnDef } from '~/shared/components/ui/table'
+import { accountService, instrumentService } from '~/features/accounts'
+import { fileService } from '~/features/imports'
+import { getSession } from '~/core/session'
+import Badge from '~/shared/components/ui/badge'
+import { formatBalance } from '~/shared/utilities/format'
 
 const DEFAULT_PAGE_SIZE = 10
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getData = createServerFn({ method: 'GET' })
-  .inputValidator((data: unknown) => data as { page?: number, pageSize?: number })
-  .handler(async ({data}) => {
-  const session = await getSession()
-  if (!session) return { user: null, accounts: [] }
+  .inputValidator((data: unknown) => data as { page?: number; pageSize?: number })
+  .handler(async ({ data }) => {
+    const session = await getSession()
+    if (!session) return { user: null, accounts: [] }
 
-  // paginated events
-  const page = data.page ?? 1
-  const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
-  const offset = (page - 1) * pageSize
+    // paginated events
+    const page = data.page ?? 1
+    const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
+    const offset = (page - 1) * pageSize
 
-  const ctx = session.ctx
+    const ctx = session.ctx
 
-  const workspaceAccounts = await accountService.list(ctx, { limit: pageSize, offset })
-  const accountIds = workspaceAccounts.data.map((a) => a.id)
+    const workspaceAccounts = await accountService.list(ctx, { limit: pageSize, offset })
+    const accountIds = workspaceAccounts.data.map((a) => a.id)
 
-  const [accountInstruments, fileCounts] = await Promise.all([
-    instrumentService.list(ctx, { accountIds }),
-    fileService.countsByAccount(ctx, accountIds),
-  ])
+    const [accountInstruments, fileCounts] = await Promise.all([
+      instrumentService.list(ctx, { accountIds }),
+      fileService.countsByAccount(ctx, accountIds),
+    ])
 
-  const fileCountMap = new Map(fileCounts.map((r) => [r.accountId, r.count]))
-  const accountMetaMap = new Map(workspaceAccounts.data.map((account) => {
-    const instrumentCount = accountInstruments.data.filter((i) => i.accountId === account.id).length
-    const importCount = fileCountMap.get(account.id) ?? 0
-    return [account.id, { instrumentCount, importCount }]
-  }))
-  const accountInstrumentsMap = new Map(accountInstruments.data.map((i) => [i.id, i]))
+    const fileCountMap = new Map(fileCounts.map((r) => [r.accountId, r.count]))
+    const accountMetaMap = new Map(
+      workspaceAccounts.data.map((account) => {
+        const instrumentCount = accountInstruments.data.filter((i) => i.accountId === account.id).length
+        const importCount = fileCountMap.get(account.id) ?? 0
+        return [account.id, { instrumentCount, importCount }]
+      }),
+    )
+    const accountInstrumentsMap = new Map(accountInstruments.data.map((i) => [i.id, i]))
 
-  return { user: session.user, accounts: workspaceAccounts, accountMetaMap, accountInstrumentsMap }
-})
+    return { user: session.user, accounts: workspaceAccounts, accountMetaMap, accountInstrumentsMap }
+  })
 
 const createAccount = createServerFn({ method: 'POST' })
   .inputValidator((data: unknown) => data as { name: string })
@@ -61,8 +65,7 @@ export const Route = createFileRoute('/accounts/')({
     pageSize: typeof search.pageSize === 'number' ? search.pageSize : DEFAULT_PAGE_SIZE,
   }),
   loaderDeps: ({ search }) => ({ page: search.page, pageSize: search.pageSize }),
-  loader: ({ deps }) =>
-    getData({ data: { page: deps.page, pageSize: deps.pageSize } }),
+  loader: ({ deps }) => getData({ data: { page: deps.page, pageSize: deps.pageSize } }),
   component: AccountsPage,
 })
 
@@ -93,15 +96,13 @@ function AccountsPage() {
     router.invalidate()
   }
 
-  const columns: ColumnDef<typeof accounts.data[0]>[] = [
+  const columns: ColumnDef<(typeof accounts.data)[0]>[] = [
     {
       id: 'name',
       header: 'Account Name',
       accessorKey: 'name',
       cell: ({ row }) => (
-        <span className="text-gray-900 dark:text-gray-100 font-medium">
-          {row.original.name}
-        </span>
+        <span className="text-gray-900 dark:text-gray-100 font-medium">{row.original.name}</span>
       ),
     },
     {
@@ -109,27 +110,29 @@ function AccountsPage() {
       header: 'Balances',
       cell: ({ row }) => {
         if (row.original.instruments.length === 0) {
-          return (<span className="text-gray-400 dark:text-gray-500 text-xs">—</span>)
+          return <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
         }
 
         return (
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             {row.original.instruments.map((instrument) => {
-              const balance = BigInt(accountInstrumentsMap.get(instrument.id)?.balance ?? '0');
+              const balance = BigInt(accountInstrumentsMap.get(instrument.id)?.balance ?? '0')
               const colorMap = {
                 [1]: 'green',
                 [0]: 'gray',
                 [-1]: 'red',
-              } as Record<number, 'green' | 'red' | 'gray'>;
-              const color = colorMap[Math.sign(Number(balance))];
+              } as Record<number, 'green' | 'red' | 'gray'>
+              const color = colorMap[Math.sign(Number(balance))]
 
               return (
-                <Badge key={instrument.id} color={color}>{formatBalance(balance, instrument)}</Badge>
+                <Badge key={instrument.id} color={color}>
+                  {formatBalance(balance, instrument)}
+                </Badge>
               )
             })}
           </div>
         )
-      }
+      },
     },
     {
       id: 'imports',
@@ -158,9 +161,9 @@ function AccountsPage() {
         const defaultInstrument = row.original.defaultInstrumentId
           ? accountInstrumentsMap.get(row.original.defaultInstrumentId)
           : null
-        
+
         if (!defaultInstrument) {
-          return (<span className="text-gray-400 dark:text-gray-500 text-xs">—</span>)
+          return <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
         }
 
         return (
@@ -168,9 +171,9 @@ function AccountsPage() {
             {defaultInstrument?.ticker}
           </span>
         )
-      }
+      },
     },
-  ];
+  ]
 
   return (
     <div className="max-w-5xl">
@@ -186,11 +189,7 @@ function AccountsPage() {
 
       {/* Create form */}
       {showCreate && (
-        <AccountForm
-          onSubmit={handleCreate}
-          onCancel={() => setShowCreate(false)}
-          submitLabel="Create"
-        />
+        <AccountForm onSubmit={handleCreate} onCancel={() => setShowCreate(false)} submitLabel="Create" />
       )}
 
       <PaginatedTable
@@ -198,7 +197,9 @@ function AccountsPage() {
         columns={columns}
         pagination={accounts.pagination}
         hidePagination={accounts.pagination.total < accounts.pagination.limit}
-        onRowClick={(account) => router.navigate({ to: '/accounts/$accountId', params: { accountId: account.id } })}
+        onRowClick={(account) =>
+          router.navigate({ to: '/accounts/$accountId', params: { accountId: account.id } })
+        }
         getRowId={(row) => row.id}
       >
         <p>No accounts yet.</p>
@@ -223,9 +224,7 @@ function AccountForm({
   return (
     <form onSubmit={onSubmit} className="mb-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3">
       <div>
-        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-          Name
-        </label>
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Name</label>
         <input
           name="name"
           defaultValue={defaultName}

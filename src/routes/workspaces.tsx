@@ -2,7 +2,8 @@ import * as React from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { createServerFn } from '@tanstack/react-start'
-import { workspaceService, getSession, setCurrentWorkspaceId } from '~/db/services'
+import { workspaceService } from '~/core/workspaces'
+import { getSession, setCurrentWorkspaceId } from '~/core/session'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -58,7 +59,16 @@ const addMember = createServerFn({ method: 'POST' })
     if (!session) throw new Error('No user found')
     try {
       const user = await workspaceService.addMember(session.ctx, data.email)
-      return { ok: true as const, member: { userId: user.id, name: user.name, email: user.email, role: 'member' as const, createdAt: new Date() } }
+      return {
+        ok: true as const,
+        member: {
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          role: 'member' as const,
+          createdAt: new Date(),
+        },
+      }
     } catch (err) {
       return { ok: false as const, message: err instanceof Error ? err.message : String(err) }
     }
@@ -179,14 +189,14 @@ function WorkspacesPage() {
       {/* ── Current workspace settings ── */}
       {currentWorkspace && (
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            Current workspace
-          </h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Current workspace</h2>
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
             {editingSettings ? (
               <form onSubmit={handleUpdateSettings} className="p-4 space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Name</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Name
+                  </label>
                   <input
                     name="name"
                     required
@@ -194,9 +204,7 @@ function WorkspacesPage() {
                     className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-                {settingsError && (
-                  <p className="text-xs text-red-600 dark:text-red-400">{settingsError}</p>
-                )}
+                {settingsError && <p className="text-xs text-red-600 dark:text-red-400">{settingsError}</p>}
                 <div className="flex gap-2">
                   <button
                     type="submit"
@@ -206,7 +214,10 @@ function WorkspacesPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setEditingSettings(false); setSettingsError(null) }}
+                    onClick={() => {
+                      setEditingSettings(false)
+                      setSettingsError(null)
+                    }}
                     className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
                   >
                     Cancel
@@ -215,7 +226,9 @@ function WorkspacesPage() {
               </form>
             ) : (
               <div className="flex items-center justify-between gap-4 px-4 py-3">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{currentWorkspace.name}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {currentWorkspace.name}
+                </p>
                 {isOwner && (
                   <button
                     onClick={() => setEditingSettings(true)}
@@ -230,7 +243,9 @@ function WorkspacesPage() {
             {/* Members */}
             <div className="border-t border-gray-100 dark:border-gray-800">
               <div className="px-4 py-2">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Members</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Members
+                </p>
               </div>
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
                 {members.map((member) => (
@@ -339,7 +354,9 @@ function WorkspacesPage() {
             return (
               <div key={workspace.id} className="flex items-center justify-between gap-4 px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{workspace.name}</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {workspace.name}
+                  </span>
                   {workspace.role === 'owner' && (
                     <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
                       Owner

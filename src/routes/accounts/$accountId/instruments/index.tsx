@@ -1,10 +1,11 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { accountService, instrumentService, getSession } from '~/db/services'
-import { formatCurrency } from '~/lib/format-currency'
-import { balanceColorClass } from '~/lib/format'
-import PaginatedTable, { type ColumnDef } from '~/components/ui/table'
+import { accountService, instrumentService } from '~/features/accounts'
+import { getSession } from '~/core/session'
+import { formatCurrency } from '~/shared/utilities/format-currency'
+import { balanceColorClass } from '~/shared/utilities/format'
+import PaginatedTable, { type ColumnDef } from '~/shared/components/ui/table'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
@@ -33,12 +34,15 @@ const getInstrumentsData = createServerFn({ method: 'GET' })
   })
 
 const createInstrument = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as {
-    accountId: string
-    ticker: string
-    name: string
-    exponent: number
-  })
+  .inputValidator(
+    (data: unknown) =>
+      data as {
+        accountId: string
+        ticker: string
+        name: string
+        exponent: number
+      },
+  )
   .handler(async ({ data }) => {
     const session = await getSession()
     if (!session) throw new Error('No user found')
@@ -124,7 +128,7 @@ function InstrumentsPage() {
     return 0
   })
 
-  const columns: ColumnDef<typeof accountInstruments.data[0]>[] = [
+  const columns: ColumnDef<(typeof accountInstruments.data)[0]>[] = [
     {
       id: 'instrument',
       header: 'Instrument',
@@ -151,12 +155,7 @@ function InstrumentsPage() {
       cell: ({ row }) => {
         const unitCount = BigInt(row.original.balance)
         return (
-          <span
-            className={[
-              'font-medium tabular-nums',
-              balanceColorClass(unitCount),
-            ].join(' ')}
-          >
+          <span className={['font-medium tabular-nums', balanceColorClass(unitCount)].join(' ')}>
             {formatCurrency(unitCount, {
               exponent: row.original.exponent,
               ticker: row.original.ticker,
@@ -165,7 +164,7 @@ function InstrumentsPage() {
         )
       },
     },
-  ];
+  ]
 
   return (
     <div className="max-w-5xl">
@@ -191,7 +190,8 @@ function InstrumentsPage() {
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Instruments</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500 dark:text-gray-400">
-            {accountInstruments.pagination.total} instrument{accountInstruments.pagination.total !== 1 ? 's' : ''}
+            {accountInstruments.pagination.total} instrument
+            {accountInstruments.pagination.total !== 1 ? 's' : ''}
           </span>
           <button
             onClick={() => setShowCreate(true)}
@@ -218,9 +218,7 @@ function InstrumentsPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Name
-              </label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Name</label>
               <input
                 name="name"
                 required

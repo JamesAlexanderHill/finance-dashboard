@@ -1,29 +1,59 @@
 import * as React from 'react'
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { formatCurrency, formatMajorAmount } from '~/lib/format-currency'
-import { balanceColorClass } from '~/lib/format'
-import scaleUnit from '~/lib/scale-unit'
-import Badge from '~/components/ui/badge'
-import { accountService, eventService, instrumentService, rateService, getSession } from '~/db/services'
-import EventTable from '~/components/event/event-table'
+import { formatCurrency, formatMajorAmount } from '~/shared/utilities/format-currency'
+import { balanceColorClass } from '~/shared/utilities/format'
+import scaleUnit from '~/shared/utilities/scale-unit'
+import Badge from '~/shared/components/ui/badge'
+import { accountService, instrumentService, rateService } from '~/features/accounts'
+import { getSession } from '~/core/session'
+import { EventTable, eventService } from '~/features/transactions'
 
 // ─── Server functions ─────────────────────────────────────────────────────────
 
 const getInstrumentDetailData = createServerFn({ method: 'GET' })
-  .inputValidator((data: unknown) => data as { page?: number, pageSize?: number, accountId: string; instrumentId: string })
+  .inputValidator(
+    (data: unknown) => data as { page?: number; pageSize?: number; accountId: string; instrumentId: string },
+  )
   .handler(async ({ data }) => {
     const session = await getSession()
-    if (!session) return { user: null, workspace: null, account: null, instrument: null, balance: BigInt(0), instrumentEvents: null, rate: null }
+    if (!session)
+      return {
+        user: null,
+        workspace: null,
+        account: null,
+        instrument: null,
+        balance: BigInt(0),
+        instrumentEvents: null,
+        rate: null,
+      }
 
     const { ctx, user, workspace } = session
     const account = await accountService.getById(ctx, data.accountId)
 
-    if (!account) return { user, workspace, account: null, instrument: null, balance: BigInt(0), instrumentEvents: null, rate: null }
+    if (!account)
+      return {
+        user,
+        workspace,
+        account: null,
+        instrument: null,
+        balance: BigInt(0),
+        instrumentEvents: null,
+        rate: null,
+      }
 
     const instrument = await instrumentService.getById(ctx, data.instrumentId)
 
-    if (!instrument) return { user, workspace, account, instrument: null, balance: BigInt(0), instrumentEvents: null, rate: null }
+    if (!instrument)
+      return {
+        user,
+        workspace,
+        account,
+        instrument: null,
+        balance: BigInt(0),
+        instrumentEvents: null,
+        rate: null,
+      }
 
     const page = data.page ?? 1
     const pageSize = data.pageSize ?? DEFAULT_PAGE_SIZE
@@ -35,17 +65,22 @@ const getInstrumentDetailData = createServerFn({ method: 'GET' })
       rateService.getRate(ctx, data.instrumentId),
     ])
 
-    const rate = currentRate ? { rate: currentRate.rate, asOf: currentRate.asOf.toISOString(), source: currentRate.source } : null
+    const rate = currentRate
+      ? { rate: currentRate.rate, asOf: currentRate.asOf.toISOString(), source: currentRate.source }
+      : null
 
     return { user, workspace, account, instrument, balance, instrumentEvents, rate }
   })
 
 const updateInstrument = createServerFn({ method: 'POST' })
-  .inputValidator((data: unknown) => data as {
-    instrumentId: string
-    name: string
-    exponent: number
-  })
+  .inputValidator(
+    (data: unknown) =>
+      data as {
+        instrumentId: string
+        name: string
+        exponent: number
+      },
+  )
   .handler(async ({ data }) => {
     const session = await getSession()
     if (!session) throw new Error('No user found')
@@ -78,7 +113,14 @@ export const Route = createFileRoute('/accounts/$accountId/instruments/$instrume
   }),
   loaderDeps: ({ search }) => ({ page: search.page, pageSize: search.pageSize }),
   loader: ({ params, deps }) =>
-    getInstrumentDetailData({ data: { accountId: params.accountId, instrumentId: params.instrumentId, page: deps.page, pageSize: deps.pageSize } }),
+    getInstrumentDetailData({
+      data: {
+        accountId: params.accountId,
+        instrumentId: params.instrumentId,
+        page: deps.page,
+        pageSize: deps.pageSize,
+      },
+    }),
   component: InstrumentDetailPage,
 })
 
@@ -199,7 +241,10 @@ function InstrumentDetailPage() {
         </div>
 
         {editing ? (
-          <form onSubmit={handleUpdate} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3 max-w-md">
+          <form
+            onSubmit={handleUpdate}
+            className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-3 max-w-md"
+          >
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Code (read-only)
@@ -211,9 +256,7 @@ function InstrumentDetailPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Name
-              </label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Name</label>
               <input
                 name="name"
                 defaultValue={instrument.name}
@@ -254,23 +297,18 @@ function InstrumentDetailPage() {
           <div className="flex items-start justify-between">
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{instrument.ticker}</h1>
-                {account.defaultInstrumentId === instrument.id ? (<Badge>Default</Badge>) : null}
+                <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+                  {instrument.ticker}
+                </h1>
+                {account.defaultInstrumentId === instrument.id ? <Badge>Default</Badge> : null}
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{instrument.name}</p>
-              <p
-                className={[
-                  'mt-3 text-2xl font-bold tabular-nums',
-                  balanceColorClass(balance),
-                ].join(' ')}
-              >
+              <p className={['mt-3 text-2xl font-bold tabular-nums', balanceColorClass(balance)].join(' ')}>
                 {formatCurrency(balance, {
                   exponent: instrument.exponent,
                   ticker: instrument.ticker,
                 })}
-                <span className="text-base font-normal text-gray-500 dark:text-gray-400 ml-2">
-                  balance
-                </span>
+                <span className="text-base font-normal text-gray-500 dark:text-gray-400 ml-2">balance</span>
               </p>
             </div>
             <button
@@ -322,7 +360,10 @@ function InstrumentDetailPage() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-2xl font-bold tabular-nums text-gray-900 dark:text-gray-100">
-                  {formatMajorAmount(scaleUnit(balance, instrument.exponent) * effectiveRate, user!.homeCurrencyCode)}
+                  {formatMajorAmount(
+                    scaleUnit(balance, instrument.exponent) * effectiveRate,
+                    user!.homeCurrencyCode,
+                  )}
                   <span className="text-base font-normal text-gray-500 dark:text-gray-400 ml-2">
                     current value
                   </span>
@@ -331,7 +372,9 @@ function InstrumentDetailPage() {
                   1 {instrument.ticker} = {effectiveRate} {user!.homeCurrencyCode}
                   {rate && (
                     <span className="text-gray-400 dark:text-gray-500">
-                      {' '}({rate.source === 'manual' ? 'manually set' : 'from transactions'}, as of {formatDate(rate.asOf)})
+                      {' '}
+                      ({rate.source === 'manual' ? 'manually set' : 'from transactions'}, as of{' '}
+                      {formatDate(rate.asOf)})
                     </span>
                   )}
                 </p>
@@ -348,7 +391,7 @@ function InstrumentDetailPage() {
       )}
 
       {/* Recent Events */}
-      <section>       
+      <section>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Events</h2>
           <span className="text-sm text-gray-500 dark:text-gray-400">
