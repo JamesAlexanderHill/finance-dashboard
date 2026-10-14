@@ -5,12 +5,24 @@ import {
   createManualAccountInput,
   idInput,
   mergeAccountInput,
+  pairAccountInput,
   recordManualBalanceInput,
   updateAccountInput,
 } from '@finance/contracts';
 import { balanceObservations, financialAccounts, getDb, institutions, sourceFiles, sourceRecords, statements } from '@finance/db';
-import { closeAccount, latestAccountActivity, mergeAccount, reopenAccount, unmergeAccount } from '@finance/imports';
+import {
+  closeAccount,
+  latestAccountActivity,
+  mergeAccount,
+  pairAccount,
+  reopenAccount,
+  unmergeAccount,
+  unpairAccount,
+} from '@finance/imports';
+import { equityAt } from '@finance/ledger';
+import { add, addDays, endOfMonth, neg, todayIso, type IsoDate } from '@finance/shared';
 import { workspaceMiddleware } from './session';
+import { loadValuationInputs } from './valuation.server';
 
 export const listAccounts = createServerFn({ method: 'GET' })
   .middleware([workspaceMiddleware])
@@ -30,6 +42,7 @@ export const listAccounts = createServerFn({ method: 'GET' })
         status: financialAccounts.status,
         mergedIntoId: financialAccounts.mergedIntoId,
         closedOn: financialAccounts.closedOn,
+        pairedAssetId: financialAccounts.pairedAssetId,
         // Latest observed balance from a live statement (its own or a merged account's); never inferred from partial history.
         balance: sql<{ on: string; balance: string } | null>`(
           select json_build_object('on', bo.observed_on, 'balance', bo.balance::text)
@@ -70,6 +83,7 @@ export const getAccount = createServerFn({ method: 'GET' })
       status: financialAccounts.status,
       mergedIntoId: financialAccounts.mergedIntoId,
       closedOn: financialAccounts.closedOn,
+      pairedAssetId: financialAccounts.pairedAssetId,
     };
     const related = await db
       .select(accountColumns)
@@ -92,6 +106,19 @@ export const getAccount = createServerFn({ method: 'GET' })
           .from(financialAccounts)
           .where(eq(financialAccounts.id, account.mergedIntoId))
       : [];
+    const [pairedAsset] = account.pairedAssetId
+      ? await db
+          .select({ id: financialAccounts.id, name: financialAccounts.name })
+          .from(financialAccounts)
+          .where(eq(financialAccounts.id, account.pairedAssetId))
+      : [];
+    // Loans and offsets paired with this account (feature 02).
+    const paired = await db
+      .select({ ...accountColumns })
+      .from(financialAccounts)
+      .innerJoin(institutions, eq(institutions.id, financialAccounts.institutionId))
+      .where(and(eq(financialAccounts.workspaceId, context.workspaceId), eq(financialAccounts.pairedAssetId, account.id)))
+      .orderBy(asc(financialAccounts.classification), asc(financialAccounts.name));
 
     const balances = await db
       .select({
@@ -157,6 +184,8 @@ export const getAccount = createServerFn({ method: 'GET' })
       latestActivityOn: await latestAccountActivity(db, context.workspaceId, account.id),
       mergedInto: mergedInto ?? null,
       mergedIn,
+      pairedAsset: pairedAsset ?? null,
+      paired,
       balance: balances.find((b) => b.live) ?? null,
       balances,
       statements: files.map((f) => ({ ...f, deletedAt: f.deletedAt?.toISOString() ?? null })),
@@ -201,6 +230,82 @@ export const unarchiveAccount = createServerFn({ method: 'POST' })
   .validator(idInput)
   .handler(async ({ context, data }) => {
     await reopenAccount(getDb(), context.workspaceId, data.id);
+  });
+
+export const pairAccounts = createServerFn({ method: 'POST' })
+  .middleware([workspaceMiddleware])
+  .validator(pairAccountInput)
+  .handler(async ({ context, data }) => {
+    await pairAccount(getDb(), context.workspaceId, data.id, data.assetId);
+  });
+
+export const unpairAccounts = createServerFn({ method: 'POST' })
+  .middleware([workspaceMiddleware])
+  .validator(idInput)
+  .handler(async ({ context, data }) => {
+    await unpairAccount(getDb(), context.workspaceId, data.id);
+  });
+
+/**
+ * An asset's equity over time (feature 02): at each month end from its first value, and today, its
+ * value less its paired loans plus its paired offsets, each valued as net worth values it then.
+ */
+export const getEquity = createServerFn({ method: 'GET' })
+  .middleware([workspaceMiddleware])
+  .validator(idInput)
+  .handler(async ({ context, data }) => {
+    const [valuation, pairedRows] = await Promise.all([
+      loadValuationInputs(context.workspaceId),
+      getDb()
+        .select({ id: financialAccounts.id })
+        .from(financialAccounts)
+        .where(and(eq(financialAccounts.workspaceId, context.workspaceId), eq(financialAccounts.pairedAssetId, data.id))),
+    ]);
+    const asset = valuation.accounts.find((a) => a.id === data.id);
+    if (!asset) throw new Error('Account not found');
+    const pairedIds = new Set(pairedRows.map((r) => r.id));
+    const paired = valuation.accounts.filter((a) => pairedIds.has(a.id));
+
+    const today = todayIso();
+    const start = asset.manualValues ? asset.manualValues.map((v) => v.on).sort()[0] : asset.opening?.on;
+    const dates: IsoDate[] = [];
+    for (let on = start ? endOfMonth(start) : today; on < today; on = endOfMonth(addDays(on, 1))) dates.push(on);
+    dates.push(today);
+
+    const sum = (values: { aud: string | null }[]) => add('0', ...values.flatMap((v) => (v.aud === null ? [] : [v.aud])));
+    const series = dates.map((on) => {
+      const point = equityAt(asset, paired, on, valuation.prices, valuation.fx);
+      return {
+        on,
+        equity: point.equity,
+        value: point.value.aud,
+        // Owed, as a positive amount.
+        loans: neg(sum(point.loans)),
+        offsets: sum(point.offsets),
+        partial: point.partial,
+        stale: point.stale,
+      };
+    });
+    const now = equityAt(asset, paired, today, valuation.prices, valuation.fx);
+    const input = (role: 'value' | 'loan' | 'offset') => (v: (typeof now)['value']) => ({
+      id: v.id,
+      name: v.name,
+      role,
+      aud: v.aud,
+      status: v.status,
+      knownAsOf: v.knownAsOf,
+      notes: v.notes,
+    });
+    return {
+      now: {
+        on: today,
+        equity: now.equity,
+        partial: now.partial,
+        stale: now.stale,
+        inputs: [input('value')(now.value), ...now.loans.map(input('loan')), ...now.offsets.map(input('offset'))],
+      },
+      series: start ? series : [],
+    };
   });
 
 const MANUAL_PROVIDER = 'manual';

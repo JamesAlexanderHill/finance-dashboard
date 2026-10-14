@@ -135,6 +135,8 @@ export const updateAccountInput = z.object({
 export const mergeAccountInput = z.object({ id: z.uuid(), intoId: z.uuid() });
 /** Archives an account by closing it on a date. */
 export const closeAccountInput = z.object({ id: z.uuid(), closedOn: isoDate });
+/** Pairs a loan or offset (`id`) with an asset, whose page shows its equity. */
+export const pairAccountInput = z.object({ id: z.uuid(), assetId: z.uuid() });
 
 export const createManualAccountInput = z.object({
   name: z.string().trim().min(1).max(80),
