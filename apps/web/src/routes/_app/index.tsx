@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { addMonths, endOfMonth, startOfMonth, todayIso } from '@finance/shared';
 import { SankeyChart, type ChartNode } from '../../components/sankey-chart';
 import { Button, Card, Empty, PageHeader } from '../../components/ui';
-import { money, shortDate } from '../../lib/format';
+import { money, monthYear, shortDate } from '../../lib/format';
 import { listCategories } from '../../server/categories.functions';
 import { getCashFlow, getNodeLegs } from '../../server/cashflow.functions';
 
@@ -77,7 +77,7 @@ function CashFlowPage() {
         title="Cash flow"
         description={
           isMonth
-            ? new Date(`${from}T00:00:00`).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+            ? monthYear(from)
             : `${shortDate(from)} – ${shortDate(to)}`
         }
         actions={
