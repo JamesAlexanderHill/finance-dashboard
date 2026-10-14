@@ -11,6 +11,7 @@ import { listAccounts } from '../../server/accounts.functions';
 import { listCategories } from '../../server/categories.functions';
 import { findLinkCandidates, linkTransactions, setTransferMark, unlinkTransaction } from '../../server/transfers.functions';
 import {
+  acceptCategorySuggestions,
   getTransactionDetail,
   itemiseTransaction,
   listTransactions,
@@ -92,6 +93,8 @@ type Category = ReturnType<typeof flattenTree<Awaited<ReturnType<typeof listCate
 const categorisable = (row: Row) => row.legs.filter((l) => !row.event?.isInternal || l.role === 'fee');
 /** Itemised rows are left out of bulk selection: their lines usually need different categories. */
 const selectable = (row: Row) => row.isSourceSupported && !row.isSuppressed && row.legs.length === 1 && categorisable(row).length > 0;
+/** Uncategorised legs with a suggestion (feature 14); suggestions are derived from earlier decisions, never stored. */
+const suggested = (row: Row) => categorisable(row).filter((l) => !l.categoryId && l.suggestedCategoryId);
 
 function TransactionsPage() {
   const search = Route.useSearch();
@@ -117,7 +120,7 @@ function TransactionsPage() {
     <>
       <PageHeader
         title="Transactions"
-        description="Canonical transactions across all statements. Categorise each leg, or select several and categorise them together; nothing is categorised automatically."
+        description="Canonical transactions across all statements. Categorise each leg, accept a suggested category, or select several and categorise them together; nothing is categorised until you choose."
       />
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         <select
@@ -219,19 +222,20 @@ function BulkCategorise(props: {
   const { rows, selected } = props;
   const queryClient = useQueryClient();
   const apply = useServerFn(setCategoryForLegs);
+  const accept = useServerFn(acceptCategorySuggestions);
   const [categoryId, setCategoryId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ids = rows.filter(selectable).map((r) => r.id);
   const allOn = ids.length > 0 && ids.every((id) => selected.has(id));
   const chosen = rows.filter((r) => selected.has(r.id));
+  const suggestions = chosen.flatMap((r) => suggested(r).map((l) => ({ transactionId: r.id, legKey: l.legKey })));
 
-  const save = async () => {
+  const run = async (fn: () => Promise<{ categorised: number }>) => {
     setBusy(true);
     setError(null);
     try {
-      const legs = chosen.flatMap((r) => categorisable(r).map((l) => ({ transactionId: r.id, legKey: l.legKey })));
-      const { categorised } = await apply({ data: { legs, categoryId: categoryId === 'none' ? null : categoryId } });
+      const { categorised } = await fn();
       await queryClient.invalidateQueries();
       props.onDone(`Categorised ${categorised} ${categorised === 1 ? 'leg' : 'legs'}.`);
     } catch (err) {
@@ -240,6 +244,11 @@ function BulkCategorise(props: {
       setBusy(false);
     }
   };
+  const save = () =>
+    run(() => {
+      const legs = chosen.flatMap((r) => categorisable(r).map((l) => ({ transactionId: r.id, legKey: l.legKey })));
+      return apply({ data: { legs, categoryId: categoryId === 'none' ? null : categoryId } });
+    });
 
   return (
     <div className="border-line bg-surface sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-t-lg border-b px-4 py-2 text-sm">
@@ -267,6 +276,11 @@ function BulkCategorise(props: {
           <Button variant="primary" disabled={!categoryId || busy} onClick={save}>
             Categorise {selected.size}
           </Button>
+          {suggestions.length > 0 && (
+            <Button disabled={busy} onClick={() => run(() => accept({ data: { legs: suggestions } }))}>
+              Accept {suggestions.length} {suggestions.length === 1 ? 'suggestion' : 'suggestions'}
+            </Button>
+          )}
           <Button variant="ghost" onClick={() => props.onDone()}>
             Clear
           </Button>
@@ -386,7 +400,9 @@ function LegEditor(props: {
   const { transactionId, leg, categories, tagNames } = props;
   const queryClient = useQueryClient();
   const setCategory = useServerFn(setLegCategory);
+  const accept = useServerFn(acceptCategorySuggestions);
   const setTags = useServerFn(setLegTags);
+  const suggestion = !leg.categoryId && leg.suggestedCategoryId ? categories.find((c) => c.id === leg.suggestedCategoryId) : undefined;
   const currentTags = leg.tagIds
     .map((id) => tagNames.get(id))
     .filter(Boolean)
@@ -419,6 +435,17 @@ function LegEditor(props: {
             </option>
           ))}
         </select>
+      )}
+      {suggestion && (
+        <span className="text-muted text-xs">
+          Suggested: {suggestion.path}{' '}
+          <button
+            className="hover:text-ink underline"
+            onClick={() => accept({ data: { legs: [{ transactionId, legKey: leg.legKey }] } }).then(refresh)}
+          >
+            Accept
+          </button>
+        </span>
       )}
       <input
         value={tags}
