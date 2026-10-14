@@ -14,6 +14,7 @@ import {
   getTransactionDetail,
   itemiseTransaction,
   listTransactions,
+  setCategoryForLegs,
   setLegCategory,
   setLegTags,
   setSuppression,
@@ -86,6 +87,11 @@ export const Route = createFileRoute('/_app/transactions')({
 type Row = Awaited<ReturnType<typeof listTransactions>>['rows'][number];
 type Category = ReturnType<typeof flattenTree<Awaited<ReturnType<typeof listCategories>>['categories'][number]>>[number];
 
+/** Legs that can carry a category: everything except the principal legs of internal events. */
+const categorisable = (row: Row) => row.legs.filter((l) => !row.event?.isInternal || l.role === 'fee');
+/** Itemised rows are left out of bulk selection: their lines usually need different categories. */
+const selectable = (row: Row) => row.isSourceSupported && !row.isSuppressed && row.legs.length === 1 && categorisable(row).length > 0;
+
 function TransactionsPage() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
@@ -95,12 +101,22 @@ function TransactionsPage() {
   const categories = flattenTree(cats.categories);
   const tagNames = new Map(cats.tags.map((t) => [t.id, t.name]));
   const set = (patch: Partial<Search>) => navigate({ search: (prev) => ({ ...prev, id: undefined, page: 0, ...patch }) });
+  // The selection belongs to one page of one filter; changing either starts a new one.
+  const selectionKey = JSON.stringify(search);
+  const [selection, setSelection] = useState<{ key: string; ids: Set<string>; notice?: string }>({ key: selectionKey, ids: new Set() });
+  const current = selection.key === selectionKey;
+  const selected = current ? selection.ids : new Set<string>();
+  const toggle = (ids: string[], on: boolean) => {
+    const next = new Set(selected);
+    for (const id of ids) on ? next.add(id) : next.delete(id);
+    setSelection({ key: selectionKey, ids: next });
+  };
 
   return (
     <>
       <PageHeader
         title="Transactions"
-        description="Canonical transactions across all statements. Categorise each leg; nothing is categorised automatically."
+        description="Canonical transactions across all statements. Categorise each leg, or select several and categorise them together; nothing is categorised automatically."
       />
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         <select
@@ -150,10 +166,32 @@ function TransactionsPage() {
         </label>
       </div>
 
+      {/* Outside the card: categorised rows can leave the list, taking the bulk bar with them. */}
+      {current && selection.notice && (
+        <p className="text-muted mb-2 text-sm" role="status">
+          {selection.notice}
+        </p>
+      )}
       <Card>
         {data.rows.length === 0 && <Empty>No transactions match.</Empty>}
+        {data.rows.length > 0 && (
+          <BulkCategorise
+            rows={data.rows}
+            selected={selected}
+            categories={categories}
+            onToggleAll={toggle}
+            onDone={(notice) => setSelection({ key: selectionKey, ids: new Set(), notice })}
+          />
+        )}
         {data.rows.map((row) => (
-          <TransactionRow key={row.id} row={row} categories={categories} tagNames={tagNames} />
+          <TransactionRow
+            key={row.id}
+            row={row}
+            categories={categories}
+            tagNames={tagNames}
+            selected={selected.has(row.id)}
+            onSelect={(on) => toggle([row.id], on)}
+          />
         ))}
       </Card>
 
@@ -169,7 +207,83 @@ function TransactionsPage() {
   );
 }
 
-function TransactionRow({ row, categories, tagNames }: { row: Row; categories: Category[]; tagNames: Map<string, string> }) {
+/** Gives the selected transactions one category in a single step. It is manual: nothing applies to later imports. */
+function BulkCategorise(props: {
+  rows: Row[];
+  selected: Set<string>;
+  categories: Category[];
+  onToggleAll: (ids: string[], on: boolean) => void;
+  onDone: (notice?: string) => void;
+}) {
+  const { rows, selected } = props;
+  const queryClient = useQueryClient();
+  const apply = useServerFn(setCategoryForLegs);
+  const [categoryId, setCategoryId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ids = rows.filter(selectable).map((r) => r.id);
+  const allOn = ids.length > 0 && ids.every((id) => selected.has(id));
+  const chosen = rows.filter((r) => selected.has(r.id));
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const legs = chosen.flatMap((r) => categorisable(r).map((l) => ({ transactionId: r.id, legKey: l.legKey })));
+      const { categorised } = await apply({ data: { legs, categoryId: categoryId === 'none' ? null : categoryId } });
+      await queryClient.invalidateQueries();
+      props.onDone(`Categorised ${categorised} ${categorised === 1 ? 'leg' : 'legs'}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not categorise');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border-line bg-surface sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-t-lg border-b px-4 py-2 text-sm">
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={allOn} disabled={ids.length === 0} onChange={(e) => props.onToggleAll(ids, e.target.checked)} />
+        {selected.size > 0 ? `${selected.size} selected` : 'Select all on this page'}
+      </label>
+      {selected.size > 0 && (
+        <>
+          <select
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            className="border-line bg-surface min-w-0 rounded border px-2 py-1"
+            aria-label="Category for selected"
+          >
+            <option value="">Choose a category…</option>
+            <option value="none">Uncategorised</option>
+            {props.categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {'  '.repeat(c.depth)}
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <Button variant="primary" disabled={!categoryId || busy} onClick={save}>
+            Categorise {selected.size}
+          </Button>
+          <Button variant="ghost" onClick={() => props.onDone()}>
+            Clear
+          </Button>
+        </>
+      )}
+      {error && <span className="text-negative text-xs">{error}</span>}
+    </div>
+  );
+}
+
+function TransactionRow(props: {
+  row: Row;
+  categories: Category[];
+  tagNames: Map<string, string>;
+  selected: boolean;
+  onSelect: (on: boolean) => void;
+}) {
+  const { row, categories, tagNames } = props;
   const queryClient = useQueryClient();
   const suppress = useServerFn(setSuppression);
   const unlink = useServerFn(unlinkTransaction);
@@ -191,6 +305,16 @@ function TransactionRow({ row, categories, tagNames }: { row: Row; categories: C
   return (
     <div className={`border-line border-b last:border-0 ${active ? '' : 'opacity-60'}`}>
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3">
+        <span className="w-4 shrink-0 pt-0.5">
+          {selectable(row) && (
+            <input
+              type="checkbox"
+              checked={props.selected}
+              onChange={(e) => props.onSelect(e.target.checked)}
+              aria-label={`Select ${row.description}`}
+            />
+          )}
+        </span>
         <div className="text-muted tabular w-24 shrink-0 text-sm">{shortDate(row.postedOn)}</div>
         <div className="min-w-56 flex-1">
           <button className="text-left text-sm font-medium hover:underline" onClick={() => setOpen((o) => !o)}>
@@ -269,7 +393,7 @@ function LegEditor(props: {
   const refresh = () => queryClient.invalidateQueries();
 
   return (
-    <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pl-32 text-sm">
+    <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pl-40 text-sm">
       {props.itemised && (
         <span className="text-muted min-w-40">
           {leg.description} · <span className="tabular">{money(leg.amount, props.commodity)}</span>
