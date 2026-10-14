@@ -42,4 +42,22 @@ describe('transfer auto-matching', () => {
     ).toEqual(['in1', 'in2']);
     expect(ambiguous.has('in1')).toBe(true);
   });
+
+  test('a stated counterpart date narrows weekly transfers to one candidate each', () => {
+    // Paid every Saturday, credited the following Tuesday: by date alone each deposit has two candidates.
+    const txns = [
+      t('sat1', 'cba', '-200', '2024-01-06'),
+      t('tue1', 'vanguard', '200', '2024-01-09'),
+      t('sat2', 'cba', '-200', '2024-01-13'),
+      t('tue2', 'vanguard', '200', '2024-01-16'),
+    ];
+    expect(planTransferMatches(txns).pairs).toHaveLength(0);
+    const withRefs = txns.map((x) =>
+      x.id === 'tue1' ? { ...x, counterpartDate: '2024-01-06' } : x.id === 'tue2' ? { ...x, counterpartDate: '2024-01-13' } : x,
+    );
+    expect(planTransferMatches(withRefs).pairs.map(([a, b]) => [a.id, b.id])).toEqual([
+      ['sat1', 'tue1'],
+      ['sat2', 'tue2'],
+    ]);
+  });
 });

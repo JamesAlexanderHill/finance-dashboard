@@ -20,6 +20,8 @@ export interface ParsedRow {
   role?: 'principal' | 'fee';
   /** The source says this row moves money between the owner's accounts (e.g. a top-up). */
   transferHint?: boolean;
+  /** Posting date of the transfer's other side, when a payment reference states it. Narrows transfer matching. */
+  counterpartDate?: IsoDate;
   raw: Record<string, unknown>;
 }
 

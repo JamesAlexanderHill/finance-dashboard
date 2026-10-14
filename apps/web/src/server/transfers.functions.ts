@@ -49,8 +49,15 @@ export const getTransferReview = createServerFn({ method: 'GET' })
     const unmatchedIds = [...unmatchedRows].map((r) => r.transaction_id);
 
     // Counterparts for unmatched transfers may already carry link history, so search all active principals.
-    const active = await db.execute<{ id: string; account_id: string; posted_on: string; amount: string; commodity: string }>(sql`
-      select id, account_id, posted_on::text, amount::text, commodity from transactions
+    const active = await db.execute<{
+      id: string;
+      account_id: string;
+      posted_on: string;
+      amount: string;
+      commodity: string;
+      counterpart_date: string | null;
+    }>(sql`
+      select id, account_id, posted_on::text, amount::text, commodity, counterpart_date::text from transactions
       where workspace_id = ${workspaceId} and is_source_supported and not is_suppressed and role = 'principal'`);
     const all: TransferCandidate[] = [...active].map((r) => ({
       id: r.id,
@@ -58,6 +65,7 @@ export const getTransferReview = createServerFn({ method: 'GET' })
       postedOn: r.posted_on,
       amount: r.amount,
       commodity: r.commodity,
+      counterpartDate: r.counterpart_date,
     }));
     const counterparts = transferCounterparts(all);
 

@@ -80,10 +80,10 @@ describe('Vanguard PDF', () => {
     const s = parseVanguardPdf(statement());
     const [cash, vas] = s.accounts;
     expect(cash).toMatchObject({ identifier: 'CASH', commodity: 'AUD', maskedIdentifier: 'Cash •••• 4321' });
-    expect(cash!.rows.map((r) => [r.postedOn, r.amount, r.transferHint ?? false, r.providerId])).toEqual([
-      ['2024-07-02', '1910.00', true, 'BPAY:CBA202406290000000001'],
-      ['2024-07-05', '-1900.01', false, undefined],
-      ['2024-07-17', '0.01', false, undefined],
+    expect(cash!.rows.map((r) => [r.postedOn, r.amount, r.transferHint ?? false, r.providerId, r.counterpartDate])).toEqual([
+      ['2024-07-02', '1910.00', true, 'BPAY:CBA202406290000000001', '2024-06-29'],
+      ['2024-07-05', '-1900.01', false, undefined, undefined],
+      ['2024-07-17', '0.01', false, undefined, undefined],
     ]);
     expect(vas).toMatchObject({
       identifier: 'VAS',

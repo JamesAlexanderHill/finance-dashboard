@@ -7,6 +7,8 @@ export interface TransferCandidate {
   postedOn: IsoDate;
   amount: DecimalString;
   commodity: string;
+  /** When a payment reference states the other side's posting date, only a transaction posted that day can match. */
+  counterpartDate?: IsoDate | null;
 }
 
 export const TRANSFER_WINDOW_DAYS = 5;
@@ -15,7 +17,8 @@ const dayNumber = (iso: IsoDate) => Date.parse(`${iso}T00:00:00Z`) / 86_400_000;
 
 /**
  * For each transaction, the other transactions that could be its counterpart: a different owned
- * account, the same commodity, the exactly opposite amount, within ±5 calendar days.
+ * account, the same commodity, the exactly opposite amount, within ±5 calendar days, and consistent
+ * with either side's stated counterpart date.
  */
 export function transferCounterparts(txns: readonly TransferCandidate[]): Map<string, TransferCandidate[]> {
   const byKey = new Map<string, TransferCandidate[]>();
@@ -26,7 +29,11 @@ export function transferCounterparts(txns: readonly TransferCandidate[]): Map<st
   for (const t of txns) {
     const opposite = byKey.get(key(t.commodity, neg(t.amount))) ?? [];
     const matches = opposite.filter(
-      (o) => o.accountId !== t.accountId && Math.abs(dayNumber(o.postedOn) - dayNumber(t.postedOn)) <= TRANSFER_WINDOW_DAYS,
+      (o) =>
+        o.accountId !== t.accountId &&
+        Math.abs(dayNumber(o.postedOn) - dayNumber(t.postedOn)) <= TRANSFER_WINDOW_DAYS &&
+        (!t.counterpartDate || t.counterpartDate === o.postedOn) &&
+        (!o.counterpartDate || o.counterpartDate === t.postedOn),
     );
     if (matches.length) result.set(t.id, matches);
   }

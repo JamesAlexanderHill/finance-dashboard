@@ -320,6 +320,8 @@ export const transactions = pgTable(
     role: transactionRole('role').notNull().default('principal'),
     /** The source says this is money moved between own accounts (e.g. a Wise top-up). */
     isTransferHint: boolean('is_transfer_hint').notNull().default(false),
+    /** The date the other side of a transfer was posted, when a payment reference states it (e.g. a BPAY receipt). */
+    counterpartDate: date('counterpart_date'),
     fingerprint: text('fingerprint').notNull(),
     /** Derived: has at least one source row in a non-deleted source file. */
     isSourceSupported: boolean('is_source_supported').notNull().default(true),

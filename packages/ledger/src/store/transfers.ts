@@ -8,8 +8,15 @@ import { planTransferMatches, type TransferCandidate } from '../transfers';
  * unlink or manual link is never overridden by the matcher).
  */
 export async function transferCandidates(tx: Executor, workspaceId: string): Promise<TransferCandidate[]> {
-  const rows = await tx.execute<{ id: string; account_id: string; posted_on: string; amount: string; commodity: string }>(sql`
-    select t.id, t.account_id, t.posted_on::text, t.amount::text, t.commodity
+  const rows = await tx.execute<{
+    id: string;
+    account_id: string;
+    posted_on: string;
+    amount: string;
+    commodity: string;
+    counterpart_date: string | null;
+  }>(sql`
+    select t.id, t.account_id, t.posted_on::text, t.amount::text, t.commodity, t.counterpart_date::text
     from transactions t
     where t.workspace_id = ${workspaceId}
       and t.is_source_supported and not t.is_suppressed
@@ -20,7 +27,14 @@ export async function transferCandidates(tx: Executor, workspaceId: string): Pro
         where o.workspace_id = t.workspace_id and o.provider_group_ref = t.provider_group_ref and o.id <> t.id
           and o.is_source_supported and not o.is_suppressed))
   `);
-  return [...rows].map((r) => ({ id: r.id, accountId: r.account_id, postedOn: r.posted_on, amount: r.amount, commodity: r.commodity }));
+  return [...rows].map((r) => ({
+    id: r.id,
+    accountId: r.account_id,
+    postedOn: r.posted_on,
+    amount: r.amount,
+    commodity: r.commodity,
+    counterpartDate: r.counterpart_date,
+  }));
 }
 
 /**

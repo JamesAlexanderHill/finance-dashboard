@@ -11,7 +11,7 @@ import { add, eq, isoDate, isZero, sub, type DecimalString, type IsoDate } from 
 import type { TextLine } from '../pdf';
 
 export const VANGUARD_PDF_PARSER_ID = 'vanguard-pdf';
-export const VANGUARD_PDF_PARSER_VERSION = '1.0.0';
+export const VANGUARD_PDF_PARSER_VERSION = '1.1.0';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const LONG_MONTHS = [
@@ -44,6 +44,10 @@ const parseDate = (text: string): IsoDate | null => {
   return isoDate(year, MONTHS.indexOf(m[2]!) + 1, Number(m[1]));
 };
 const num = (text: string) => text.replace(/[$,]/g, '');
+const bpayDate = (ref: string): IsoDate | undefined => {
+  const m = ref.match(/^CBA(\d{4})(\d{2})(\d{2})/);
+  return m ? isoDate(Number(m[1]), Number(m[2]), Number(m[3])) : undefined;
+};
 
 export function detectVanguard(lines: TextLine[]): boolean {
   return lines.some((l) => l.page === 1 && l.text.includes('Vanguard Personal Investor Annual Statement'));
@@ -313,6 +317,8 @@ function readCash(lines: TextLine[], accountNumber: string) {
       amount,
       runningBalance: balance ?? undefined,
       providerId: bpay ? `BPAY:${bpay[1]}` : undefined,
+      // A CommBank BPAY receipt starts with the payer's posting date (CBAyyyymmdd…).
+      counterpartDate: bpay ? bpayDate(bpay[1]!) : undefined,
       // Deposits come from the owner's bank account; they are transfers until matched.
       transferHint: /^(BPAY DEPOSIT|Off-System BSB Direct Entry Deposit)/.test(description),
       raw: { page: block[0]!.page, lines: block.map((l) => l.text) },

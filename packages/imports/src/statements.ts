@@ -232,6 +232,7 @@ export async function commitParsedStatement(
                 providerGroupRef: r.groupRef ?? null,
                 role: r.role ?? 'principal',
                 isTransferHint: r.transferHint ?? false,
+                counterpartDate: r.counterpartDate ?? null,
                 fingerprint: r.fingerprint,
               };
             }),
@@ -254,13 +255,14 @@ export async function commitParsedStatement(
     // A newer parser may know more about a row than the one that created its transaction.
     for (const l of plan.linked) {
       const r = byRow.get(l.rowIndex)!;
-      if (!r.groupRef && !r.transferHint && !r.role) continue;
+      if (!r.groupRef && !r.transferHint && !r.role && !r.counterpartDate) continue;
       await tx
         .update(transactions)
         .set({
           ...(r.groupRef ? { providerGroupRef: r.groupRef } : {}),
           ...(r.role ? { role: r.role } : {}),
           ...(r.transferHint ? { isTransferHint: true } : {}),
+          ...(r.counterpartDate ? { counterpartDate: r.counterpartDate } : {}),
         })
         .where(eq(transactions.id, l.transactionId));
     }
