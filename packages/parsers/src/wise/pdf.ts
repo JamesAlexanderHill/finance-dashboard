@@ -1,9 +1,16 @@
-import { UnsupportedStatementError, type ParsedRow, type ParsedStatement } from '@finance/domain';
-import { add, eq, isoDate, sub, type DecimalString, type IsoDate } from '@finance/shared';
+import {
+  FX_EXCHANGE,
+  REPORTING_CURRENCY,
+  UnsupportedStatementError,
+  type ParsedPrice,
+  type ParsedRow,
+  type ParsedStatement,
+} from '@finance/domain';
+import { add, div, eq, isoDate, sub, type DecimalString, type IsoDate } from '@finance/shared';
 import type { TextItem, TextLine } from '../pdf';
 
 export const WISE_PDF_PARSER_ID = 'wise-pdf';
-export const WISE_PDF_PARSER_VERSION = '1.0.0';
+export const WISE_PDF_PARSER_VERSION = '1.1.0';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DATE_RE = new RegExp(`(\\d{1,2}) (${MONTHS.join('|')}) (\\d{4})`);
@@ -62,6 +69,7 @@ export function parseWisePdf(lines: TextLine[]): ParsedStatement {
 
   const rows = readRows(content);
   const opening = verifyAndOpen(rows, closingBalance);
+  const prices = currency === REPORTING_CURRENCY ? conversionRates(rows) : [];
   const accountNumber = readAccountNumber(page1);
 
   return {
@@ -85,8 +93,31 @@ export function parseWisePdf(lines: TextLine[]): ParsedStatement {
         rows,
       },
     ],
+    prices,
     warnings: [],
   };
+}
+
+/**
+ * Each conversion out of AUD implies a rate: AUD spent (net of the fee, which is its own row) per unit
+ * received. Read from the AUD statement only, where the fee is known; recorded as trade-type FX rates.
+ */
+function conversionRates(rows: ParsedRow[]): ParsedPrice[] {
+  return rows.flatMap((row) => {
+    const m = row.description.match(/^Converted [\d,.]+ AUD to ([\d,.]+) ([A-Z]{3})/);
+    if (!m || row.role === 'fee' || !row.amount.startsWith('-')) return [];
+    return [
+      {
+        symbol: m[2]!,
+        exchange: FX_EXCHANGE,
+        on: row.postedOn,
+        price: div(row.amount.slice(1), m[1]!.replace(/,/g, '')),
+        currency: REPORTING_CURRENCY,
+        priceType: 'trade' as const,
+        sourceRow: row.rowIndex,
+      },
+    ];
+  });
 }
 
 function readAccountNumber(page1: TextLine[]): string | null {

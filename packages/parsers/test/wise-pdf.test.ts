@@ -49,6 +49,13 @@ describe('Wise PDF', () => {
     ]);
   });
 
+  test('records the AUD conversion rate, net of its fee, as a trade-type FX rate', () => {
+    const s = parseWisePdf(statement('69.80', rows));
+    expect(s.prices).toEqual([
+      { symbol: 'NZD', exchange: 'FX', on: '2025-03-03', price: '0.912121212121', currency: 'AUD', priceType: 'trade', sourceRow: 0 },
+    ]);
+  });
+
   test('rejects a statement whose balances do not reconcile', () => {
     expect(() => parseWisePdf(statement('50.00', rows))).toThrow(UnsupportedStatementError);
   });

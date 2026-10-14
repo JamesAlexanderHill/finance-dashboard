@@ -1,5 +1,7 @@
 import {
+  FX_EXCHANGE,
   instrumentCommodity,
+  REPORTING_CURRENCY,
   UnsupportedStatementError,
   type ParsedAccountSection,
   type ParsedInstrument,
@@ -7,11 +9,11 @@ import {
   type ParsedRow,
   type ParsedStatement,
 } from '@finance/domain';
-import { add, eq, isoDate, isZero, type DecimalString, type IsoDate } from '@finance/shared';
+import { add, div, eq, isoDate, isZero, type DecimalString, type IsoDate } from '@finance/shared';
 import type { TextItem, TextLine } from '../pdf';
 
 export const IBKR_PDF_PARSER_ID = 'ibkr-pdf';
-export const IBKR_PDF_PARSER_VERSION = '1.0.0';
+export const IBKR_PDF_PARSER_VERSION = '1.1.0';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const PERIOD_RE = new RegExp(`(${MONTHS.join('|')}) (\\d{1,2}), (\\d{4}) - (${MONTHS.join('|')}) (\\d{1,2}), (\\d{4})`);
@@ -142,7 +144,8 @@ export function parseIbkrPdf(lines: TextLine[]): ParsedStatement {
   const trades = readTrades(section(lines, 'Trades'));
   if (!perCurrency && (deposits.length || trades.length)) throw new UnsupportedStatementError('Cash report has no per-currency breakdown');
   const positions = readPositions(section(lines, 'Open Positions'));
-  const priorQuantities = readPriorQuantities(section(lines, 'Mark-to-Market Performance Summary'));
+  const markToMarket = section(lines, 'Mark-to-Market Performance Summary');
+  const priorQuantities = readPriorQuantities(markToMarket);
   const instruments = readInstruments(section(lines, 'Financial Instrument Information'));
   // An instrument trades in the currency its trades and positions are listed under.
   for (const [symbol, i] of instruments) {
@@ -153,7 +156,7 @@ export function parseIbkrPdf(lines: TextLine[]): ParsedStatement {
   let rowIndex = 0;
   const cashRows = new Map<string, ParsedRow[]>([...cash.keys()].map((c) => [c, []]));
   const unitRows = new Map<string, ParsedRow[]>();
-  const prices: ParsedPrice[] = [];
+  const prices: ParsedPrice[] = readFxMarks(markToMarket, periodEnd);
   const pushCash = (currency: string, row: Omit<ParsedRow, 'rowIndex'>) => {
     const rows = cashRows.get(currency);
     if (!rows) throw new UnsupportedStatementError(`No ${currency} cash report for a ${currency} transaction`);
@@ -217,6 +220,11 @@ export function parseIbkrPdf(lines: TextLine[]): ParsedStatement {
       const description = `Convert ${t.symbol} @ ${t.price}`;
       pushCash(base, { postedOn: t.date, description, amount: t.quantity, providerId: `${ref}:${base}`, groupRef: ref, raw: { ...t } });
       pushCash(quote, { postedOn: t.date, description, amount: t.proceeds, providerId: `${ref}:${quote}`, groupRef: ref, raw: { ...t } });
+      // The trade's own rate (AUD per USD = 1 / USD per AUD) is a trade-type FX observation; tiny
+      // automatic conversions that settle sub-dollar residues are skipped as unrepresentative.
+      if (base === REPORTING_CURRENCY && Math.abs(Number(t.proceeds)) >= 1) {
+        prices.push({ ...fxSymbol(quote), on: t.date, price: div('1', t.price), currency: base, priceType: 'trade' });
+      }
       if (!isZero(t.commission)) {
         pushCash(base, {
           postedOn: t.date,
@@ -444,6 +452,37 @@ function readPriorQuantities(lines: TextLine[]) {
       const prior = header.items.find((h) => h.text === 'Prior')!;
       const item = line.items.find((i) => NUMBER_RE.test(i.text) && Math.abs(i.right - prior.right) < 20);
       out.set(line.items[0]!.text, num(item?.text ?? '0'));
+    }
+  }
+  return out;
+}
+
+const fxSymbol = (currency: string) => ({ symbol: currency, exchange: FX_EXCHANGE });
+
+/**
+ * Year-end FX marks: the Mark-to-Market summary's Forex rows give each currency's current price in
+ * the base currency (e.g. USD 1.50 = AUD per USD) at the period end. Recorded as daily FX rates.
+ */
+function readFxMarks(lines: TextLine[], periodEnd: IsoDate): ParsedPrice[] {
+  const out: ParsedPrice[] = [];
+  let inForex = false;
+  for (const line of lines) {
+    if (line.text === 'Forex') inForex = true;
+    else if (line.text === 'Stocks') inForex = false;
+    else if (inForex && line.items.length > 1 && CURRENCY_RE.test(line.items[0]!.text) && line.items[0]!.text !== REPORTING_CURRENCY) {
+      // Columns: prior quantity, current quantity, prior price, current price, …
+      // `--` stands in for a missing prior price, so it keeps its column position.
+      const numbers = line.items.slice(1).filter((i) => NUMBER_RE.test(i.text) || i.text === '--');
+      const current = numbers[3]?.text;
+      if (current && NUMBER_RE.test(current) && Number(current) > 0) {
+        out.push({
+          ...fxSymbol(line.items[0]!.text),
+          on: periodEnd,
+          price: num(current),
+          currency: REPORTING_CURRENCY,
+          priceType: 'daily',
+        });
+      }
     }
   }
   return out;

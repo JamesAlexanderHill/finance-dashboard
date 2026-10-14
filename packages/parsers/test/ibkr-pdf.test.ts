@@ -64,6 +64,7 @@ function statement(opts: { quantity?: string; extraCashLine?: string; endingAud?
     line(1, [38, 'Stocks']),
     line(1, [38, 'MSFT'], r(183, '0'), r(237, qty)),
     line(1, [38, 'Forex']),
+    line(1, [38, 'USD'], r(183, '0.00'), r(237, '0.00'), [317, '--'], r(398, '1.4800')),
     line(2, [40, 'Cash Report']),
     line(2, [38, 'Base Currency Summary']),
     line(2, [38, 'Starting Cash'], r(760, '0.00')),
@@ -141,9 +142,11 @@ describe('IBKR activity statement PDF', () => {
     // Cash, commission and units of the buy share one reference; both sides of the conversion share another.
     expect(new Set([usd!.rows[0]!.groupRef, usd!.rows[1]!.groupRef, amd!.rows[0]!.groupRef]).size).toBe(1);
     expect(aud!.rows[1]!.groupRef).toBe(usd!.rows[2]!.groupRef);
-    expect(s.prices!.map((p) => [p.symbol, p.price, p.priceType])).toEqual([
-      ['MSFT', '400.0000', 'trade'],
-      ['MSFT', '410.0000', 'daily'],
+    expect(s.prices!.map((p) => [p.symbol, p.exchange, p.price, p.priceType])).toEqual([
+      ['USD', 'FX', '1.4800', 'daily'],
+      ['MSFT', 'XNAS', '400.0000', 'trade'],
+      ['USD', 'FX', '1.498800959233', 'trade'],
+      ['MSFT', 'XNAS', '410.0000', 'daily'],
     ]);
   });
 
