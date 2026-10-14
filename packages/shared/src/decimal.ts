@@ -13,6 +13,7 @@ export function add(...values: DecimalString[]): DecimalString {
 }
 
 export const sub = (a: DecimalString, b: DecimalString): DecimalString => new Big(a).minus(b).toString();
+export const mul = (a: DecimalString, b: DecimalString): DecimalString => new Big(a).times(b).toString();
 export const neg = (a: DecimalString): DecimalString => new Big(a).times(-1).toString();
 export const abs = (a: DecimalString): DecimalString => new Big(a).abs().toString();
 export const cmp = (a: DecimalString, b: DecimalString): -1 | 0 | 1 => new Big(a).cmp(b) as -1 | 0 | 1;
