@@ -119,6 +119,10 @@ A recorded user or automatic choice (link, unlink, itemisation, category, tag, m
 A node in the spending-behaviour tree under Income, Savings, Essentials or Lifestyle, assigned to income and outflow legs.
 _Avoid_: Budget, bucket
 
+**Category suggestion**:
+The category last given to a transaction with the same normalised description, offered for an uncategorised leg; it counts only once the user accepts it.
+_Avoid_: Rule, auto-category
+
 **Tag**:
 A free-form label on a leg (e.g. `Europe 2024`), independent of its category.
 _Avoid_: Label, project

@@ -23,6 +23,7 @@ User-defined category tree, manual leg categorisation, and the income/expense Sa
    - **Tags.** A leg may carry zero or more tags (e.g. `Europe 2024`), independent of its category and stored as decisions the same way. Every Sankey, cash-flow and expense chart can be filtered by tag.
 4. No automatic or default categorisation in v1; every leg starts *Uncategorised*. Any leg can be recategorised; because events are rebuilt, the assignment is stored as a decision keyed on the leg's stable identity (canonical transaction ID plus leg role/line index), so it survives event rebuilds.
    - **Bulk categorisation stays manual.** The user may select many legs (e.g. every uncategorised transaction matching a search) and give them one category in one step. Each leg still gets its own decision, exactly as if categorised alone; no rule is stored and later imports still start *Uncategorised*. Internal principal legs are skipped, and itemised transactions are categorised line by line.
+   - **Suggestions, not rules.** An uncategorised leg is *suggested* the category of the most recently categorised leg whose transaction has the same normalised description (case, digits and punctuation ignored). A suggestion is derived from earlier decisions when read, never stored and never counted: the leg stays *Uncategorised* until the user accepts it, singly or many at once, which records an ordinary category decision.
 5. Refunds are negative expense in the linked original purchase's category, or a user-chosen one; never income.
 6. Sankey visualises one selected period's cash flow: income-kind categories flow in from the left; Savings, Essentials and Lifestyle flow out to the right. Income not consumed by unbalanced outflows remains as a visible *Unallocated* node (e.g. 10k income, 9k out → 1k unallocated), so Unallocated always equals the period's net cash flow; outflows exceeding income appear as *Drawn from savings* on the income side. *Uncategorised* income and expense appear as visible nodes; selecting one lists the uncategorised legs for that period.
 7. The Sankey shows top-level categories plus one child level by default; selecting a node drills into its subtree.
@@ -45,6 +46,7 @@ User-defined category tree, manual leg categorisation, and the income/expense Sa
 - Internal transfers, conversions and trades contribute only their fee/tax/interest legs.
 - A recategorisation survives soft deletion and reimport of the underlying statement.
 - Categorising selected legs together records one decision per changed leg and leaves future imports *Uncategorised*.
+- A newly imported "CORNER GROCER 5678" is suggested the category last given to "Corner Grocer 1234", stays *Uncategorised* in every total, and is categorised only once the suggestion is accepted.
 
 ## Testing notes
 

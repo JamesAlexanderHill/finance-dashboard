@@ -25,7 +25,7 @@ The product must prioritise reproducibility and provenance: imported inputs rema
 
 ### Non-goals for the initial release
 
-Direct bank feeds/Open Banking; automatic market data feeds; automatic FX feeds; trading or payment execution; multi-member workspaces/collaboration; tax advice; advanced performance attribution; automatic categorisation and budgets; cost basis and realised/unrealised gains; automatic receipt extraction. Design may allow these later without committing to them now.
+Direct bank feeds/Open Banking; automatic market data feeds; automatic FX feeds; trading or payment execution; multi-member workspaces/collaboration; tax advice; advanced performance attribution; automatic categorisation (category suggestions the user accepts are in scope) and budgets; cost basis and realised/unrealised gains; automatic receipt extraction. Design may allow these later without committing to them now.
 
 ## 2. Users, workspaces, and access control
 
