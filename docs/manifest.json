@@ -1,0 +1,78 @@
+{
+  "version": "0.2",
+  "features": [
+    {
+      "id": "core-workspaces",
+      "file": "docs/features/00-core-workspaces.md"
+    },
+    {
+      "id": "authentication",
+      "file": "docs/features/01-authentication.md"
+    },
+    {
+      "id": "financial-accounts",
+      "file": "docs/features/02-financial-accounts.md"
+    },
+    {
+      "id": "source-files-statements",
+      "file": "docs/features/03-source-files-statements.md"
+    },
+    {
+      "id": "import-processing",
+      "file": "docs/features/04-import-processing.md"
+    },
+    {
+      "id": "transactions",
+      "file": "docs/features/05-transactions.md"
+    },
+    {
+      "id": "events",
+      "file": "docs/features/06-events.md"
+    },
+    {
+      "id": "reconciliation",
+      "file": "docs/features/07-reconciliation.md"
+    },
+    {
+      "id": "instruments",
+      "file": "docs/features/08-instruments.md"
+    },
+    {
+      "id": "asset-price-history",
+      "file": "docs/features/09-asset-price-history.md"
+    },
+    {
+      "id": "holdings",
+      "file": "docs/features/10-holdings.md"
+    },
+    {
+      "id": "valuation-fx",
+      "file": "docs/features/11-valuation-fx.md"
+    },
+    {
+      "id": "manual-accounts",
+      "file": "docs/features/12-manual-accounts.md"
+    },
+    {
+      "id": "dashboard",
+      "file": "docs/features/13-dashboard.md"
+    },
+    {
+      "id": "categories",
+      "file": "docs/features/14-categories.md"
+    }
+  ],
+  "adrs": [
+    "0001-bun-monorepo.md",
+    "0002-workspace-data-boundaries.md",
+    "0003-canonical-transactions-soft-deletion.md",
+    "0004-postgres-queue-and-sse.md",
+    "0005-rustfs-storage.md",
+    "0006-event-leg-ledger.md",
+    "0007-historical-prices-and-holdings.md",
+    "0008-cross-feature-doc-governance.md",
+    "0009-currency-and-valuation-history.md",
+    "0010-statement-multi-account-routing.md",
+    "0011-institutions-single-commodity-accounts.md"
+  ]
+}
