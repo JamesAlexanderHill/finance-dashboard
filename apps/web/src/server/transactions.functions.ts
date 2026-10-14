@@ -58,7 +58,9 @@ export const listTransactions = createServerFn({ method: 'GET' })
       data.search ? ilike(transactions.description, `%${data.search}%`) : undefined,
       data.status === 'active' ? active : data.status === 'inactive' ? sql`not (${active})` : undefined,
       data.uncategorisedOnly
-        ? sql`exists (select 1 from event_legs l where l.transaction_id = ${transactions.id} and l.category_id is null)`
+        ? // Only legs that count as cash flow need a category (not internal principal legs).
+          sql`exists (select 1 from event_legs l join events e on e.id = l.event_id
+            where l.transaction_id = ${transactions.id} and l.category_id is null and (not e.is_internal or l.role = 'fee'))`
         : undefined,
     ];
     const rows = await getDb()

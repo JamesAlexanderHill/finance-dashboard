@@ -7,7 +7,7 @@ import { listAccounts } from '../../server/accounts.functions';
 import { listEvents } from '../../server/events.functions';
 
 const PAGE = 100;
-const TYPES = ['income', 'expense', 'refund', 'internal_transfer', 'opening_balance'] as const;
+const TYPES = ['income', 'expense', 'refund', 'internal_transfer', 'currency_conversion', 'opening_balance'] as const;
 
 const searchSchema = z.object({
   accountId: z.uuid().optional(),
@@ -88,7 +88,14 @@ function EventsPage() {
                   <span className="min-w-32">{l.accountName}</span>
                   <span>{l.role.replace('_', ' ')}</span>
                   <span className="tabular text-ink">{money(l.amount, l.commodity)}</span>
-                  <span>{l.category ?? (e.type === 'opening_balance' ? '' : 'Uncategorised')}</span>
+                  <span>
+                    {l.category ??
+                      (e.type === 'opening_balance'
+                        ? ''
+                        : e.isInternal && l.role !== 'fee'
+                          ? 'Not categorised (internal)'
+                          : 'Uncategorised')}
+                  </span>
                   {l.transactionId && (
                     <Link
                       to="/transactions"
