@@ -21,3 +21,8 @@ playwright.local.ts
 /dist/
 .tanstack
 .db
+# Personal data (bank statements, notes) — never commit
+.personal/
+
+# Local storage
+.data/
