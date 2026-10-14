@@ -1,10 +1,12 @@
-import { queryOptions, useSuspenseQuery } from '@tanstack/react-query';
+import { queryOptions, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { todayIso } from '@finance/shared';
+import { useServerFn } from '@tanstack/react-start';
+import { useState, type FormEvent } from 'react';
+import { isZero, todayIso } from '@finance/shared';
 import { TimeSeriesChart } from '../../components/time-series-chart';
-import { Badge, Card, Empty, PageHeader } from '../../components/ui';
+import { Badge, Button, Card, Empty, PageHeader } from '../../components/ui';
 import { money, shortDate } from '../../lib/format';
-import { getAccount } from '../../server/accounts.functions';
+import { archiveAccount, getAccount, unarchiveAccount } from '../../server/accounts.functions';
 import { listTransactions } from '../../server/transactions.functions';
 
 const RECENT = 10;
@@ -52,6 +54,7 @@ function AccountPage() {
         }
       />
       <Merges data={data} />
+      {!data.mergedInto && <Archive data={data} />}
       <CurrentBalance data={data} />
       <BalanceHistory data={data} />
       {!data.mergedInto && <RecentTransactions accountId={accountId} commodity={a.commodity} />}
@@ -92,6 +95,88 @@ function Merges({ data }: { data: Detail }) {
           ({m.maskedIdentifier}).
         </p>
       ))}
+    </Card>
+  );
+}
+
+/**
+ * Feature 02: archiving closes the account on a date no earlier than its latest activity. It still counts
+ * up to that date, is hidden from lists and pickers afterwards, and can be unarchived.
+ */
+function Archive({ data }: { data: Detail }) {
+  const { account: a, balance, latestActivityOn } = data;
+  const queryClient = useQueryClient();
+  const archive = useServerFn(archiveAccount);
+  const unarchive = useServerFn(unarchiveAccount);
+  const today = todayIso();
+  const [open, setOpen] = useState(false);
+  const [closedOn, setClosedOn] = useState(latestActivityOn ?? today);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (action: () => Promise<unknown>) => {
+    setError(null);
+    try {
+      await action();
+      await queryClient.invalidateQueries();
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save');
+    }
+  };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    void run(() => archive({ data: { id: a.id, closedOn } }));
+  };
+
+  if (a.closedOn)
+    return (
+      <Card className="mb-4 flex flex-wrap items-center gap-3 p-3 text-sm">
+        <Badge>Archived</Badge>
+        <span className="min-w-48 flex-1">
+          Closed on {shortDate(a.closedOn)}. It counts toward net worth up to that date and is hidden from lists after it.
+        </span>
+        <Button onClick={() => run(() => unarchive({ data: { id: a.id } }))}>Unarchive</Button>
+        {error && <p className="text-negative w-full text-xs">{error}</p>}
+      </Card>
+    );
+  if (!open)
+    return (
+      <div className="mb-4">
+        <Button onClick={() => setOpen(true)}>Archive…</Button>
+      </div>
+    );
+  return (
+    <Card className="mb-4 p-3 text-sm">
+      <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
+        <label htmlFor="closed-on">Closed on</label>
+        <input
+          id="closed-on"
+          type="date"
+          required
+          value={closedOn}
+          min={latestActivityOn ?? undefined}
+          max={today}
+          onChange={(e) => setClosedOn(e.target.value)}
+          className="border-line bg-surface rounded border px-2 py-1.5"
+        />
+        <Button variant="primary" type="submit">
+          Archive
+        </Button>
+        <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </form>
+      <p className="text-muted mt-2 text-xs">
+        {latestActivityOn ? `Its latest activity is on ${shortDate(latestActivityOn)}, so it cannot close before then. ` : ''}
+        Net worth counts it up to the closing date and leaves it out afterwards.
+      </p>
+      {balance && !isZero(balance.balance) && (
+        <p className="text-warning mt-1 text-xs">
+          Its last known balance is {money(balance.balance, a.commodity)}, not zero. Archiving leaves that amount out of net worth after the
+          closing date.
+        </p>
+      )}
+      {error && <p className="text-negative mt-1 text-xs">{error}</p>}
     </Card>
   );
 }

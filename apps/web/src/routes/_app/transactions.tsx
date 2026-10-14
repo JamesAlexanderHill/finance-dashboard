@@ -129,11 +129,15 @@ function TransactionsPage() {
           className="border-line bg-surface rounded border px-2 py-1.5"
         >
           <option value="">All accounts</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.institution} · {a.name}
-            </option>
-          ))}
+          {/* Archived accounts are hidden unless already chosen (feature 02). */}
+          {accounts
+            .filter((a) => !a.closedOn || a.id === search.accountId)
+            .map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.institution} · {a.name}
+                {a.closedOn ? ' (archived)' : ''}
+              </option>
+            ))}
         </select>
         <select
           value={search.status}

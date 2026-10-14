@@ -13,6 +13,7 @@ import {
   mergeAccounts,
   recordManualBalance,
   unmergeAccounts,
+  unarchiveAccount,
   updateAccount,
 } from '../../server/accounts.functions';
 
@@ -27,8 +28,9 @@ type Account = Awaited<ReturnType<typeof listAccounts>>[number];
 
 function AccountsPage() {
   const accounts = useSuspenseQuery(accountsQuery);
-  // A merged account is shown inside the account it was merged into.
-  const visible = accounts.data.filter((a) => !a.mergedIntoId);
+  // A merged account is shown inside the account it was merged into; archived ones are listed apart.
+  const visible = accounts.data.filter((a) => !a.mergedIntoId && !a.closedOn);
+  const archived = accounts.data.filter((a) => !a.mergedIntoId && a.closedOn);
   const groups = Map.groupBy(visible, (a) => a.institution);
 
   return (
@@ -60,8 +62,43 @@ function AccountsPage() {
             </Card>
           </section>
         ))}
+        <Archived accounts={archived} />
       </div>
     </>
+  );
+}
+
+/** Feature 02: archived (closed) accounts stay viewable and can be unarchived. */
+function Archived({ accounts }: { accounts: Account[] }) {
+  const queryClient = useQueryClient();
+  const unarchive = useServerFn(unarchiveAccount);
+  if (accounts.length === 0) return null;
+  return (
+    <details>
+      <summary className="text-muted cursor-pointer text-sm font-medium">Archived ({accounts.length})</summary>
+      <Card className="mt-2">
+        {accounts.map((a) => (
+          <div key={a.id} className="border-line flex flex-wrap items-center gap-4 border-b px-4 py-3 text-sm last:border-0">
+            <div className="min-w-48 flex-1">
+              <Link to="/accounts/$accountId" params={{ accountId: a.id }} className="font-medium hover:underline">
+                {a.name}
+              </Link>
+              <div className="text-muted text-xs">
+                {a.institution} · {a.maskedIdentifier} · closed {shortDate(a.closedOn!)}
+              </div>
+            </div>
+            <Button
+              onClick={async () => {
+                await unarchive({ data: { id: a.id } });
+                await queryClient.invalidateQueries();
+              }}
+            >
+              Unarchive
+            </Button>
+          </div>
+        ))}
+      </Card>
+    </details>
   );
 }
 
