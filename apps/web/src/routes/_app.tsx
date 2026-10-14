@@ -16,6 +16,7 @@ const NAV = [
   { to: '/', label: 'Cash flow' },
   { to: '/statements', label: 'Statements' },
   { to: '/accounts', label: 'Accounts' },
+  { to: '/categories', label: 'Categories' },
 ] as const;
 
 function AppLayout() {
