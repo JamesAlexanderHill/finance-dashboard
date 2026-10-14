@@ -198,6 +198,31 @@ export const priceObservations = pgTable(
   ],
 );
 
+/**
+ * A display-only current price (or FX rate) the user sets while observations are stale. Never an
+ * observation and never part of any total; cleared when a newer real observation arrives.
+ */
+export const priceOverrides = pgTable(
+  'price_overrides',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id),
+    instrumentId: uuid('instrument_id')
+      .notNull()
+      .references(() => instruments.id),
+    price: amount('price').notNull(),
+    currency: text('currency').notNull(),
+    /** The date the override describes; an observation on or after it clears the override. */
+    setOn: date('set_on').notNull(),
+    createdBy: text('created_by').references(() => user.id),
+    createdAt: createdAt(),
+    clearedAt: timestamp('cleared_at', { withTimezone: true }),
+  },
+  (t) => [index('price_overrides_instrument_idx').on(t.instrumentId)],
+);
+
 // ---------------------------------------------------------------- source files
 
 export const sourceFileKind = pgEnum('source_file_kind', ['statement', 'price_import', 'receipt']);

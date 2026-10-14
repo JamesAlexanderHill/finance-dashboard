@@ -8,6 +8,8 @@ import {
   createPriceImportUpload,
   livePriceCondition,
   resolvePriceConflict,
+  setPriceOverride,
+  activePriceOverrides,
   runPriceImport,
   setPriceFileDeleted,
   startPriceImport,
@@ -112,5 +114,15 @@ describe.skipIf(!url)('price CSV import (PostgreSQL)', () => {
       ['100.00000000', 'rejected'],
       ['99.00000000', 'active'],
     ]);
+  });
+
+  test('an override stays until a real observation on or after its date arrives', async () => {
+    await db.transaction((tx) =>
+      setPriceOverride(tx, workspaceId, { instrumentId: vasId, price: '120', currency: 'AUD', setOn: '2025-02-10', userId }),
+    );
+    await importCsv('older.csv', 'Symbol,Date,Close\nVAS,2025-02-07,110.00\n');
+    expect(await activePriceOverrides(db, workspaceId)).toHaveLength(1);
+    await importCsv('newer.csv', 'Symbol,Date,Close\nVAS,2025-02-10,111.00\n');
+    expect(await activePriceOverrides(db, workspaceId)).toHaveLength(0);
   });
 });

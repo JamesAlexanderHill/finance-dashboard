@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
-import { instruments, priceObservations, sourceFiles, type Executor } from '@finance/db';
+import { instruments, priceObservations, priceOverrides, sourceFiles, type Executor } from '@finance/db';
 import type { ParsedInstrument } from '@finance/domain';
 import { eq as decEq, type DecimalString, type IsoDate } from '@finance/shared';
 
@@ -96,6 +96,19 @@ export async function recordPriceObservations(
       createdBy: o.createdBy ?? null,
     });
     result.inserted++;
+    // A newer real observation supersedes the display-only override.
+    if (status === 'active') {
+      await tx
+        .update(priceOverrides)
+        .set({ clearedAt: sql`now()` })
+        .where(
+          and(
+            eq(priceOverrides.instrumentId, o.instrumentId),
+            isNull(priceOverrides.clearedAt),
+            sql`${priceOverrides.setOn} <= ${o.observedOn}`,
+          ),
+        );
+    }
   }
   return result;
 }
@@ -133,4 +146,42 @@ export async function resolvePriceConflict(tx: Executor, workspaceId: string, ob
       .set({ status: decEq(s.price, chosen.price) ? 'active' : 'rejected' })
       .where(eq(priceObservations.id, s.id));
   }
+}
+
+/** Sets the display-only current price for an instrument, replacing any active override. */
+export async function setPriceOverride(
+  tx: Executor,
+  workspaceId: string,
+  o: { instrumentId: string; price: DecimalString; currency: string; setOn: IsoDate; userId: string | null },
+) {
+  await clearPriceOverride(tx, workspaceId, o.instrumentId);
+  const [created] = await tx
+    .insert(priceOverrides)
+    .values({ workspaceId, instrumentId: o.instrumentId, price: o.price, currency: o.currency, setOn: o.setOn, createdBy: o.userId })
+    .returning();
+  return created!;
+}
+
+export async function clearPriceOverride(tx: Executor, workspaceId: string, instrumentId: string) {
+  await tx
+    .update(priceOverrides)
+    .set({ clearedAt: sql`now()` })
+    .where(
+      and(eq(priceOverrides.workspaceId, workspaceId), eq(priceOverrides.instrumentId, instrumentId), isNull(priceOverrides.clearedAt)),
+    );
+}
+
+/** Active overrides that no live observation on or after their date has superseded. */
+export async function activePriceOverrides(tx: Executor, workspaceId: string) {
+  return tx
+    .select()
+    .from(priceOverrides)
+    .where(
+      and(
+        eq(priceOverrides.workspaceId, workspaceId),
+        isNull(priceOverrides.clearedAt),
+        sql`not exists (select 1 from price_observations o where o.instrument_id = "price_overrides"."instrument_id"
+          and o.observed_on >= "price_overrides"."set_on" and o.status = 'active')`,
+      ),
+    );
 }
