@@ -26,13 +26,16 @@ import { acceptSuggestions, CategoriseError, categoriseLegs, recordDecisions, su
 import {
   AccountArchiveError,
   AccountMergeError,
+  AccountPairingError,
   closeAccount,
   commitParsedStatement,
   latestAccountActivity,
   mergeAccount,
+  pairAccount,
   reopenAccount,
   setStatementDeleted,
   unmergeAccount,
+  unpairAccount,
 } from '../src';
 
 const url = process.env.TEST_DATABASE_URL;
@@ -512,6 +515,37 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     await mergeAccount(db, workspaceId, merged.id, target.id, userId);
     await expect(closeAccount(db, workspaceId, merged.id, '2026-01-05')).rejects.toThrow(AccountArchiveError);
     await expect(closeAccount(db, workspaceId, crypto.randomUUID(), '2026-01-05')).rejects.toThrow('Account not found');
+  });
+
+  test('a loan or offset pairs with one asset, never one that is itself paired, and is unpaired before merging', async () => {
+    await importStatement('A', ['T1']);
+    await importParsed('B', renumbered(['T2']));
+    const { target: house, merged: offset } = await accountsByIdentifier();
+    const { id: _, ...fields } = house;
+    const [other] = await db
+      .insert(financialAccounts)
+      .values({ ...fields, name: 'Other', identifier: 'other', pairedAssetId: null })
+      .returning();
+    const pairedWith = async (id: string) =>
+      (await db.select().from(financialAccounts).where(eq(financialAccounts.id, id)))[0]!.pairedAssetId;
+
+    await expect(pairAccount(db, workspaceId, house.id, house.id)).rejects.toThrow('itself');
+    await pairAccount(db, workspaceId, offset.id, house.id);
+    await pairAccount(db, workspaceId, offset.id, house.id);
+    expect(await pairedWith(offset.id)).toBe(house.id);
+    await expect(pairAccount(db, workspaceId, offset.id, other!.id)).rejects.toThrow('already paired');
+    await expect(pairAccount(db, workspaceId, other!.id, offset.id)).rejects.toThrow('itself paired');
+    await expect(pairAccount(db, workspaceId, house.id, other!.id)).rejects.toThrow('of its own');
+    await expect(mergeAccount(db, workspaceId, offset.id, house.id, userId)).rejects.toThrow('unpair it first');
+
+    await db.update(financialAccounts).set({ classification: 'liability' }).where(eq(financialAccounts.id, other!.id));
+    await expect(pairAccount(db, workspaceId, house.id, other!.id)).rejects.toThrow('not an asset');
+    await expect(pairAccount(db, workspaceId, offset.id, crypto.randomUUID())).rejects.toThrow(AccountPairingError);
+
+    await unpairAccount(db, workspaceId, offset.id);
+    expect(await pairedWith(offset.id)).toBeNull();
+    await mergeAccount(db, workspaceId, offset.id, house.id, userId);
+    await expect(pairAccount(db, workspaceId, offset.id, house.id)).rejects.toThrow('Merged accounts');
   });
 
   test('holding accounts reference a shared instrument and statement prices are recorded with conflicts flagged', async () => {

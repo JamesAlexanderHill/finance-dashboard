@@ -27,12 +27,15 @@ export async function mergeAccount(db: Database, workspaceId: string, accountId:
     if (account.mergedIntoId) throw new AccountMergeError(`${account.name} is already merged`);
     if (into.mergedIntoId) throw new AccountMergeError(`${into.name} is merged into another account`);
     if (account.closedOn || into.closedOn) throw new AccountMergeError('Archived accounts cannot be merged; unarchive first');
+    if (account.pairedAssetId) throw new AccountMergeError(`${account.name} is paired with an asset; unpair it first`);
     if (account.institutionId !== into.institutionId) throw new AccountMergeError('Both accounts must belong to the same institution');
     if (account.commodity !== into.commodity) {
       throw new AccountMergeError(`${account.name} holds ${account.commodity} but ${into.name} holds ${into.commodity}`);
     }
     const [mergedIn] = await tx.select({ n: count() }).from(financialAccounts).where(eq(financialAccounts.mergedIntoId, account.id));
     if (mergedIn!.n > 0) throw new AccountMergeError(`Other accounts are merged into ${account.name}`);
+    const [paired] = await tx.select({ n: count() }).from(financialAccounts).where(eq(financialAccounts.pairedAssetId, account.id));
+    if (paired!.n > 0) throw new AccountMergeError(`${account.name} has loans or offsets paired with it; unpair them first`);
 
     await tx
       .update(financialAccounts)
@@ -116,6 +119,44 @@ export async function reopenAccount(db: Database, workspaceId: string, accountId
     .where(and(eq(financialAccounts.workspaceId, workspaceId), eq(financialAccounts.id, accountId)))
     .returning({ id: financialAccounts.id });
   if (!account) throw new AccountArchiveError('Account not found');
+}
+
+export class AccountPairingError extends Error {}
+
+/**
+ * Pairs a loan (liability) or offset (asset) with an asset such as a property, whose page then shows
+ * its equity (feature 02). Each account pairs with at most one asset, and an asset with paired accounts
+ * cannot itself be paired. Display-only: no total changes.
+ */
+export async function pairAccount(db: Database, workspaceId: string, accountId: string, assetId: string) {
+  return db.transaction(async (tx) => {
+    await lockWorkspace(tx, workspaceId);
+    const rows = await tx
+      .select()
+      .from(financialAccounts)
+      .where(and(eq(financialAccounts.workspaceId, workspaceId), inArray(financialAccounts.id, [accountId, assetId])));
+    const account = rows.find((a) => a.id === accountId);
+    const asset = rows.find((a) => a.id === assetId);
+    if (!account || !asset) throw new AccountPairingError('Account not found');
+    if (account.id === asset.id) throw new AccountPairingError('An account cannot be paired with itself');
+    if (account.mergedIntoId || asset.mergedIntoId) throw new AccountPairingError('Merged accounts cannot be paired');
+    if (asset.classification !== 'asset') throw new AccountPairingError(`${asset.name} is a liability, not an asset`);
+    if (asset.pairedAssetId) throw new AccountPairingError(`${asset.name} is itself paired with an asset`);
+    if (account.pairedAssetId === asset.id) return;
+    if (account.pairedAssetId) throw new AccountPairingError(`${account.name} is already paired with another asset; unpair it first`);
+    const [own] = await tx.select({ n: count() }).from(financialAccounts).where(eq(financialAccounts.pairedAssetId, account.id));
+    if (own!.n > 0) throw new AccountPairingError(`${account.name} has loans or offsets of its own`);
+    await tx.update(financialAccounts).set({ pairedAssetId: asset.id }).where(eq(financialAccounts.id, account.id));
+  });
+}
+
+export async function unpairAccount(db: Database, workspaceId: string, accountId: string) {
+  const [account] = await db
+    .update(financialAccounts)
+    .set({ pairedAssetId: null })
+    .where(and(eq(financialAccounts.workspaceId, workspaceId), eq(financialAccounts.id, accountId)))
+    .returning({ id: financialAccounts.id });
+  if (!account) throw new AccountPairingError('Account not found');
 }
 
 /**
