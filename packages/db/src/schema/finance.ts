@@ -227,6 +227,9 @@ export const sourceRecords = pgTable(
 
 // ---------------------------------------------------------------- canonical transactions
 
+/** What a transaction's leg is for, as stated by its source (e.g. a Wise fee row). */
+export const transactionRole = pgEnum('transaction_role', ['principal', 'fee']);
+
 export const transactions = pgTable(
   'transactions',
   {
@@ -242,6 +245,14 @@ export const transactions = pgTable(
     amount: amount('amount').notNull(),
     commodity: text('commodity').notNull(),
     providerId: text('provider_id'),
+    /**
+     * Provider reference shared by rows of one economic activity (e.g. a Wise conversion's two currency
+     * rows and its fee row). Namespaced by provider, e.g. `wise:BALANCE-123`. Groups them into one event.
+     */
+    providerGroupRef: text('provider_group_ref'),
+    role: transactionRole('role').notNull().default('principal'),
+    /** The source says this is money moved between own accounts (e.g. a Wise top-up). */
+    isTransferHint: boolean('is_transfer_hint').notNull().default(false),
     fingerprint: text('fingerprint').notNull(),
     /** Derived: has at least one source row in a non-deleted source file. */
     isSourceSupported: boolean('is_source_supported').notNull().default(true),
@@ -254,6 +265,7 @@ export const transactions = pgTable(
     uniqueIndex('transactions_fingerprint_uq').on(t.workspaceId, t.fingerprint),
     index('transactions_account_date_idx').on(t.accountId, t.postedOn),
     index('transactions_workspace_date_idx').on(t.workspaceId, t.postedOn),
+    index('transactions_group_ref_idx').on(t.workspaceId, t.providerGroupRef),
   ],
 );
 
@@ -274,7 +286,7 @@ export const transactionSources = pgTable(
 
 // ---------------------------------------------------------------- reconciliation decisions
 
-export const decisionKind = pgEnum('decision_kind', ['category', 'tags', 'suppression', 'itemisation', 'link']);
+export const decisionKind = pgEnum('decision_kind', ['category', 'tags', 'suppression', 'itemisation', 'link', 'transfer']);
 export const decisionActor = pgEnum('decision_actor', ['user', 'system']);
 
 /**
