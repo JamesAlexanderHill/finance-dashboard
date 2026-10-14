@@ -19,6 +19,7 @@ const NAV = [
   { to: '/statements', label: 'Statements' },
   { to: '/accounts', label: 'Accounts' },
   { to: '/categories', label: 'Categories' },
+  { to: '/settings', label: 'Settings' },
 ] as const;
 
 function AppLayout() {

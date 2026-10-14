@@ -15,6 +15,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAccountsRouteImport } from './routes/_app/accounts'
 import { Route as AppCategoriesRouteImport } from './routes/_app/categories'
 import { Route as AppEventsRouteImport } from './routes/_app/events'
+import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppStatementsRouteImport } from './routes/_app/statements'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -49,6 +50,11 @@ const AppCategoriesRoute = AppCategoriesRouteImport.update({
 const AppEventsRoute = AppEventsRouteImport.update({
   id: '/events',
   path: '/events',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
 const AppStatementsRoute = AppStatementsRouteImport.update({
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/accounts': typeof AppAccountsRoute
   '/categories': typeof AppCategoriesRoute
   '/events': typeof AppEventsRoute
+  '/settings': typeof AppSettingsRoute
   '/statements': typeof AppStatementsRoute
   '/transactions': typeof AppTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -100,6 +107,7 @@ export interface FileRoutesByTo {
   '/accounts': typeof AppAccountsRoute
   '/categories': typeof AppCategoriesRoute
   '/events': typeof AppEventsRoute
+  '/settings': typeof AppSettingsRoute
   '/statements': typeof AppStatementsRoute
   '/transactions': typeof AppTransactionsRoute
   '/': typeof AppIndexRoute
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   '/_app/accounts': typeof AppAccountsRoute
   '/_app/categories': typeof AppCategoriesRoute
   '/_app/events': typeof AppEventsRoute
+  '/_app/settings': typeof AppSettingsRoute
   '/_app/statements': typeof AppStatementsRoute
   '/_app/transactions': typeof AppTransactionsRoute
   '/_app/': typeof AppIndexRoute
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/categories'
     | '/events'
+    | '/settings'
     | '/statements'
     | '/transactions'
     | '/api/auth/$'
@@ -143,6 +153,7 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/categories'
     | '/events'
+    | '/settings'
     | '/statements'
     | '/transactions'
     | '/'
@@ -157,6 +168,7 @@ export interface FileRouteTypes {
     | '/_app/accounts'
     | '/_app/categories'
     | '/_app/events'
+    | '/_app/settings'
     | '/_app/statements'
     | '/_app/transactions'
     | '/_app/'
@@ -219,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppEventsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/settings': {
+      id: '/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/statements': {
       id: '/_app/statements'
       path: '/statements'
@@ -268,6 +287,7 @@ interface AppRouteChildren {
   AppAccountsRoute: typeof AppAccountsRoute
   AppCategoriesRoute: typeof AppCategoriesRoute
   AppEventsRoute: typeof AppEventsRoute
+  AppSettingsRoute: typeof AppSettingsRoute
   AppStatementsRoute: typeof AppStatementsRoute
   AppTransactionsRoute: typeof AppTransactionsRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -277,6 +297,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountsRoute: AppAccountsRoute,
   AppCategoriesRoute: AppCategoriesRoute,
   AppEventsRoute: AppEventsRoute,
+  AppSettingsRoute: AppSettingsRoute,
   AppStatementsRoute: AppStatementsRoute,
   AppTransactionsRoute: AppTransactionsRoute,
   AppIndexRoute: AppIndexRoute,
