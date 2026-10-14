@@ -14,10 +14,11 @@ Retain source PDF/CSV files in RustFS and manage their provenance and soft-delet
 
 ## Functional requirements
 
-1. Upload statements only into a workspace and matching financial account.
+1. Upload statements only into the caller's workspace; the parser routes each row to a financial account of the statement's institution (ADR 0010), auto-creating unconfirmed accounts for unknown identifiers (ADR 0011).
 2. Retain file and extracted rows on soft delete; deactivate their contribution without physical deletion.
 3. Support upload checksums, file metadata, parser version, restoration and statement list.
 4. Support source-file kinds: statement, price import (CSV) and receipt (image/PDF attached to a canonical transaction; not parsed in v1).
+5. Reject an upload whose bytes (SHA-256) match a file that is already live in the workspace; re-uploading a soft-deleted file is allowed, and its rows re-attach to the original canonical transactions.
 
 ## Owned contracts and data
 

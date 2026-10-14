@@ -53,7 +53,13 @@ Accounts display statement history, canonical transactions, balance observations
 | Vanguard | ETF trades, distributions, unit movements and positions |
 | IBKR | Trades, dividends, fees, FX, balances and positions |
 
-Supported file formats are **PDF and CSV**. Each institution has versioned provider-specific parsers and fixtures; real/redacted sample exports live in `fixtures/<institution>/`, and a parser is not built until its fixture exists. A provider is considered supported only for specifically tested statement formats; the product must report unsupported variants rather than guessing.
+Supported file formats are **PDF and CSV**. Each institution has versioned provider-specific parsers and fixtures; real sample exports live in `.personal/statements/<institution>/`, which is git-ignored so private statements are never committed (parser tests that need them skip when the folder is absent; synthetic tests run everywhere), and a parser is not built until its fixture exists. A provider is considered supported only for specifically tested statement formats; the product must report unsupported variants rather than guessing.
+
+Supported statement formats:
+
+| Institution | Format | Parser | Notes |
+|---|---|---|---|
+| Commonwealth Bank | PDF deposit statements (Smart Access, Everyday Offset) and home-loan statements | `commbank-pdf` 1.0.0 | Every row's running balance and the closing balance must reconcile, otherwise the statement fails as unsupported. Home-loan PDFs may begin with letters before the statement pages. |
 
 ### Statement lifecycle
 
@@ -257,7 +263,7 @@ Capability groups (all within MVP):
 
 Deliberately deferred:
 
-- Provider export coverage and price conventions (NAV, traded close, adjusted/unadjusted): decided per institution when its `fixtures/<institution>/` samples are added.
+- Provider export coverage and price conventions (NAV, traded close, adjusted/unadjusted): decided per institution when its `.personal/statements/<institution>/` samples are added.
 - Corporate actions beyond buys/sells and distributions: flagged for review, not modelled.
 - Source-file retention on full account erasure, and backups: post-MVP; nothing is physically deleted until then.
 

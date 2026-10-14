@@ -17,6 +17,8 @@ Better Auth passkey and email OTP (Mailgun), session handling and identity mappi
 1. Email OTP (sent via Mailgun) supports registration, login and recovery; passkeys are the primary login. Google OAuth is deferred until other users can sign up.
 2. Link additional auth methods only following verified ownership; secure all endpoints and streaming sessions.
 3. Do not rely solely on frontend route guards for access control.
+4. Registration can be restricted to an allowlist of emails (`ALLOWED_SIGNUP_EMAILS`) while the app has a single owner.
+5. Without Mailgun credentials (local development), OTP emails are written to the web server log instead of being sent.
 
 ## Owned contracts and data
 
