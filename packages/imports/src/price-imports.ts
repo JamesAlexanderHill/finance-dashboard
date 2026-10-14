@@ -89,7 +89,8 @@ export async function startPriceImport(db: Database, workspaceId: string, source
 
 /**
  * Resolves an instrument named in a CSV: its symbol, `EXCHANGE:SYMBOL`, the `SYMBOL.AX` form for
- * ASX listings, or a recorded alias. Ambiguous symbols (listed on several exchanges) do not resolve.
+ * ASX listings, a currency pair such as `USDAUD` for FX rates, or a recorded alias. Ambiguous symbols
+ * (listed on several exchanges) do not resolve; inverse pairs such as `AUDUSD` are not inverted.
  */
 export async function instrumentResolver(db: Executor, workspaceId: string) {
   const [all, aliases] = await Promise.all([
@@ -107,6 +108,8 @@ export async function instrumentResolver(db: Executor, workspaceId: string) {
     add(i.symbol, resolved);
     add(`${i.exchange}:${i.symbol}`, resolved);
     if (i.exchange === 'XASX') add(`${i.symbol}.AX`, resolved);
+    // FX rates: USDAUD, USD/AUD and USD.AUD all mean AUD per 1 USD.
+    if (i.exchange === 'FX') for (const sep of ['', '/', '.']) add(`${i.symbol}${sep}${i.currency}`, resolved);
   }
   for (const a of aliases) {
     const i = all.find((x) => x.id === a.instrumentId);

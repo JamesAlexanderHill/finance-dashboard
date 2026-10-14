@@ -13,7 +13,14 @@ import {
   type Database,
   type Executor,
 } from '@finance/db';
-import { UnsupportedStatementError, withOrdinals, type ParsedStatement } from '@finance/domain';
+import {
+  UnsupportedStatementError,
+  withOrdinals,
+  type ParsedStatement,
+  FX_EXCHANGE,
+  fxInstrument,
+  REPORTING_CURRENCY,
+} from '@finance/domain';
 import { planMatches } from '@finance/ledger';
 import { lockWorkspace, refreshProjection, refreshTransactionSupport } from '@finance/ledger/store';
 import { parseStatement } from '@finance/parsers';
@@ -271,15 +278,20 @@ export async function commitParsedStatement(
     summary.restored += linkedIds.filter((id) => unsupported.has(id)).length;
   }
 
+  // Every foreign currency held needs an FX rate series to be valued in AUD.
+  const currencies = new Set(parsed.accounts.map((a) => a.instrument?.currency ?? a.commodity).filter((c) => c !== REPORTING_CURRENCY));
+  for (const currency of currencies) await findOrCreateInstrument(tx, workspaceId, fxInstrument(currency));
+
   if (parsed.prices?.length) {
     const observations = [];
     for (const p of parsed.prices) {
-      const instrument = await findOrCreateInstrument(tx, workspaceId, {
-        symbol: p.symbol,
-        exchange: p.exchange,
-        name: p.symbol,
-        currency: p.currency,
-      });
+      const instrument = await findOrCreateInstrument(
+        tx,
+        workspaceId,
+        p.exchange === FX_EXCHANGE
+          ? fxInstrument(p.symbol)
+          : { symbol: p.symbol, exchange: p.exchange, name: p.symbol, currency: p.currency },
+      );
       observations.push({
         instrumentId: instrument.id,
         observedOn: p.on,

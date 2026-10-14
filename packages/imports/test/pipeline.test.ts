@@ -224,6 +224,9 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     const rows = await db.select().from(transactions).where(eq(transactions.workspaceId, workspaceId));
     expect(rows).toHaveLength(3);
     expect(rows.find((r) => r.role === 'fee')!.providerGroupRef).toBe('wise:CARD-1');
+    // Holding NZD creates the NZD FX rate instrument (AUD per NZD).
+    const fx = await db.select().from(instruments).where(eq(instruments.workspaceId, workspaceId));
+    expect(fx.map((i) => [i.symbol, i.exchange, i.currency])).toEqual([['NZD', 'FX', 'AUD']]);
 
     await setStatementDeleted(db, workspaceId, a.statementId, true, userId);
     expect(await activeDescriptions()).toEqual(['Card transaction']);

@@ -35,6 +35,17 @@ export interface ParsedInstrument {
   isin?: string;
 }
 
+/** Totals are reported in AUD (PRD §8). */
+export const REPORTING_CURRENCY = 'AUD';
+/** FX rates are prices of an instrument per currency: symbol = the currency, priced in the reporting currency. */
+export const FX_EXCHANGE = 'FX';
+export const fxInstrument = (currency: string): ParsedInstrument => ({
+  symbol: currency,
+  exchange: FX_EXCHANGE,
+  name: `${currency} in ${REPORTING_CURRENCY}`,
+  currency: REPORTING_CURRENCY,
+});
+
 /** Commodity code of a holding account: exchange-qualified so it can never collide with a currency code. */
 export const instrumentCommodity = (i: Pick<ParsedInstrument, 'exchange' | 'symbol'>) => `${i.exchange}:${i.symbol}`;
 
