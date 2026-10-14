@@ -16,6 +16,7 @@ All four slices of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 - Wise PDF statements (one per currency): conversions become one event across currency accounts, with fee legs.
 - Merging an unconfirmed account into an existing one (e.g. a reissued card), and undoing it.
 - Archiving an account by closing it on a date: it counts toward net worth up to that date, is hidden from lists and filters afterwards, and can be unarchived.
+- Property equity: pair a property (or any asset account) with its loans and offsets, and its page shows equity today and over time. Pairing changes no total.
 - An account page per account: its balance with the statement and date it came from, every reported balance, recent transactions and the statements that name it.
 - Transfer matching between owned accounts, persisted as decisions, with a Transfers review page and manual link/unlink.
 - Vanguard and IBKR PDF statements: holdings as instrument accounts, buys and conversions as single events, closing and trade prices.
