@@ -2,7 +2,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { reconciliationDecisions, transactions, type Executor } from '@finance/db';
 import type { DecisionKind, SuppressionPayload } from '../decisions';
 import { lockWorkspace } from './lock';
-import { rebuildEvents } from './rebuild';
+import { refreshProjection } from './refresh';
 
 export interface NewDecision {
   workspaceId: string;
@@ -53,11 +53,11 @@ export async function appendDecision(tx: Executor, d: NewDecision) {
   return inserted!;
 }
 
-/** Records decisions and rebuilds the projection atomically. */
+/** Records decisions, then re-runs automatic matching and rebuilds the projection, atomically. */
 export async function recordDecisions(tx: Executor, workspaceId: string, decisions: NewDecision[]) {
   await lockWorkspace(tx, workspaceId);
   const results = [];
   for (const d of decisions) results.push(await appendDecision(tx, d));
-  await rebuildEvents(tx, workspaceId);
+  await refreshProjection(tx, workspaceId);
   return results;
 }

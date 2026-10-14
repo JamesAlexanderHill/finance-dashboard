@@ -15,7 +15,7 @@ import {
 } from '@finance/db';
 import { UnsupportedStatementError, withOrdinals, type ParsedStatement } from '@finance/domain';
 import { planMatches } from '@finance/ledger';
-import { lockWorkspace, rebuildEvents, refreshTransactionSupport } from '@finance/ledger/store';
+import { lockWorkspace, refreshProjection, refreshTransactionSupport } from '@finance/ledger/store';
 import { parseStatement } from '@finance/parsers';
 import { sha256Hex } from '@finance/shared/node';
 import { appendProgress, enqueueJob, type Job } from './queue';
@@ -126,7 +126,7 @@ export async function runStatementImport(db: Database, storage: ObjectStorage, j
     return;
   }
   await db.insert(importResults).values({ workspaceId: job.workspaceId, statementId, jobId: job.id, summary });
-  await appendProgress(db, job, 'reconciling', `${summary.created} new, ${summary.linked} matched (${summary.restored} restored)`, summary);
+  await appendProgress(db, job, 'reconciling', `${summary.created} new, ${summary.linked} matched (${summary.restored} restored), ${summary.transfersMatched} transfers linked`, summary);
   await appendProgress(db, job, 'posting-events', 'Events rebuilt');
   await appendProgress(db, job, 'completed', `Imported ${summary.rows} rows`, summary);
 }
@@ -140,7 +140,7 @@ export async function commitParsedStatement(
   parsed: ParsedStatement,
 ): Promise<ImportSummary> {
   const institution = await findOrCreateInstitution(tx, workspaceId, parsed.institutionName, parsed.provider);
-  const summary: ImportSummary = { rows: 0, created: 0, linked: 0, restored: 0, accounts: [], warnings: [...parsed.warnings] };
+  const summary: ImportSummary = { rows: 0, created: 0, linked: 0, restored: 0, transfersMatched: 0, accounts: [], warnings: [...parsed.warnings] };
 
   for (const section of parsed.accounts) {
     const { account, created } = await findOrCreateAccount(tx, workspaceId, institution.id, section);
@@ -235,7 +235,7 @@ export async function commitParsedStatement(
     summary.restored += linkedIds.filter((id) => unsupported.has(id)).length;
   }
 
-  await rebuildEvents(tx, workspaceId);
+  summary.transfersMatched = (await refreshProjection(tx, workspaceId)).matched;
   await tx
     .update(statements)
     .set({
@@ -314,7 +314,7 @@ export async function setStatementDeleted(db: Database, workspaceId: string, sta
       .innerJoin(sourceRecords, eq(sourceRecords.id, transactionSources.sourceRecordId))
       .where(eq(sourceRecords.sourceFileId, row.sourceFileId));
     await refreshTransactionSupport(tx, workspaceId, affected.map((a) => a.id));
-    await rebuildEvents(tx, workspaceId);
+    await refreshProjection(tx, workspaceId);
     return true;
   });
 }

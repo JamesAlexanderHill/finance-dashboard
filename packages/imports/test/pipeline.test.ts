@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { and, eq, sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { createDb, eventLegs, sourceFiles, statements, transactions, user, workspaces, type Database } from '@finance/db';
+import { createDb, eventLegs, events, sourceFiles, statements, transactions, user, workspaces, type Database } from '@finance/db';
 import type { ParsedStatement } from '@finance/domain';
 import { recordDecisions } from '@finance/ledger/store';
 import { commitParsedStatement, setStatementDeleted } from '../src';
@@ -182,4 +182,37 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     await setStatementDeleted(db, workspaceId, a.statementId, true, userId);
     expect(await activeDescriptions()).toEqual(['Card transaction']);
   });
+
+  test('a bank transfer out and a Wise top-up are linked automatically into one internal transfer', async () => {
+    const one = (provider: string, identifier: string, row: { description: string; amount: string; transferHint?: boolean; providerId?: string }) => ({
+      ...parsed([]),
+      provider,
+      institutionName: provider,
+      accounts: [
+        {
+          ...parsed([]).accounts[0]!,
+          identifier,
+          rows: [{ rowIndex: 0, postedOn: '2026-01-05', raw: {}, ...row }],
+        },
+      ],
+    });
+    await importParsed('cba', one('commbank', '123', { description: 'Transfer To Wise', amount: '-250.00' }));
+    const wise = await importParsed('wise', one('wise', 'AUD', { description: 'Topped up account', amount: '250.00', transferHint: true, providerId: 'TRANSFER-1' }));
+    expect(wise.summary.transfersMatched).toBe(1);
+
+    const all = await db.select().from(events).where(eq(events.workspaceId, workspaceId));
+    expect(all.filter((e) => e.type !== 'opening_balance').map((e) => [e.type, e.status, e.isInternal])).toEqual([['internal_transfer', 'ok', true]]);
+
+    // Unlinking is a user decision; the matcher never re-links those transactions.
+    const ids = (await db.select({ id: transactions.id }).from(transactions)).map((r) => r.id);
+    await db.transaction((tx) =>
+      recordDecisions(tx, workspaceId, ids.map((transactionId) => ({ workspaceId, transactionId, kind: 'link' as const, payload: { groupId: null }, userId }))),
+    );
+    const after = await db.select().from(events).where(eq(events.workspaceId, workspaceId));
+    expect(after.filter((e) => e.type !== 'opening_balance').map((e) => [e.type, e.status]).sort()).toEqual([
+      ['expense', 'ok'],
+      ['internal_transfer', 'unmatched_transfer'],
+    ]);
+  });
 });
+

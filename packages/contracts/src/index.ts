@@ -38,6 +38,8 @@ export interface ImportSummary {
   created: number;
   linked: number;
   restored: number;
+  /** Transfer pairs linked automatically by this import. */
+  transfersMatched: number;
   accounts: Array<{ id: string; name: string; created: boolean }>;
   warnings: string[];
 }
