@@ -1,0 +1,3 @@
+ALTER TABLE "financial_accounts" ADD COLUMN "paired_asset_id" uuid;--> statement-breakpoint
+ALTER TABLE "financial_accounts" ADD CONSTRAINT "financial_accounts_paired_asset_id_financial_accounts_id_fk" FOREIGN KEY ("paired_asset_id") REFERENCES "public"."financial_accounts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "financial_accounts_paired_asset_idx" ON "financial_accounts" USING btree ("paired_asset_id");

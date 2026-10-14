@@ -105,10 +105,16 @@ export const financialAccounts = pgTable(
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     /** Last date the account counts toward valuation (feature 02); after it the account is excluded, never stale. */
     closedOn: date('closed_on'),
+    /**
+     * Set on a loan (liability) or offset (asset) paired with an asset such as a property, whose page shows
+     * its equity (feature 02). Display-only: net worth counts every account once regardless.
+     */
+    pairedAssetId: uuid('paired_asset_id').references((): AnyPgColumn => financialAccounts.id),
   },
   (t) => [
     uniqueIndex('financial_accounts_identifier_uq').on(t.institutionId, t.identifier),
     index('financial_accounts_workspace_idx').on(t.workspaceId),
+    index('financial_accounts_paired_asset_idx').on(t.pairedAssetId),
   ],
 );
 

@@ -71,6 +71,13 @@
       "when": 1791984761356,
       "tag": "0009_account_closed_on",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791985304117,
+      "tag": "0010_account_paired_asset",
+      "breakpoints": true
     }
   ]
 }
