@@ -12,5 +12,9 @@
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.11"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "migrate": "bun --env-file=../../.env src/migrate.ts"
   }
 }
