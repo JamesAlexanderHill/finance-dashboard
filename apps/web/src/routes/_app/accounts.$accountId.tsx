@@ -1,4 +1,4 @@
-import { queryOptions, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { queryOptions, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
 import { useState, type FormEvent } from 'react';
@@ -6,7 +6,15 @@ import { isZero, todayIso } from '@finance/shared';
 import { TimeSeriesChart } from '../../components/time-series-chart';
 import { Badge, Button, Card, Empty, PageHeader } from '../../components/ui';
 import { money, shortDate } from '../../lib/format';
-import { archiveAccount, getAccount, unarchiveAccount } from '../../server/accounts.functions';
+import {
+  archiveAccount,
+  getAccount,
+  getEquity,
+  listAccounts,
+  pairAccounts,
+  unarchiveAccount,
+  unpairAccounts,
+} from '../../server/accounts.functions';
 import { listTransactions } from '../../server/transactions.functions';
 
 const RECENT = 10;
@@ -56,6 +64,7 @@ function AccountPage() {
       <Merges data={data} />
       {!data.mergedInto && <Archive data={data} />}
       <CurrentBalance data={data} />
+      {!data.mergedInto && <Pairing data={data} />}
       <BalanceHistory data={data} />
       {!data.mergedInto && <RecentTransactions accountId={accountId} commodity={a.commodity} />}
       <Statements data={data} />
@@ -177,6 +186,205 @@ function Archive({ data }: { data: Detail }) {
         </p>
       )}
       {error && <p className="text-negative mt-1 text-xs">{error}</p>}
+    </Card>
+  );
+}
+
+const equityQuery = (id: string) => queryOptions({ queryKey: ['equity', id], queryFn: () => getEquity({ data: { id } }) });
+const accountsQuery = queryOptions({ queryKey: ['accounts'], queryFn: () => listAccounts() });
+const ROLE = { value: 'Value', loan: 'Loan', offset: 'Offset' } as const;
+
+/**
+ * Feature 02: loans and offsets paired with an asset (typically a property) show its equity on the asset's
+ * page. A paired account links back to its asset. Display-only: net worth counts every account once.
+ */
+function Pairing({ data }: { data: Detail }) {
+  const { account: a, pairedAsset, paired } = data;
+  const queryClient = useQueryClient();
+  const unpair = useServerFn(unpairAccounts);
+  const [error, setError] = useState<string | null>(null);
+  const run = async (action: () => Promise<unknown>) => {
+    setError(null);
+    try {
+      await action();
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save');
+    }
+  };
+
+  if (pairedAsset)
+    return (
+      <Card className="mb-4 flex flex-wrap items-center gap-3 p-3 text-sm">
+        <span className="min-w-48 flex-1">
+          Paired with{' '}
+          <Link to="/accounts/$accountId" params={{ accountId: pairedAsset.id }} className="underline">
+            {pairedAsset.name}
+          </Link>{' '}
+          as {a.classification === 'liability' ? 'a loan' : 'an offset'}. Its balance counts in that asset&apos;s equity.
+        </span>
+        <Button onClick={() => run(() => unpair({ data: { id: a.id } }))}>Unpair</Button>
+        {error && <p className="text-negative w-full text-xs">{error}</p>}
+      </Card>
+    );
+  if (a.classification !== 'asset') return null;
+  return (
+    <section className="mb-4">
+      {paired.length > 0 && <Equity accountId={a.id} />}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        {paired.map((p) => (
+          <span key={p.id} className="border-line inline-flex items-center gap-1 rounded border py-0.5 pr-1 pl-2">
+            <span className="text-muted">{p.classification === 'liability' ? 'Loan' : 'Offset'}:</span>
+            <Link to="/accounts/$accountId" params={{ accountId: p.id }} className="underline">
+              {p.name}
+            </Link>
+            <Button
+              variant="ghost"
+              className="px-1.5 py-0"
+              aria-label={`Unpair ${p.name}`}
+              onClick={() => run(() => unpair({ data: { id: p.id } }))}
+            >
+              ×
+            </Button>
+          </span>
+        ))}
+        <PairPicker data={data} onPair={run} />
+      </div>
+      {error && <p className="text-negative mt-1 text-xs">{error}</p>}
+    </section>
+  );
+}
+
+function PairPicker({ data, onPair }: { data: Detail; onPair: (action: () => Promise<unknown>) => Promise<void> }) {
+  const { account: a } = data;
+  const pair = useServerFn(pairAccounts);
+  const [open, setOpen] = useState(false);
+  const [choice, setChoice] = useState('');
+  const accounts = useQuery({ ...accountsQuery, enabled: open });
+  if (!open)
+    return (
+      <Button variant="ghost" onClick={() => setOpen(true)}>
+        Pair a loan or offset…
+      </Button>
+    );
+  // An account pairs with one asset, and an asset with pairs of its own cannot be paired.
+  const assets = new Set(accounts.data?.flatMap((c) => (c.pairedAssetId ? [c.pairedAssetId] : [])));
+  const candidates = (accounts.data ?? []).filter(
+    (c) => c.id !== a.id && !c.mergedIntoId && !c.closedOn && !c.pairedAssetId && !assets.has(c.id) && c.commodityKind === 'currency',
+  );
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!choice) return;
+    void onPair(() => pair({ data: { id: choice, assetId: a.id } })).then(() => {
+      setChoice('');
+      setOpen(false);
+    });
+  };
+  return (
+    <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
+      <label htmlFor="pair-account" className="sr-only">
+        Loan or offset
+      </label>
+      <select
+        id="pair-account"
+        required
+        value={choice}
+        onChange={(e) => setChoice(e.target.value)}
+        className="border-line bg-surface max-w-full rounded border px-2 py-1.5"
+      >
+        <option value="">{accounts.isLoading ? 'Loading…' : 'Choose a loan or offset'}</option>
+        {candidates.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.classification === 'liability' ? 'Loan' : 'Offset'}: {c.institution} · {c.name} ({c.maskedIdentifier})
+          </option>
+        ))}
+      </select>
+      <Button variant="primary" type="submit">
+        Pair
+      </Button>
+      <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+        Cancel
+      </Button>
+    </form>
+  );
+}
+
+function Equity({ accountId }: { accountId: string }) {
+  const { data } = useQuery(equityQuery(accountId));
+  if (!data) return <Card className="text-muted mb-3 p-4 text-sm">Loading equity…</Card>;
+  const { now, series } = data;
+  const points = series.filter((p) => p.equity !== null);
+  return (
+    <Card className="mb-3 p-4">
+      <div className="text-muted text-xs">Equity today</div>
+      <div className="flex flex-wrap items-baseline gap-2">
+        <span className={`tabular text-lg font-semibold ${now.equity?.startsWith('-') ? 'text-negative' : ''}`}>{money(now.equity)}</span>
+        {now.partial ? <Badge tone="warning">Partial</Badge> : now.stale ? <Badge tone="warning">Stale</Badge> : null}
+      </div>
+      <table className="mt-2 w-full max-w-md text-sm">
+        <tbody>
+          {now.inputs.map((i) => (
+            <tr key={i.id} className="border-line border-b last:border-0">
+              <td className="text-muted py-1 pr-2">{ROLE[i.role]}</td>
+              <td className="py-1 pr-2">
+                {i.name}
+                {i.notes.length > 0 && <span className="text-muted text-xs"> · {i.notes.join('; ')}</span>}
+              </td>
+              <td className="tabular py-1 text-right">{i.status === 'closed' ? 'closed' : money(i.aud)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-muted mt-1 text-xs">
+        Value less loans plus offsets, each valued as net worth values it. Net worth already counts each account once, so pairing changes no
+        total.
+      </p>
+      {points.length > 0 && (
+        <div className="mt-3">
+          <TimeSeriesChart
+            title="Equity (AUD)"
+            kind="line"
+            showDots
+            domain={[series[0]!.on, series.at(-1)!.on]}
+            formatAxis={compact}
+            points={points.map((p) => ({
+              on: p.on,
+              value: Number(p.equity),
+              label: `${money(p.equity)}${p.partial ? ' · partial' : p.stale ? ' · stale' : ''}`,
+            }))}
+          />
+          <details className="mt-3">
+            <summary className="text-muted cursor-pointer text-sm">Table view</summary>
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-muted text-left text-xs">
+                  <tr className="border-line border-b">
+                    <th className="px-2 py-2 font-medium">Date</th>
+                    <th className="px-2 py-2 text-right font-medium">Value</th>
+                    <th className="px-2 py-2 text-right font-medium">Loans</th>
+                    <th className="px-2 py-2 text-right font-medium">Offsets</th>
+                    <th className="px-2 py-2 text-right font-medium">Equity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {series.toReversed().map((p) => (
+                    <tr key={p.on} className="border-line border-b last:border-0">
+                      <td className="tabular px-2 py-1.5 whitespace-nowrap">{shortDate(p.on)}</td>
+                      <td className="tabular px-2 py-1.5 text-right">{money(p.value)}</td>
+                      <td className="tabular px-2 py-1.5 text-right">{money(p.loans)}</td>
+                      <td className="tabular px-2 py-1.5 text-right">{money(p.offsets)}</td>
+                      <td className="tabular px-2 py-1.5 text-right">
+                        {money(p.equity)}
+                        {p.partial ? ' · partial' : p.stale ? ' · stale' : ''}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      )}
     </Card>
   );
 }
