@@ -1,5 +1,5 @@
 import { queryOptions, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
 import { useRef, useState, type FormEvent } from 'react';
 import type { PriceCsvMappingInput } from '@finance/contracts';
@@ -11,6 +11,7 @@ import {
   choosePrice,
   deletePriceFile,
   importPriceFile,
+  listFxRates,
   listInstruments,
   listPriceConflicts,
   listPriceFiles,
@@ -21,6 +22,7 @@ import {
 const filesQuery = queryOptions({ queryKey: ['price-files'], queryFn: () => listPriceFiles() });
 const instrumentsQuery = queryOptions({ queryKey: ['instruments'], queryFn: () => listInstruments() });
 const conflictsQuery = queryOptions({ queryKey: ['price-conflicts'], queryFn: () => listPriceConflicts() });
+const fxQuery = queryOptions({ queryKey: ['fx-rates'], queryFn: () => listFxRates() });
 
 export const Route = createFileRoute('/_app/prices')({
   loader: ({ context }) =>
@@ -28,6 +30,7 @@ export const Route = createFileRoute('/_app/prices')({
       context.queryClient.ensureQueryData(filesQuery),
       context.queryClient.ensureQueryData(instrumentsQuery),
       context.queryClient.ensureQueryData(conflictsQuery),
+      context.queryClient.ensureQueryData(fxQuery),
     ]),
   component: PricesPage,
 });
@@ -40,6 +43,7 @@ function PricesPage() {
   const { data: files } = useSuspenseQuery(filesQuery);
   const { data: instruments } = useSuspenseQuery(instrumentsQuery);
   const { data: conflicts } = useSuspenseQuery(conflictsQuery);
+  const { data: fxRates } = useSuspenseQuery(fxQuery);
   const [mapping, setMapping] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -87,6 +91,39 @@ function PricesPage() {
           <Card>
             {conflicts.map((c) => (
               <ConflictRow key={c.key} conflict={c} onChange={refresh} />
+            ))}
+          </Card>
+        </section>
+      )}
+
+      {fxRates.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-1 text-sm font-medium">FX rates</h2>
+          <p className="text-muted mb-2 text-xs">
+            AUD per unit of each currency you hold. Import daily rates as a price CSV (instrument values such as USDAUD or USD/AUD), or
+            enter one by hand.
+          </p>
+          <Card>
+            {fxRates.map((r) => (
+              <div key={r.id} className="border-line flex flex-wrap items-center gap-3 border-b px-4 py-2 text-sm last:border-0">
+                <span className="w-24 font-medium">
+                  {r.symbol}/{r.currency}
+                </span>
+                {r.rate ? (
+                  <>
+                    <span className="tabular">{Number(r.rate.price).toFixed(4)}</span>
+                    <span className="text-muted text-xs">from {shortDate(r.rate.on)}</span>
+                    {r.rate.stale && <Badge tone="warning">Stale</Badge>}
+                    {r.rate.tradePriced && <Badge tone="warning">From a conversion</Badge>}
+                  </>
+                ) : (
+                  <Badge tone="negative">No rate</Badge>
+                )}
+                {r.override && <Badge>Override {Number(r.override).toFixed(4)}</Badge>}
+                <Link to="/holdings/$instrumentId" params={{ instrumentId: r.id }} className="text-accent ml-auto text-xs underline">
+                  History &amp; override
+                </Link>
+              </div>
             ))}
           </Card>
         </section>

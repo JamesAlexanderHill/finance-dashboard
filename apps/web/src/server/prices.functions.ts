@@ -3,6 +3,7 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { idInput, manualPriceInput, resolvePriceConflictInput, startPriceImportInput, type PriceImportSummary } from '@finance/contracts';
 import { getDb, instruments, priceObservations, sourceFiles } from '@finance/db';
 import {
+  activePriceOverrides,
   getStorage,
   previewPriceCsv,
   recordPriceObservations,
@@ -10,7 +11,10 @@ import {
   setPriceFileDeleted,
   startPriceImport,
 } from '@finance/imports';
+import { priceAt } from '@finance/ledger';
+import { todayIso } from '@finance/shared';
 import { workspaceMiddleware } from './session';
+import { loadFxRates } from './valuation.server';
 
 export const listInstruments = createServerFn({ method: 'GET' })
   .middleware([workspaceMiddleware])
@@ -134,4 +138,24 @@ export const addManualPrice = createServerFn({ method: 'POST' })
         },
       ]),
     );
+  });
+
+/** FX rates (AUD per unit of each currency held) with the rate that applies today and any override. */
+export const listFxRates = createServerFn({ method: 'GET' })
+  .middleware([workspaceMiddleware])
+  .handler(async ({ context }) => {
+    const [fx, overrides, fxInstruments] = await Promise.all([
+      loadFxRates(context.workspaceId),
+      activePriceOverrides(getDb(), context.workspaceId),
+      getDb()
+        .select({ id: instruments.id, symbol: instruments.symbol, currency: instruments.currency })
+        .from(instruments)
+        .where(and(eq(instruments.workspaceId, context.workspaceId), eq(instruments.exchange, 'FX')))
+        .orderBy(asc(instruments.symbol)),
+    ]);
+    return fxInstruments.map((i) => ({
+      ...i,
+      rate: priceAt(fx.get(i.symbol) ?? [], todayIso()),
+      override: overrides.find((o) => o.instrumentId === i.id)?.price ?? null,
+    }));
   });
