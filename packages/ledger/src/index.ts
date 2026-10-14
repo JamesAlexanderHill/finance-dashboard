@@ -4,3 +4,4 @@ export * from './sankey';
 export * from './matching';
 export * from './transfers';
 export * from './holdings';
+export * from './valuation';
