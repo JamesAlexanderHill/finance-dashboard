@@ -116,6 +116,18 @@ export const updateAccountInput = z.object({
   confirm: z.boolean().optional(),
 });
 
+export const createManualAccountInput = z.object({
+  name: z.string().trim().min(1).max(80),
+  classification: z.enum(['asset', 'liability']),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+});
+/** A manual account's value; always entered as a positive amount (liabilities are stored negative). */
+export const recordManualBalanceInput = z.object({
+  accountId: z.uuid(),
+  observedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  amount: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Enter a positive amount'),
+});
+
 export const transactionFilter = z.object({
   id: z.uuid().optional(),
   accountId: z.uuid().optional(),
