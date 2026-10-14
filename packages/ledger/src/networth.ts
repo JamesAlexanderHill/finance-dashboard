@@ -26,9 +26,12 @@ export interface AccountValuationInput {
   coverageEnd?: IsoDate | null;
   /** Manual accounts: dated values; the latest on or before the date applies. */
   manualValues?: QuantityPoint[];
+  /** Archived accounts: the closing date, after which the account is excluded (and never stale). */
+  closedOn?: IsoDate | null;
 }
 
-export type ValueStatus = 'ok' | 'stale' | 'missing' | 'untracked';
+/** `closed`: the account was archived before the date, so it holds nothing and counts toward nothing. */
+export type ValueStatus = 'ok' | 'stale' | 'missing' | 'untracked' | 'closed';
 
 export interface AccountValue {
   id: string;
@@ -78,6 +81,9 @@ export function valueAccount(
     kind: account.kind,
     currency: account.currency,
   };
+  if (account.closedOn && on > account.closedOn) {
+    return { ...base, quantity: null, knownAsOf: null, price: null, fx: null, aud: null, status: 'closed', notes: [] };
+  }
   const notes: string[] = [];
   let quantity: DecimalString | null;
   let knownAsOf: IsoDate | null;

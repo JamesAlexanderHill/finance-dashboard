@@ -76,4 +76,13 @@ describe('net worth', () => {
     expect(netWorthAt([house], '2026-01-20', prices, fx).assets).toBe('750000');
     expect(netWorthAt([house], '2025-12-01', prices, fx)).toMatchObject({ assets: '700000', stale: true });
   });
+
+  test('an archived account counts up to its closing date and is excluded, never stale, after it', () => {
+    const closed = { ...cash, closedOn: '2026-01-31' };
+    expect(netWorthAt([closed], '2026-01-31', prices, fx)).toMatchObject({ assets: '800', stale: false });
+    const after = netWorthAt([closed, loan], '2026-06-30', prices, fx);
+    expect(after).toMatchObject({ assets: '0', liabilities: '5000', partial: false });
+    expect(after.accounts.find((a) => a.id === 'cash')).toMatchObject({ status: 'closed', aud: null, notes: [] });
+    expect(after.accounts.find((a) => a.id === 'loan')!.status).toBe('stale');
+  });
 });
