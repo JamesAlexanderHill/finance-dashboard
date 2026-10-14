@@ -19,10 +19,10 @@ All four slices of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 - American Express PDF statements: one card account for every card member; payments match the paying account as transfers, and foreign purchases split out the conversion commission.
 - Daily price CSV import with column mapping, conflict review, manual prices and instrument aliases; holdings with separate price, units and value charts.
 
-- Valuation in AUD with FX rates as priced instruments, staleness and partial totals, display-only overrides, and manual accounts.
+- Valuation in AUD with FX rates as priced instruments, staleness and partial totals, display-only overrides, and manual accounts (with a warning when one looks like a tracked account).
 - A dashboard with one global period control: net worth timeline, cash-flow Sankey and split bars, expenses by category with drill-down.
 
-Not built yet: a Stripe parser, merging unconfirmed accounts, duplicate warnings for manual accounts.
+Not built yet: a Stripe parser, merging unconfirmed accounts.
 
 ## Layout
 

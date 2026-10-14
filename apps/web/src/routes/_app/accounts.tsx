@@ -2,6 +2,7 @@ import { queryOptions, useQuery, useQueryClient, useSuspenseQuery } from '@tanst
 import { createFileRoute } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
 import { useState, type FormEvent } from 'react';
+import { possibleDuplicates } from '@finance/domain/accounts';
 import { todayIso } from '@finance/shared';
 import { Badge, Button, Card, Empty, PageHeader } from '../../components/ui';
 import { money, shortDate } from '../../lib/format';
@@ -26,7 +27,7 @@ function AccountsPage() {
         title="Accounts"
         description="Accounts are created automatically from statements. New ones start unconfirmed until you check them. Add manual accounts for things without statements, such as a house, car or super."
       />
-      <AddManualAccount />
+      <AddManualAccount accounts={accounts.data} />
       {accounts.data.length === 0 && (
         <Card>
           <Empty>No accounts yet. They appear when you import a statement.</Empty>
@@ -38,7 +39,7 @@ function AccountsPage() {
             <h2 className="text-muted mb-2 text-sm font-medium">{institution}</h2>
             <Card>
               {items.map((a) => (
-                <AccountRow key={a.id} account={a} />
+                <AccountRow key={a.id} account={a} duplicates={a.provider === 'manual' ? possibleDuplicates(a, accounts.data) : []} />
               ))}
             </Card>
           </section>
@@ -48,7 +49,7 @@ function AccountsPage() {
   );
 }
 
-function AccountRow({ account: a }: { account: Account }) {
+function AccountRow({ account: a, duplicates }: { account: Account; duplicates: Account[] }) {
   const queryClient = useQueryClient();
   const update = useServerFn(updateAccount);
   const [editing, setEditing] = useState(false);
@@ -86,6 +87,7 @@ function AccountRow({ account: a }: { account: Account }) {
         <div className="text-muted text-xs">
           {a.maskedIdentifier} · {a.accountType.replace('_', ' ')} · {a.classification} · {a.activeTransactions} transactions
         </div>
+        <DuplicateWarning duplicates={duplicates} />
       </div>
       {a.status === 'unconfirmed' && (
         <div className="flex items-center gap-2">
@@ -106,7 +108,20 @@ function AccountRow({ account: a }: { account: Account }) {
 
 const field = 'border-line bg-surface rounded border px-2 py-1.5 text-sm';
 
-function AddManualAccount() {
+/** Feature 12: a manual account that looks like a tracked one would count the same thing twice. */
+function DuplicateWarning({ duplicates }: { duplicates: Account[] }) {
+  if (duplicates.length === 0) return null;
+  const names = duplicates.slice(0, 3).map((d) => `${d.name} (${d.institution})`);
+  const more = duplicates.length > 3 ? ` and ${duplicates.length - 3} more` : '';
+  return (
+    <p className="text-warning mt-1 text-xs">
+      May duplicate {names.join(', ')}
+      {more}, which statements already track. Both count towards net worth.
+    </p>
+  );
+}
+
+function AddManualAccount({ accounts }: { accounts: Account[] }) {
   const queryClient = useQueryClient();
   const create = useServerFn(createManualAccount);
   const [open, setOpen] = useState(false);
@@ -168,6 +183,7 @@ function AddManualAccount() {
           Cancel
         </Button>
       </form>
+      <DuplicateWarning duplicates={name.trim() ? possibleDuplicates({ name, classification }, accounts) : []} />
       {error && <p className="text-negative mt-2 text-xs">{error}</p>}
     </Card>
   );
