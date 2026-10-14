@@ -35,6 +35,12 @@
     "apps/worker": {
       "name": "@finance/worker",
       "version": "0.0.0",
+      "dependencies": {
+        "@finance/contracts": "workspace:*",
+        "@finance/db": "workspace:*",
+        "@finance/imports": "workspace:*",
+        "drizzle-orm": "^0.45.4",
+      },
     },
     "packages/contracts": {
       "name": "@finance/contracts",
