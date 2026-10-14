@@ -1,6 +1,14 @@
 import { createServerFn } from '@tanstack/react-start';
 import { and, asc, desc, eq, gte, ilike, inArray, lte, sql, type SQL } from 'drizzle-orm';
-import { idInput, itemiseInput, setCategoryInput, setSuppressionInput, setTagsInput, transactionFilter } from '@finance/contracts';
+import {
+  idInput,
+  itemiseInput,
+  setCategoryForLegsInput,
+  setCategoryInput,
+  setSuppressionInput,
+  setTagsInput,
+  transactionFilter,
+} from '@finance/contracts';
 import {
   categories,
   financialAccounts,
@@ -13,7 +21,7 @@ import {
   transactionSources,
 } from '@finance/db';
 import { validateItemisation } from '@finance/ledger';
-import { recordDecisions } from '@finance/ledger/store';
+import { categoriseLegs, recordDecisions } from '@finance/ledger/store';
 import { workspaceMiddleware } from './session';
 
 export class TransactionError extends Error {}
@@ -162,6 +170,14 @@ export const setLegCategory = createServerFn({ method: 'POST' })
       ]),
     );
   });
+
+/** Gives every selected leg one category; each leg still gets its own decision. */
+export const setCategoryForLegs = createServerFn({ method: 'POST' })
+  .middleware([workspaceMiddleware])
+  .validator(setCategoryForLegsInput)
+  .handler(({ context, data }) =>
+    getDb().transaction((tx) => categoriseLegs(tx, context.workspaceId, data.legs, data.categoryId, context.userId)),
+  );
 
 export const setLegTags = createServerFn({ method: 'POST' })
   .middleware([workspaceMiddleware])
