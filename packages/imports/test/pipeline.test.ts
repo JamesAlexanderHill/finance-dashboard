@@ -22,7 +22,7 @@ import {
   type Database,
 } from '@finance/db';
 import { instrumentCommodity, type ParsedStatement } from '@finance/domain';
-import { CategoriseError, categoriseLegs, recordDecisions } from '@finance/ledger/store';
+import { acceptSuggestions, CategoriseError, categoriseLegs, recordDecisions, suggestCategories } from '@finance/ledger/store';
 import { AccountMergeError, commitParsedStatement, mergeAccount, setStatementDeleted, unmergeAccount } from '../src';
 
 const url = process.env.TEST_DATABASE_URL;
@@ -230,6 +230,44 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     const foreign = crypto.randomUUID();
     await db.execute(sql`insert into categories (id, workspace_id, name, kind) values (${foreign}, ${other!.id}, 'Lifestyle', 'expense')`);
     await expect(categorise([s1!], foreign)).rejects.toThrow(CategoriseError);
+  });
+
+  test('an uncategorised leg is suggested the latest category given to the same normalised description', async () => {
+    await importStatement('A', ['CORNER GROCER 1234', 'Corner Grocer #99', 'corner grocer 5678', 'Bus 1', '1234']);
+    const [a, b, c, bus] = await Promise.all(['CORNER GROCER 1234', 'Corner Grocer #99', 'corner grocer 5678', 'Bus 1'].map(idOf));
+    const [essentials, lifestyle] = [crypto.randomUUID(), crypto.randomUUID()];
+    await db.execute(sql`insert into categories (id, workspace_id, name, kind) values
+      (${essentials}, ${workspaceId}, 'Essentials', 'expense'), (${lifestyle}, ${workspaceId}, 'Lifestyle', 'expense')`);
+    const categorise = (id: string, to: string) =>
+      db.transaction((tx) => categoriseLegs(tx, workspaceId, [{ transactionId: id, legKey: 'principal' }], to, userId));
+    const suggest = () => db.transaction((tx) => suggestCategories(tx, workspaceId, [a!, b!, c!, bus!]));
+
+    expect(await suggest()).toEqual([]);
+    await categorise(a!, essentials);
+    expect(await suggest()).toEqual(
+      expect.arrayContaining([
+        { transactionId: b, legKey: 'principal', categoryId: essentials },
+        { transactionId: c, legKey: 'principal', categoryId: essentials },
+      ]),
+    );
+    // The most recently categorised match wins; a description of only digits matches nothing.
+    await categorise(b!, lifestyle);
+    expect(await suggest()).toEqual([{ transactionId: c!, legKey: 'principal', categoryId: lifestyle }]);
+
+    // A suggestion is never stored: the leg stays uncategorised until accepted.
+    expect((await db.select().from(eventLegs).where(eq(eventLegs.transactionId, c!)))[0]!.categoryId).toBeNull();
+    const accept = () =>
+      db.transaction((tx) =>
+        acceptSuggestions(
+          tx,
+          workspaceId,
+          [c!, bus!].map((transactionId) => ({ transactionId, legKey: 'principal' })),
+          userId,
+        ),
+      );
+    expect(await accept()).toEqual({ categorised: 1 });
+    expect((await db.select().from(eventLegs).where(eq(eventLegs.transactionId, c!)))[0]!.categoryId).toBe(lifestyle);
+    expect(await accept()).toEqual({ categorised: 0 });
   });
 
   test('provider IDs dedupe across files, and one statement can cover several accounts', async () => {

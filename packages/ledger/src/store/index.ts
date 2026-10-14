@@ -5,3 +5,4 @@ export { appendDecision, recordDecisions, type NewDecision } from './decisions';
 export { refreshProjection } from './refresh';
 export { autoMatchTransfers, transferCandidates } from './transfers';
 export { CategoriseError, categoriseLegs, type LegRef } from './categorise';
+export { acceptSuggestions, suggestCategories, type CategorySuggestion } from './suggestions';
