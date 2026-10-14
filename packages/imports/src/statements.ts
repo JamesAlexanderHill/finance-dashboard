@@ -208,6 +208,9 @@ export async function commitParsedStatement(
                 amount: r.amount,
                 commodity: section.commodity,
                 providerId: r.providerId ?? null,
+                providerGroupRef: r.groupRef ?? null,
+                role: r.role ?? 'principal',
+                isTransferHint: r.transferHint ?? false,
                 fingerprint: r.fingerprint,
               };
             }),

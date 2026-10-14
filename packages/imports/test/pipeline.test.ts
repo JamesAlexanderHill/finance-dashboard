@@ -60,6 +60,16 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     ],
   });
 
+  async function importParsed(name: string, statement: ParsedStatement) {
+    const [file] = await db
+      .insert(sourceFiles)
+      .values({ workspaceId, kind: 'statement', originalName: name, contentType: 'application/pdf', sizeBytes: 1, checksumSha256: name, objectKey: name })
+      .returning();
+    const [row] = await db.insert(statements).values({ workspaceId, sourceFileId: file!.id }).returning();
+    const summary = await db.transaction((tx) => commitParsedStatement(tx, workspaceId, file!.id, row!.id, statement));
+    return { statementId: row!.id, summary };
+  }
+
   async function importStatement(name: string, descriptions: string[]) {
     const [file] = await db
       .insert(sourceFiles)
@@ -132,5 +142,44 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     await importStatement('B', ['Groceries']);
     const [leg] = await db.select().from(eventLegs).where(eq(eventLegs.transactionId, txId));
     expect(leg!.categoryId).toBe(categoryId);
+  });
+
+  test('provider IDs dedupe across files, and one statement can cover several accounts', async () => {
+    let nextRow = 0; // Row indexes are positions within the whole file, across accounts.
+    const section = (identifier: string, commodity: string, rows: Array<[string, string, string]>) => ({
+      identifier,
+      maskedIdentifier: identifier,
+      name: commodity,
+      accountType: 'bank' as const,
+      classification: 'asset' as const,
+      commodity,
+      rows: rows.map(([providerId, description, amount]) => ({
+        rowIndex: nextRow++,
+        postedOn: '2026-01-05',
+        description,
+        amount,
+        providerId,
+        groupRef: `wise:${providerId.replace(/^FEE-/, '')}`,
+        role: providerId.startsWith('FEE-') ? ('fee' as const) : ('principal' as const),
+        raw: {},
+      })),
+    });
+    const wise = (accounts: ReturnType<typeof section>[]): ParsedStatement => ({ ...parsed([]), provider: 'wise', institutionName: 'Wise', accounts });
+
+    const a = await importParsed('A', wise([
+      section('AUD', 'AUD', [['CARD-1', 'Card transaction', '-1.20'], ['FEE-CARD-1', 'Wise Charges for: CARD-1', '-0.01']]),
+      section('NZD', 'NZD', [['CARD-1', 'Card transaction', '-18.40']]),
+    ]));
+    expect(a.summary.accounts).toHaveLength(2);
+    nextRow = 0;
+    const b = await importParsed('B', wise([section('AUD', 'AUD', [['CARD-1', 'Card transaction (reworded)', '-1.20']])]));
+    expect(b.summary).toMatchObject({ created: 0, linked: 1 });
+
+    const rows = await db.select().from(transactions).where(eq(transactions.workspaceId, workspaceId));
+    expect(rows).toHaveLength(3);
+    expect(rows.find((r) => r.role === 'fee')!.providerGroupRef).toBe('wise:CARD-1');
+
+    await setStatementDeleted(db, workspaceId, a.statementId, true, userId);
+    expect(await activeDescriptions()).toEqual(['Card transaction']);
   });
 });

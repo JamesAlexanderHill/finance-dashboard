@@ -5,14 +5,21 @@ export type AccountClassification = 'asset' | 'liability';
 
 /** One posted row as read from a statement, before routing to a financial account. */
 export interface ParsedRow {
-  /** Position of the row within the file; stable across re-parses of the same file. */
+  /** Position of the row within the whole file (unique across account sections); stable across re-parses. */
   rowIndex: number;
   postedOn: IsoDate;
   description: string;
   /** Signed from the owner's perspective: money in is positive. */
   amount: DecimalString;
   runningBalance?: DecimalString;
+  /** Stable provider ID for this row; preferred over fingerprints for matching across files. */
   providerId?: string;
+  /** Provider reference shared by rows of one activity (namespaced, e.g. `wise:BALANCE-1`); groups them into one event. */
+  groupRef?: string;
+  /** `fee` when the source reports the row as a fee for another row. Defaults to `principal`. */
+  role?: 'principal' | 'fee';
+  /** The source says this row moves money between the owner's accounts (e.g. a top-up). */
+  transferHint?: boolean;
   raw: Record<string, unknown>;
 }
 

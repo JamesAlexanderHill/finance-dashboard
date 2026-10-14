@@ -15,6 +15,7 @@ export interface FingerprintInput {
   postedOn: IsoDate;
   amount: DecimalString;
   description: string;
+  providerId?: string;
 }
 
 /** Key shared by identical rows; rows with the same key are told apart by ordinal. */
@@ -30,10 +31,19 @@ export function fingerprint(row: FingerprintInput, ordinal: number): string {
   return sha256Hex(`${identityKey(row)}|${ordinal}`);
 }
 
-/** Assigns each row its ordinal among identical rows in the same file, in file order. */
+/** Fingerprint for rows with a stable provider ID: (account, provider ID). */
+export function providerFingerprint(accountId: string, providerId: string): string {
+  return sha256Hex(`${accountId}|pid|${providerId}`);
+}
+
+/**
+ * Assigns each row its fingerprint. Rows with a provider ID use it directly; the rest get their
+ * ordinal among identical rows in the same file, in file order.
+ */
 export function withOrdinals<T extends FingerprintInput>(rows: readonly T[]): Array<T & { ordinal: number; fingerprint: string }> {
   const seen = new Map<string, number>();
   return rows.map((row) => {
+    if (row.providerId) return { ...row, ordinal: 0, fingerprint: providerFingerprint(row.accountId, row.providerId) };
     const key = identityKey(row);
     const ordinal = seen.get(key) ?? 0;
     seen.set(key, ordinal + 1);
