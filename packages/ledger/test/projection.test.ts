@@ -8,6 +8,7 @@ const tx = (id: string, amount: string, extra: Partial<ActiveTransaction> = {}):
   description: `Tx ${id}`,
   amount,
   commodity: 'AUD',
+  commodityKind: 'currency',
   role: 'principal',
   providerGroupRef: null,
   isTransferHint: false,
@@ -151,5 +152,19 @@ describe('grouping and transfers', () => {
     ];
     const events = project([tx('out', '-500', { accountId: 'cba' }), tx('in', '500', { accountId: 'wise' })], decisions);
     expect(events.map((e) => e.type).sort()).toEqual(['expense', 'income']);
+  });
+
+  test('cash out and units in of an instrument form an investment buy', () => {
+    const [event] = project([
+      tx('cash', '-1200.00', { accountId: 'vanguard-cash', providerGroupRef: 'vanguard:buy:1' }),
+      tx('units', '12', {
+        accountId: 'vanguard-vap',
+        commodity: 'XASX:VAP',
+        commodityKind: 'instrument',
+        providerGroupRef: 'vanguard:buy:1',
+      }),
+    ]);
+    expect(event).toMatchObject({ type: 'investment_buy', isInternal: true });
+    expect(event!.legs.every((l) => l.categoryId === null)).toBe(true);
   });
 });

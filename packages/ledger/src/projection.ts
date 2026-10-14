@@ -11,7 +11,8 @@ import {
   type TransferPayload,
 } from './decisions';
 
-export type EventType = 'income' | 'expense' | 'refund' | 'internal_transfer' | 'currency_conversion' | 'opening_balance';
+export type EventType =
+  'income' | 'expense' | 'refund' | 'internal_transfer' | 'currency_conversion' | 'investment_buy' | 'investment_sell' | 'opening_balance';
 export type EventStatus = 'ok' | 'unmatched_transfer';
 export type LegRole = 'principal' | 'fee' | 'line_item';
 
@@ -22,6 +23,8 @@ export interface ActiveTransaction {
   description: string;
   amount: DecimalString;
   commodity: string;
+  /** `instrument` for holding accounts, whose amounts are quantities. */
+  commodityKind: 'currency' | 'instrument';
   role: 'principal' | 'fee';
   /** Provider reference grouping rows of one activity, e.g. `wise:BALANCE-1`. */
   providerGroupRef: string | null;
@@ -110,7 +113,8 @@ function components(transactions: readonly ActiveTransaction[], linkGroupOf: (tx
  *
  * Transactions sharing a provider reference (a Wise conversion and its fee) or a link decision (both
  * halves of a transfer) form one event. Events moving value both into and out of owned accounts are
- * internal: a transfer, or a conversion when commodities differ. A lone transfer whose counterpart is
+ * internal: an investment buy/sell when units of an instrument move, a conversion when currencies
+ * differ, otherwise a transfer. A lone transfer whose counterpart is
  * missing is an unmatched transfer. Internal principal legs are never categorised.
  */
 export function projectEvents(input: ProjectionInput): ProjectedEvent[] {
@@ -175,7 +179,15 @@ export function projectEvents(input: ProjectionInput): ProjectedEvent[] {
       status = 'unmatched_transfer';
       isInternal = true;
     } else if (hasIn && hasOut) {
-      type = new Set(principals.map((t) => t.commodity)).size > 1 ? 'currency_conversion' : 'internal_transfer';
+      // Units in → a buy; units out → a sell; otherwise currencies changed hands or money moved.
+      const units = principals.filter((t) => t.commodityKind === 'instrument');
+      type = units.length
+        ? units.some((t) => isPositive(t.amount))
+          ? 'investment_buy'
+          : 'investment_sell'
+        : new Set(principals.map((t) => t.commodity)).size > 1
+          ? 'currency_conversion'
+          : 'internal_transfer';
       isInternal = true;
     } else if (hasIn) {
       const expenseCategorised = legs.some((l) => l.role !== 'fee' && l.categoryId && categories.get(l.categoryId)?.kind === 'expense');

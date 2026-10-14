@@ -34,11 +34,13 @@ export async function rebuildEvents(tx: Executor, workspaceId: string) {
         description: transactions.description,
         amount: transactions.amount,
         commodity: transactions.commodity,
+        commodityKind: financialAccounts.commodityKind,
         role: transactions.role,
         providerGroupRef: transactions.providerGroupRef,
         isTransferHint: transactions.isTransferHint,
       })
       .from(transactions)
+      .innerJoin(financialAccounts, eq(financialAccounts.id, transactions.accountId))
       .where(and(eq(transactions.workspaceId, workspaceId), eq(transactions.isSourceSupported, true), eq(transactions.isSuppressed, false)))
       .orderBy(asc(transactions.postedOn), asc(transactions.id)),
     tx
