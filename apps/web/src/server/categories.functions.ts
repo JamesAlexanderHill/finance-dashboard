@@ -19,7 +19,7 @@ export const listCategories = createServerFn({ method: 'GET' })
           name: categories.name,
           kind: categories.kind,
           isFixed: categories.isFixed,
-          legCount: sql<number>`(select count(*)::int from event_legs l where l.category_id = ${categories.id})`,
+          legCount: sql<number>`(select count(*)::int from event_legs l where l.category_id = "categories"."id")`,
         })
         .from(categories)
         .where(and(eq(categories.workspaceId, context.workspaceId), isNull(categories.archivedAt)))
