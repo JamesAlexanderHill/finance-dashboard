@@ -23,12 +23,16 @@ export async function extractLines(bytes: Uint8Array): Promise<TextLine[]> {
   for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
     const page = await pdf.getPage(pageNo);
     const content = await page.getTextContent();
+    // Landscape statements (e.g. IBKR) are portrait pages rotated 90°: text runs along the y axis, so
+    // swap axes to keep "lines top to bottom, items left to right".
+    const rotated = page.rotate === 90;
     const items = (content.items as Array<{ str?: string; transform?: number[]; width?: number }>)
       .filter((it) => it.str && it.str.trim() && it.transform)
-      .map((it) => ({
-        y: it.transform![5]!,
-        item: { x: it.transform![4]!, right: it.transform![4]! + (it.width ?? 0), text: it.str!.trim() },
-      }))
+      .map((it) => {
+        const [tx, ty] = [it.transform![4]!, it.transform![5]!];
+        const x = rotated ? ty : tx;
+        return { y: rotated ? -tx : ty, item: { x, right: x + (it.width ?? 0), text: it.str!.trim() } };
+      })
       .sort((a, b) => b.y - a.y || a.item.x - b.item.x);
 
     const pageLines: Array<{ y: number; items: TextItem[] }> = [];
