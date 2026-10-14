@@ -12,7 +12,10 @@ export const Route = createFileRoute('/_app')({
   component: AppLayout,
 });
 
-const NAV = [{ to: '/', label: 'Cash flow' }] as const;
+const NAV = [
+  { to: '/', label: 'Cash flow' },
+  { to: '/statements', label: 'Statements' },
+] as const;
 
 function AppLayout() {
   const router = useRouter();

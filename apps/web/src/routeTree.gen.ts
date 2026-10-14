@@ -12,7 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppStatementsRouteImport } from './routes/_app/statements'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiSourceFilesIdRouteImport } from './routes/api/source-files/$id'
+import { Route as ApiStatementsIndexRouteImport } from './routes/api/statements/index'
+import { Route as ApiJobsJobIdEventsRouteImport } from './routes/api/jobs/$jobId/events'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -28,41 +32,99 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppStatementsRoute = AppStatementsRouteImport.update({
+  id: '/statements',
+  path: '/statements',
+  getParentRoute: () => AppRoute,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSourceFilesIdRoute = ApiSourceFilesIdRouteImport.update({
+  id: '/api/source-files/$id',
+  path: '/api/source-files/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiStatementsIndexRoute = ApiStatementsIndexRouteImport.update({
+  id: '/api/statements/',
+  path: '/api/statements/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiJobsJobIdEventsRoute = ApiJobsJobIdEventsRouteImport.update({
+  id: '/api/jobs/$jobId/events',
+  path: '/api/jobs/$jobId/events',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
+  '/statements': typeof AppStatementsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/source-files/$id': typeof ApiSourceFilesIdRoute
+  '/api/statements/': typeof ApiStatementsIndexRoute
+  '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/statements': typeof AppStatementsRoute
   '/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/source-files/$id': typeof ApiSourceFilesIdRoute
+  '/api/statements': typeof ApiStatementsIndexRoute
+  '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/_app/statements': typeof AppStatementsRoute
   '/_app/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/source-files/$id': typeof ApiSourceFilesIdRoute
+  '/api/statements/': typeof ApiStatementsIndexRoute
+  '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/api/auth/$'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/statements'
+    | '/api/auth/$'
+    | '/api/source-files/$id'
+    | '/api/statements/'
+    | '/api/jobs/$jobId/events'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/' | '/api/auth/$'
-  id: '__root__' | '/_app' | '/login' | '/_app/' | '/api/auth/$'
+  to:
+    | '/login'
+    | '/statements'
+    | '/'
+    | '/api/auth/$'
+    | '/api/source-files/$id'
+    | '/api/statements'
+    | '/api/jobs/$jobId/events'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/login'
+    | '/_app/statements'
+    | '/_app/'
+    | '/api/auth/$'
+    | '/api/source-files/$id'
+    | '/api/statements/'
+    | '/api/jobs/$jobId/events'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiSourceFilesIdRoute: typeof ApiSourceFilesIdRoute
+  ApiStatementsIndexRoute: typeof ApiStatementsIndexRoute
+  ApiJobsJobIdEventsRoute: typeof ApiJobsJobIdEventsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -88,6 +150,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/statements': {
+      id: '/_app/statements'
+      path: '/statements'
+      fullPath: '/statements'
+      preLoaderRoute: typeof AppStatementsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -95,14 +164,37 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/source-files/$id': {
+      id: '/api/source-files/$id'
+      path: '/api/source-files/$id'
+      fullPath: '/api/source-files/$id'
+      preLoaderRoute: typeof ApiSourceFilesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/statements/': {
+      id: '/api/statements/'
+      path: '/api/statements'
+      fullPath: '/api/statements/'
+      preLoaderRoute: typeof ApiStatementsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/jobs/$jobId/events': {
+      id: '/api/jobs/$jobId/events'
+      path: '/api/jobs/$jobId/events'
+      fullPath: '/api/jobs/$jobId/events'
+      preLoaderRoute: typeof ApiJobsJobIdEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppStatementsRoute: typeof AppStatementsRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppStatementsRoute: AppStatementsRoute,
   AppIndexRoute: AppIndexRoute,
 }
 
@@ -112,6 +204,9 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiSourceFilesIdRoute: ApiSourceFilesIdRoute,
+  ApiStatementsIndexRoute: ApiStatementsIndexRoute,
+  ApiJobsJobIdEventsRoute: ApiJobsJobIdEventsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
