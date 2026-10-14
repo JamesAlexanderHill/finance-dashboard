@@ -2,10 +2,48 @@ import { z } from 'zod';
 
 // ---------------------------------------------------------------- jobs
 
-export const JOB_TYPES = { statementImport: 'statement.import' } as const;
+export const JOB_TYPES = { statementImport: 'statement.import', priceImport: 'price.import' } as const;
 
 export const statementImportPayload = z.object({ statementId: z.uuid() });
 export type StatementImportPayload = z.infer<typeof statementImportPayload>;
+
+export const priceCsvMapping = z
+  .object({
+    dateColumn: z.string().min(1),
+    dateFormat: z.enum(['YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY']),
+    priceColumn: z.string().min(1),
+    instrumentId: z.uuid().optional(),
+    instrumentColumn: z.string().min(1).optional(),
+    currency: z
+      .string()
+      .regex(/^[A-Z]{3}$/)
+      .optional(),
+    currencyColumn: z.string().min(1).optional(),
+  })
+  .refine((m) => !!m.instrumentId !== !!m.instrumentColumn, 'Choose either one instrument or an instrument column');
+export type PriceCsvMappingInput = z.infer<typeof priceCsvMapping>;
+
+export const priceImportPayload = z.object({ sourceFileId: z.uuid(), mapping: priceCsvMapping, mappingVersion: z.string() });
+export type PriceImportPayload = z.infer<typeof priceImportPayload>;
+
+export interface PriceImportSummary {
+  rows: number;
+  inserted: number;
+  duplicates: number;
+  conflicts: number;
+  /** Rejected rows (first 200), each with its 1-based line number. */
+  errors: Array<{ line: number; error: string }>;
+  errorCount: number;
+  mappingVersion: string;
+}
+
+export const startPriceImportInput = z.object({ sourceFileId: z.uuid(), mapping: priceCsvMapping });
+export const manualPriceInput = z.object({
+  instrumentId: z.uuid(),
+  observedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  price: z.string().regex(/^\d+(\.\d+)?$/, 'Must be a positive number'),
+});
+export const resolvePriceConflictInput = z.object({ observationId: z.uuid() });
 
 export const STATEMENT_STAGES = [
   'uploaded',

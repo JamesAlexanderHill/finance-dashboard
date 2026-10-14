@@ -561,9 +561,10 @@ export const importResults = pgTable('import_results', {
   workspaceId: uuid('workspace_id')
     .notNull()
     .references(() => workspaces.id),
-  statementId: uuid('statement_id')
-    .notNull()
-    .references(() => statements.id),
+  /** Set for statement imports. */
+  statementId: uuid('statement_id').references(() => statements.id),
+  /** The imported file (statement or price import). */
+  sourceFileId: uuid('source_file_id').references(() => sourceFiles.id),
   jobId: uuid('job_id').references(() => jobs.id),
   summary: jsonb('summary').notNull(),
   createdAt: createdAt(),

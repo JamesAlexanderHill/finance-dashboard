@@ -29,6 +29,13 @@
       "when": 1791972575480,
       "tag": "0003_transfer_counterpart_date",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791972704378,
+      "tag": "0004_import_results_for_price_files",
+      "breakpoints": true
     }
   ]
 }

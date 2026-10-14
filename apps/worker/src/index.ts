@@ -1,8 +1,18 @@
 import { hostname } from 'node:os';
 import { eq } from 'drizzle-orm';
-import { JOB_TYPES, statementImportPayload } from '@finance/contracts';
+import { JOB_TYPES, priceImportPayload, statementImportPayload } from '@finance/contracts';
 import { createDb, statements } from '@finance/db';
-import { appendProgress, claimJob, completeJob, failJob, getStorage, heartbeat, runStatementImport, type Job } from '@finance/imports';
+import {
+  appendProgress,
+  claimJob,
+  completeJob,
+  failJob,
+  getStorage,
+  heartbeat,
+  runPriceImport,
+  runStatementImport,
+  type Job,
+} from '@finance/imports';
 
 const workerId = `${hostname()}:${process.pid}`;
 const POLL_MS = 2000;
@@ -17,6 +27,9 @@ const handlers: Record<string, (job: Job) => Promise<void>> = {
   [JOB_TYPES.statementImport]: async (job) => {
     const { statementId } = statementImportPayload.parse(job.payload);
     await runStatementImport(db, storage, job, statementId);
+  },
+  [JOB_TYPES.priceImport]: async (job) => {
+    await runPriceImport(db, storage, job, priceImportPayload.parse(job.payload));
   },
 };
 

@@ -123,7 +123,7 @@ export async function runStatementImport(db: Database, storage: ObjectStorage, j
     await appendProgress(db, job, 'completed', 'Already imported');
     return;
   }
-  await db.insert(importResults).values({ workspaceId: job.workspaceId, statementId, jobId: job.id, summary });
+  await db.insert(importResults).values({ workspaceId: job.workspaceId, statementId, sourceFileId: row.file.id, jobId: job.id, summary });
   await appendProgress(
     db,
     job,
