@@ -12,6 +12,7 @@ import {
   financialAccounts,
   instruments,
   priceObservations,
+  reconciliationDecisions,
   sourceFiles,
   sourceRecords,
   statements,
@@ -21,7 +22,7 @@ import {
   type Database,
 } from '@finance/db';
 import { instrumentCommodity, type ParsedStatement } from '@finance/domain';
-import { recordDecisions } from '@finance/ledger/store';
+import { CategoriseError, categoriseLegs, recordDecisions } from '@finance/ledger/store';
 import { AccountMergeError, commitParsedStatement, mergeAccount, setStatementDeleted, unmergeAccount } from '../src';
 
 const url = process.env.TEST_DATABASE_URL;
@@ -178,6 +179,57 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     await importStatement('B', ['Groceries']);
     const [leg] = await db.select().from(eventLegs).where(eq(eventLegs.transactionId, txId));
     expect(leg!.categoryId).toBe(categoryId);
+  });
+
+  test('categorising many legs at once records one decision per changed leg and skips the rest', async () => {
+    await importStatement('A', ['Shop 1', 'Shop 2', 'Shop 3']);
+    await importParsed('B', {
+      ...parsed([]),
+      accounts: [
+        {
+          ...parsed([]).accounts[0]!,
+          rows: [{ rowIndex: 0, postedOn: '2026-01-06', description: 'Move', amount: '-5.00', transferHint: true, raw: {} }],
+        },
+      ],
+    });
+    const [s1, s2, s3, move] = await Promise.all(['Shop 1', 'Shop 2', 'Shop 3', 'Move'].map(idOf));
+    const categoryId = crypto.randomUUID();
+    await db.execute(
+      sql`insert into categories (id, workspace_id, name, kind) values (${categoryId}, ${workspaceId}, 'Essentials', 'expense')`,
+    );
+    const categorise = (ids: string[], to: string | null) =>
+      db.transaction((tx) =>
+        categoriseLegs(
+          tx,
+          workspaceId,
+          ids.map((transactionId) => ({ transactionId, legKey: 'principal' })),
+          to,
+          userId,
+        ),
+      );
+    const categoryOf = async (id: string) => (await db.select().from(eventLegs).where(eq(eventLegs.transactionId, id)))[0]!.categoryId;
+    const decisionCount = async () =>
+      (await db.select().from(reconciliationDecisions).where(eq(reconciliationDecisions.kind, 'category'))).length;
+
+    // The internal transfer's principal leg cannot carry a category.
+    expect(await categorise([s1!, s2!, move!], categoryId)).toEqual({ categorised: 2 });
+    expect([await categoryOf(s1!), await categoryOf(s2!), await categoryOf(s3!), await categoryOf(move!)]).toEqual([
+      categoryId,
+      categoryId,
+      null,
+      null,
+    ]);
+    // Legs that already have the category are not recorded again.
+    expect(await categorise([s1!, s2!, s3!], categoryId)).toEqual({ categorised: 1 });
+    expect(await decisionCount()).toBe(3);
+
+    expect(await categorise([s1!], null)).toEqual({ categorised: 1 });
+    expect(await categoryOf(s1!)).toBeNull();
+
+    const [other] = await db.insert(workspaces).values({ name: 'Other' }).returning();
+    const foreign = crypto.randomUUID();
+    await db.execute(sql`insert into categories (id, workspace_id, name, kind) values (${foreign}, ${other!.id}, 'Lifestyle', 'expense')`);
+    await expect(categorise([s1!], foreign)).rejects.toThrow(CategoriseError);
   });
 
   test('provider IDs dedupe across files, and one statement can cover several accounts', async () => {
