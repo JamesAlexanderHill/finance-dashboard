@@ -29,7 +29,7 @@ class Store {
 
   idOf(description: string) {
     const [row] = withOrdinals([{ accountId: 'acc', postedOn: '2026-01-01', amount: '-1', description }]);
-    return this.byFingerprint.get(row!.fingerprint);
+    return this.byFingerprint.get(row!.fingerprint)!;
   }
 }
 
