@@ -8,3 +8,4 @@ export * from './valuation';
 export * from './networth';
 export * from './periods';
 export * from './cashflow';
+export * from './equity';
