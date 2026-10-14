@@ -26,18 +26,28 @@ function StatementsPage() {
 
   const refresh = () => queryClient.invalidateQueries();
 
+  /** One request per file keeps each body small and lets earlier files start importing sooner. */
   async function upload(files: FileList | null) {
     if (!files?.length) return;
     setUploading(true);
     setMessages([]);
+    const errors: string[] = [];
     try {
-      const body = new FormData();
-      for (const f of files) body.append('files', f);
-      const res = await fetch('/api/statements', { method: 'POST', body });
-      const data = (await res.json()) as { results?: Array<{ fileName: string; error?: string }>; error?: string };
-      setMessages(data.error ? [data.error] : (data.results ?? []).filter((r) => r.error).map((r) => `${r.fileName}: ${r.error}`));
-      await refresh();
+      for (const file of files) {
+        const body = new FormData();
+        body.append('files', file);
+        try {
+          const res = await fetch('/api/statements', { method: 'POST', body });
+          const data = (await res.json()) as { results?: Array<{ fileName: string; error?: string }>; error?: string };
+          if (data.error) errors.push(`${file.name}: ${data.error}`);
+          for (const r of data.results ?? []) if (r.error) errors.push(`${r.fileName}: ${r.error}`);
+        } catch {
+          errors.push(`${file.name}: upload failed`);
+        }
+        await refresh();
+      }
     } finally {
+      setMessages(errors);
       setUploading(false);
       if (input.current) input.current.value = '';
     }
