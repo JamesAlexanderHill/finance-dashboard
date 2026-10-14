@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import { createRootRouteWithContext, HeadContent, Outlet, Scripts } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import appCss from '../styles.css?url';
@@ -10,17 +10,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     links: [{ rel: 'stylesheet', href: appCss }],
   }),
   shellComponent: RootDocument,
-  component: RootComponent,
+  component: Outlet,
 });
-
-function RootComponent() {
-  const { queryClient } = Route.useRouteContext();
-  return (
-    <QueryClientProvider client={queryClient}>
-      <Outlet />
-    </QueryClientProvider>
-  );
-}
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (

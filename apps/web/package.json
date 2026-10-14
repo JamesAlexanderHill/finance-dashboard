@@ -18,6 +18,7 @@
     "@finance/shared": "workspace:*",
     "@tanstack/react-query": "^5.104.2",
     "@tanstack/react-router": "^1.170.44",
+    "@tanstack/react-router-ssr-query": "^1.167.3",
     "@tanstack/react-start": "^1.169.1",
     "better-auth": "^1.7.7",
     "d3-sankey": "^0.12.3",

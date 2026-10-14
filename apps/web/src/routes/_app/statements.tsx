@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryOptions, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
 import { useRef, useState } from 'react';
@@ -8,14 +8,18 @@ import { bytes, shortDate } from '../../lib/format';
 import { useJobProgress } from '../../lib/use-job-progress';
 import { deleteStatement, listStatements, restoreStatement } from '../../server/statements.functions';
 
-export const Route = createFileRoute('/_app/statements')({ component: StatementsPage });
+const statementsQuery = queryOptions({ queryKey: ['statements'], queryFn: () => listStatements() });
+
+export const Route = createFileRoute('/_app/statements')({
+  loader: ({ context }) => context.queryClient.ensureQueryData(statementsQuery),
+  component: StatementsPage,
+});
 
 type Statement = Awaited<ReturnType<typeof listStatements>>[number];
 
 function StatementsPage() {
   const queryClient = useQueryClient();
-  const list = useServerFn(listStatements);
-  const statements = useQuery({ queryKey: ['statements'], queryFn: () => list() });
+  const statements = useSuspenseQuery(statementsQuery);
   const [uploading, setUploading] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
   const input = useRef<HTMLInputElement>(null);
@@ -63,8 +67,8 @@ function StatementsPage() {
         </Card>
       )}
       <Card className="overflow-x-auto">
-        {statements.data?.length === 0 && <Empty>No statements yet. Upload a Commbank PDF statement to get started.</Empty>}
-        {statements.data && statements.data.length > 0 && (
+        {statements.data.length === 0 && <Empty>No statements yet. Upload a Commbank PDF statement to get started.</Empty>}
+        {statements.data.length > 0 && (
           <table className="w-full text-sm">
             <thead className="text-muted text-left text-xs">
               <tr className="border-line border-b">
