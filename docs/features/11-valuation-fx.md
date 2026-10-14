@@ -50,7 +50,7 @@ This feature owns its corresponding domain policies and primary records as descr
 |---|---|---|
 | [Core / Workspaces](00-core-workspaces.md) | Integration | Reporting currency, FX selection and valuation aggregation run inside workspace scope. |
 | [Authentication](01-authentication.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
-| [Financial Accounts](02-financial-accounts.md) | Integration | Dated cash balances and account currencies provide native-currency valuation inputs. |
+| [Financial Accounts](02-financial-accounts.md) | Integration | Dated cash balances and account currencies provide native-currency valuation inputs; a property's equity uses the same dated values. |
 | [Source Files / Statements](03-source-files-statements.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Import Processing](04-import-processing.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Transactions](05-transactions.md) | Integration | Transaction amounts and balance-affecting events can inform dated balances, never missing market prices. |

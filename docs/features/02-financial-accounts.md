@@ -19,6 +19,7 @@ Manage institutions and their single-commodity financial accounts, account types
 3. Auto-create unknown accounts found during import as *unconfirmed*; the user confirms or merges them.
 4. Display statements, transactions, holdings, and reliable balance source/date. Each account has a page showing its current balance with the statement (or manual entry) and date it came from, every reported balance, its latest transactions, and the statements that name it or an account merged into it, including deleted ones.
 5. Merging an unconfirmed account into another account of the same institution and commodity (e.g. a reissued card) is reversible. Its statements keep naming it, but their transactions and balances belong to the target: a transaction moves with its ID and decisions, and a row the target already has joins the target's transaction. Statements imported later follow the merge. Unmerging restores the original transactions and their decisions.
+6. An asset account (typically a manual property) can be paired with liability accounts (its loans) and offset accounts; each paired account belongs to at most one asset. The asset's page shows equity over time: value − (loans − offsets), each valued as in net worth on that date, with each input shown alongside. Pairing is display-only; net worth already counts every account once.
 
 ## Owned contracts and data
 
@@ -36,6 +37,7 @@ This feature owns its corresponding domain policies and primary records as descr
 - Unknown balances are not inferred from incomplete history.
 - An account's page names the statement or manual entry, and the date, its balance comes from; with no live statement reporting one, it says the balance is unknown.
 - Merging then unmerging an account leaves its transactions, their IDs and decisions as they were.
+- A $700k property paired with a $500k loan and a $50k offset shows $250k equity, and net worth is unchanged by the pairing.
 - Archiving an account never changes net worth or cash flow on dates before its closing date.
 
 ## Testing notes
@@ -59,8 +61,8 @@ This feature owns its corresponding domain policies and primary records as descr
 | [Financial Instruments](08-instruments.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Asset Price History](09-asset-price-history.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Investment Holdings](10-holdings.md) | Integration | Investment positions are keyed by both financial account and instrument. |
-| [Valuation and FX](11-valuation-fx.md) | Integration | Dated cash balances and account currencies provide native-currency valuation inputs. |
-| [Manual Accounts](12-manual-accounts.md) | Integration | Tracked account balances must not be counted again as separate manually valued assets. |
+| [Valuation and FX](11-valuation-fx.md) | Integration | Dated cash balances and account currencies provide native-currency valuation inputs; a property's equity uses the same dated values. |
+| [Manual Accounts](12-manual-accounts.md) | Integration | Tracked account balances must not be counted again as separate manually valued assets; a manual property can be paired with tracked loans and offsets to show its equity. |
 | [Financial Dashboard](13-dashboard.md) | Integration | Aggregates dated native-currency balances and identifies unavailable account data. |
 | [Categories and Sankey](14-categories.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 

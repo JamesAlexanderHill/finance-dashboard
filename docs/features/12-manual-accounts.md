@@ -48,7 +48,7 @@ This feature owns its corresponding domain policies and primary records as descr
 |---|---|---|
 | [Core / Workspaces](00-core-workspaces.md) | Integration | Manual property/vehicle/debt entries belong to a workspace and cannot leak. |
 | [Authentication](01-authentication.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
-| [Financial Accounts](02-financial-accounts.md) | Integration | Tracked account balances must not be counted again as separate manually valued assets. |
+| [Financial Accounts](02-financial-accounts.md) | Integration | Tracked account balances must not be counted again as separate manually valued assets; a manual property can be paired with tracked loans and offsets to show its equity. |
 | [Source Files / Statements](03-source-files-statements.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Import Processing](04-import-processing.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Transactions](05-transactions.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
