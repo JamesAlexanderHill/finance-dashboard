@@ -4,7 +4,20 @@ import { dec } from '@finance/shared';
 // text; their ICU data differs (e.g. "Sep" vs "Sept"), which breaks hydration.
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const LONG_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const LONG_MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
 
 /** Formats a decimal string for display, e.g. `-$1,234.50`. Display only; never parse the result back. */
 export function money(value: string | null | undefined, currency = 'AUD') {

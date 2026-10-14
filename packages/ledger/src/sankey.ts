@@ -175,16 +175,37 @@ export function buildSankey(legs: readonly SankeyLeg[], categories: readonly San
       for (const kid of kids) link(categoryNode(kid), hub, subtreeTotal(kid.id), kid.name);
       const direct = own.get(root.id);
       if (direct && cmp(direct, '0') !== 0) {
-        link(node({ id: `${root.id}:other`, label: `${root.name} (other)`, value: direct, role: 'other', categoryId: root.id }), hub, direct, root.name);
+        link(
+          node({ id: `${root.id}:other`, label: `${root.name} (other)`, value: direct, role: 'other', categoryId: root.id }),
+          hub,
+          direct,
+          root.name,
+        );
       }
     }
   }
   if (isPositive(uncategorisedIncome)) {
-    link(node({ id: UNCATEGORISED_INCOME, label: 'Uncategorised income', value: uncategorisedIncome, role: 'uncategorised-income', categoryId: null }), hub, uncategorisedIncome, 'Uncategorised income');
+    link(
+      node({
+        id: UNCATEGORISED_INCOME,
+        label: 'Uncategorised income',
+        value: uncategorisedIncome,
+        role: 'uncategorised-income',
+        categoryId: null,
+      }),
+      hub,
+      uncategorisedIncome,
+      'Uncategorised income',
+    );
   }
   if (cmp(netCashFlow, '0') < 0) {
     const drawn = neg(netCashFlow);
-    link(node({ id: 'drawn', label: 'Drawn from savings', value: drawn, role: 'drawn', categoryId: null }), hub, drawn, 'Drawn from savings');
+    link(
+      node({ id: 'drawn', label: 'Drawn from savings', value: drawn, role: 'drawn', categoryId: null }),
+      hub,
+      drawn,
+      'Drawn from savings',
+    );
   }
 
   for (const root of expenseRoots) {
@@ -192,14 +213,29 @@ export function buildSankey(legs: readonly SankeyLeg[], categories: readonly San
     expand(root);
   }
   if (isPositive(uncategorisedExpense)) {
-    link(hub, node({ id: UNCATEGORISED_EXPENSE, label: 'Uncategorised expense', value: uncategorisedExpense, role: 'uncategorised-expense', categoryId: null }), uncategorisedExpense, 'Uncategorised expense');
+    link(
+      hub,
+      node({
+        id: UNCATEGORISED_EXPENSE,
+        label: 'Uncategorised expense',
+        value: uncategorisedExpense,
+        role: 'uncategorised-expense',
+        categoryId: null,
+      }),
+      uncategorisedExpense,
+      'Uncategorised expense',
+    );
   }
   if (isPositive(netCashFlow)) {
-    link(hub, node({ id: 'unallocated', label: 'Unallocated', value: netCashFlow, role: 'unallocated', categoryId: null }), netCashFlow, 'Unallocated');
+    link(
+      hub,
+      node({ id: 'unallocated', label: 'Unallocated', value: netCashFlow, role: 'unallocated', categoryId: null }),
+      netCashFlow,
+      'Unallocated',
+    );
   }
 
   // Drop nodes that ended up with no links (zero-value categories).
   const linked = new Set(links.flatMap((l) => [l.source, l.target]));
   return { totals, nodes: [...nodes.values()].filter((n) => linked.has(n.id)), links, negative };
 }
-

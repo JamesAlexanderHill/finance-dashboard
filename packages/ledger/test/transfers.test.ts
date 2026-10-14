@@ -28,9 +28,18 @@ describe('transfer auto-matching', () => {
   });
 
   test('more than one candidate on either side goes to review instead', () => {
-    const { pairs, ambiguous } = planTransferMatches([t('out', 'cba', '-500'), t('in1', 'wise', '500'), t('in2', 'amex', '500', '2026-01-12')]);
+    const { pairs, ambiguous } = planTransferMatches([
+      t('out', 'cba', '-500'),
+      t('in1', 'wise', '500'),
+      t('in2', 'amex', '500', '2026-01-12'),
+    ]);
     expect(pairs).toHaveLength(0);
-    expect(ambiguous.get('out')!.map((c) => c.id).sort()).toEqual(['in1', 'in2']);
+    expect(
+      ambiguous
+        .get('out')!
+        .map((c) => c.id)
+        .sort(),
+    ).toEqual(['in1', 'in2']);
     expect(ambiguous.has('in1')).toBe(true);
   });
 });

@@ -49,15 +49,7 @@ export const workspaceMembers = pgTable(
 
 // ---------------------------------------------------------------- institutions and accounts
 
-export const accountType = pgEnum('account_type', [
-  'bank',
-  'credit_card',
-  'investment',
-  'brokerage',
-  'payment_processor',
-  'loan',
-  'other',
-]);
+export const accountType = pgEnum('account_type', ['bank', 'credit_card', 'investment', 'brokerage', 'payment_processor', 'loan', 'other']);
 export const accountClassification = pgEnum('account_classification', ['asset', 'liability']);
 export const commodityKind = pgEnum('commodity_kind', ['currency', 'instrument']);
 export const accountStatus = pgEnum('account_status', ['confirmed', 'unconfirmed']);
@@ -465,10 +457,7 @@ export const jobs = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp('completed_at', { withTimezone: true }),
   },
-  (t) => [
-    uniqueIndex('jobs_idempotency_uq').on(t.workspaceId, t.idempotencyKey),
-    index('jobs_claim_idx').on(t.status, t.runAfter),
-  ],
+  (t) => [uniqueIndex('jobs_idempotency_uq').on(t.workspaceId, t.idempotencyKey), index('jobs_claim_idx').on(t.status, t.runAfter)],
 );
 
 /** Append-only, monotonically increasing job progress records; the SSE stream replays from these. */

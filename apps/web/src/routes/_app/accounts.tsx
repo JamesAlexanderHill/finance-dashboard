@@ -69,7 +69,11 @@ function AccountRow({ account: a }: { account: Account }) {
               void save({ name });
             }}
           >
-            <input value={name} onChange={(e) => setName(e.target.value)} className="border-line bg-surface rounded border px-2 py-1 text-sm" />
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="border-line bg-surface rounded border px-2 py-1 text-sm"
+            />
             <Button type="submit">Save</Button>
           </form>
         ) : (
@@ -88,7 +92,9 @@ function AccountRow({ account: a }: { account: Account }) {
         </div>
       )}
       <div className="tabular text-right">
-        <div className={a.balance && a.balance.balance.startsWith('-') ? 'text-negative' : ''}>{money(a.balance?.balance, a.commodity)}</div>
+        <div className={a.balance && a.balance.balance.startsWith('-') ? 'text-negative' : ''}>
+          {money(a.balance?.balance, a.commodity)}
+        </div>
         <div className="text-muted text-xs">{a.balance ? `as of ${shortDate(a.balance.on)}` : 'Balance unknown'}</div>
       </div>
     </div>

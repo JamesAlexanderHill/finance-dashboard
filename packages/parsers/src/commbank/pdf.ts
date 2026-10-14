@@ -1,9 +1,4 @@
-import {
-  UnsupportedStatementError,
-  type ParsedAccountSection,
-  type ParsedRow,
-  type ParsedStatement,
-} from '@finance/domain';
+import { UnsupportedStatementError, type ParsedAccountSection, type ParsedRow, type ParsedStatement } from '@finance/domain';
 import { add, eq, isoDate, type DecimalString, type IsoDate } from '@finance/shared';
 import type { TextItem, TextLine } from '../pdf';
 
@@ -48,7 +43,10 @@ interface PendingRow {
 export function detectCommbankLayout(lines: TextLine[]): Layout | null {
   const page = statementPage(lines);
   if (!page) return null;
-  const all = lines.filter((l) => l.page === page).map((l) => l.text).join('\n');
+  const all = lines
+    .filter((l) => l.page === page)
+    .map((l) => l.text)
+    .join('\n');
   if (/Home Loan (Summary|Transactions)/.test(lines.map((l) => l.text).join('\n')) && /Statement period/.test(all)) {
     return 'home-loan';
   }

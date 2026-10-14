@@ -60,7 +60,14 @@ function StatementsPage() {
         description="Uploaded files are kept privately. Deleting a statement removes its rows from your figures but keeps the file and can be undone."
         actions={
           <>
-            <input ref={input} type="file" accept=".pdf,.csv,application/pdf,text/csv" multiple hidden onChange={(e) => upload(e.target.files)} />
+            <input
+              ref={input}
+              type="file"
+              accept=".pdf,.csv,application/pdf,text/csv"
+              multiple
+              hidden
+              onChange={(e) => upload(e.target.files)}
+            />
             <Button variant="primary" disabled={uploading} onClick={() => input.current?.click()}>
               {uploading ? 'Uploading…' : 'Upload statements'}
             </Button>

@@ -45,7 +45,11 @@ function EventsPage() {
         description="Economic events rebuilt from active transactions and your decisions. Each leg moves one of your accounts."
       />
       <div className="mb-4 flex flex-wrap gap-2 text-sm">
-        <select value={search.accountId ?? ''} onChange={(e) => set({ accountId: e.target.value || undefined })} className="border-line bg-surface rounded border px-2 py-1.5">
+        <select
+          value={search.accountId ?? ''}
+          onChange={(e) => set({ accountId: e.target.value || undefined })}
+          className="border-line bg-surface rounded border px-2 py-1.5"
+        >
           <option value="">All accounts</option>
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
@@ -53,7 +57,11 @@ function EventsPage() {
             </option>
           ))}
         </select>
-        <select value={search.type ?? ''} onChange={(e) => set({ type: (e.target.value || undefined) as Search['type'] })} className="border-line bg-surface rounded border px-2 py-1.5">
+        <select
+          value={search.type ?? ''}
+          onChange={(e) => set({ type: (e.target.value || undefined) as Search['type'] })}
+          className="border-line bg-surface rounded border px-2 py-1.5"
+        >
           <option value="">All types</option>
           {TYPES.map((t) => (
             <option key={t} value={t}>
@@ -69,7 +77,9 @@ function EventsPage() {
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-muted tabular w-24 text-sm">{shortDate(e.occurredOn)}</span>
               <span className="flex-1 text-sm font-medium">{e.description}</span>
-              <Badge tone={e.type === 'income' ? 'positive' : e.type === 'opening_balance' ? 'neutral' : 'warning'}>{e.type.replace('_', ' ')}</Badge>
+              <Badge tone={e.type === 'income' ? 'positive' : e.type === 'opening_balance' ? 'neutral' : 'warning'}>
+                {e.type.replace('_', ' ')}
+              </Badge>
               {e.status !== 'ok' && <Badge tone="negative">{e.status.replace('_', ' ')}</Badge>}
             </div>
             <ul className="mt-1 pl-28 text-xs">
@@ -80,7 +90,11 @@ function EventsPage() {
                   <span className="tabular text-ink">{money(l.amount, l.commodity)}</span>
                   <span>{l.category ?? (e.type === 'opening_balance' ? '' : 'Uncategorised')}</span>
                   {l.transactionId && (
-                    <Link to="/transactions" search={{ id: l.transactionId, status: 'all', uncategorised: false, page: 0 }} className="hover:underline">
+                    <Link
+                      to="/transactions"
+                      search={{ id: l.transactionId, status: 'all', uncategorised: false, page: 0 }}
+                      className="hover:underline"
+                    >
                       transaction
                     </Link>
                   )}

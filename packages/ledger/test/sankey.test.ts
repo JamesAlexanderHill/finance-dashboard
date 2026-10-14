@@ -35,7 +35,13 @@ describe('cash-flow Sankey', () => {
   });
 
   test('overspending shows Drawn from savings on the income side', () => {
-    const r = buildSankey([{ amount: '100', categoryId: 'salary' }, { amount: '-150', categoryId: 'groceries' }], categories);
+    const r = buildSankey(
+      [
+        { amount: '100', categoryId: 'salary' },
+        { amount: '-150', categoryId: 'groceries' },
+      ],
+      categories,
+    );
     expect(r.nodes.find((n) => n.id === 'drawn')!.value).toBe('50');
     expect(r.nodes.some((n) => n.id === 'unallocated')).toBe(false);
   });
@@ -57,7 +63,14 @@ describe('cash-flow Sankey', () => {
   });
 
   test('drilling into a category shows its subtree', () => {
-    const r = buildSankey([{ amount: '-5', categoryId: 'milk' }, { amount: '-7', categoryId: 'groceries' }], categories, 'essentials');
+    const r = buildSankey(
+      [
+        { amount: '-5', categoryId: 'milk' },
+        { amount: '-7', categoryId: 'groceries' },
+      ],
+      categories,
+      'essentials',
+    );
     expect(r.links).toContainEqual({ source: 'essentials', target: 'groceries', value: '12' });
     expect(r.links).toContainEqual({ source: 'groceries', target: 'milk', value: '5' });
     expect(r.links).toContainEqual({ source: 'groceries', target: 'groceries:other', value: '7' });

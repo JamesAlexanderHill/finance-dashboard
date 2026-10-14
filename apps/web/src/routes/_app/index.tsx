@@ -75,11 +75,7 @@ function CashFlowPage() {
     <>
       <PageHeader
         title="Cash flow"
-        description={
-          isMonth
-            ? monthYear(from)
-            : `${shortDate(from)} – ${shortDate(to)}`
-        }
+        description={isMonth ? monthYear(from) : `${shortDate(from)} – ${shortDate(to)}`}
         actions={
           <>
             <Button onClick={() => shiftMonth(-1)} aria-label="Previous month">
@@ -89,8 +85,20 @@ function CashFlowPage() {
             <Button onClick={() => shiftMonth(1)} aria-label="Next month">
               →
             </Button>
-            <input type="date" value={from} onChange={(e) => e.target.value && set({ from: e.target.value })} className="border-line bg-surface rounded border px-2 py-1 text-sm" aria-label="From" />
-            <input type="date" value={to} onChange={(e) => e.target.value && set({ to: e.target.value })} className="border-line bg-surface rounded border px-2 py-1 text-sm" aria-label="To" />
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => e.target.value && set({ from: e.target.value })}
+              className="border-line bg-surface rounded border px-2 py-1 text-sm"
+              aria-label="From"
+            />
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => e.target.value && set({ to: e.target.value })}
+              className="border-line bg-surface rounded border px-2 py-1 text-sm"
+              aria-label="To"
+            />
           </>
         }
       />
@@ -215,7 +223,11 @@ function NodeLegs({ node, from, to, tags, onClose }: { node: ChartNode; from: st
       {legs.data?.map((l) => (
         <div key={l.id} className="border-line flex flex-wrap gap-3 border-b px-4 py-2 text-sm last:border-0">
           <span className="text-muted tabular w-24">{shortDate(l.occurredOn)}</span>
-          <Link to="/transactions" search={{ id: l.transactionId ?? undefined, status: 'all', uncategorised: false, page: 0 }} className="flex-1 hover:underline">
+          <Link
+            to="/transactions"
+            search={{ id: l.transactionId ?? undefined, status: 'all', uncategorised: false, page: 0 }}
+            className="flex-1 hover:underline"
+          >
             {l.description}
           </Link>
           <span className="text-muted">{l.accountName}</span>

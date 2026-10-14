@@ -113,7 +113,10 @@ export async function appendProgress(db: Executor, job: Pick<Job, 'id' | 'worksp
     .insert(jobProgress)
     .values({ jobId: job.id, workspaceId: job.workspaceId, stage, message: message ?? null, data: data ?? null })
     .returning();
-  await db.update(jobs).set({ progress: { stage, message: message ?? null }, updatedAt: sql`now()` }).where(eq(jobs.id, job.id));
+  await db
+    .update(jobs)
+    .set({ progress: { stage, message: message ?? null }, updatedAt: sql`now()` })
+    .where(eq(jobs.id, job.id));
   await db.execute(sql`select pg_notify('job_progress', ${job.id})`);
   return record!;
 }

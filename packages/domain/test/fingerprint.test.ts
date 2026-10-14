@@ -22,7 +22,10 @@ describe('fingerprints', () => {
 
   test('rows with a provider ID match by it, regardless of description or ordinal', () => {
     const [a] = withOrdinals([{ ...row('Coffee'), providerId: 'CARD-1' }]);
-    const [, b] = withOrdinals([{ ...row('Tea'), providerId: 'CARD-0' }, { ...row('Coffee (edited)'), providerId: 'CARD-1' }]);
+    const [, b] = withOrdinals([
+      { ...row('Tea'), providerId: 'CARD-0' },
+      { ...row('Coffee (edited)'), providerId: 'CARD-1' },
+    ]);
     expect(a!.fingerprint).toBe(b!.fingerprint);
   });
 });

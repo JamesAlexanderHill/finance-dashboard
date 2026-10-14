@@ -118,7 +118,8 @@ export function projectEvents(input: ProjectionInput): ProjectedEvent[] {
   const categories = new Map(input.categories.map((c) => [c.id, c]));
   const events: ProjectedEvent[] = [];
 
-  const payload = <T>(txId: string, kind: DecisionRecord['kind'], legKey = '') => decisions.get(decisionKey(txId, kind, legKey))?.payload as T | undefined;
+  const payload = <T>(txId: string, kind: DecisionRecord['kind'], legKey = '') =>
+    decisions.get(decisionKey(txId, kind, legKey))?.payload as T | undefined;
   const linkGroupOf = (txId: string) => payload<LinkPayload>(txId, 'link')?.groupId ?? null;
   const categoryFor = (txId: string, legKey: string) => {
     const id = payload<CategoryPayload>(txId, 'category', legKey)?.categoryId ?? null;
@@ -134,7 +135,12 @@ export function projectEvents(input: ProjectionInput): ProjectedEvent[] {
     const legs = members.flatMap((tx) => {
       const lines = tx.role === 'principal' ? (payload<ItemisationPayload>(tx.id, 'itemisation')?.lines ?? null) : null;
       const parts = lines
-        ? lines.map((line, i) => ({ legKey: `line:${i}`, role: 'line_item' as const, amount: line.amount, description: line.description || tx.description }))
+        ? lines.map((line, i) => ({
+            legKey: `line:${i}`,
+            role: 'line_item' as const,
+            amount: line.amount,
+            description: line.description || tx.description,
+          }))
         : [{ legKey: legKeyFor(tx.role), role: tx.role, amount: tx.amount, description: tx.description }];
       return parts.map<ProjectedLeg>((part) => ({
         id: deterministicUuid('leg', eventId, tx.id, part.legKey),
@@ -179,7 +185,9 @@ export function projectEvents(input: ProjectionInput): ProjectedEvent[] {
     }
     if (isInternal) for (const leg of legs) if (leg.role !== 'fee') leg.categoryId = null;
 
-    const lead = [...(principals.length ? principals : members)].sort((a, b) => cmp(abs(b.amount), abs(a.amount)) || a.id.localeCompare(b.id))[0]!;
+    const lead = [...(principals.length ? principals : members)].sort(
+      (a, b) => cmp(abs(b.amount), abs(a.amount)) || a.id.localeCompare(b.id),
+    )[0]!;
     events.push({
       id: eventId,
       type,

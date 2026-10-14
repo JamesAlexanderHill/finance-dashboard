@@ -52,7 +52,8 @@ function SettingsPage() {
             <div key={p.id} className="border-line flex items-center gap-3 border-b px-4 py-3 text-sm last:border-0">
               <span className="flex-1 font-medium">{p.name || 'Unnamed passkey'}</span>
               <span className="text-muted text-xs">
-                {p.deviceType === 'multiDevice' ? 'Synced' : 'This device'} · added {shortDate(p.createdAt ? new Date(p.createdAt).toISOString() : null)}
+                {p.deviceType === 'multiDevice' ? 'Synced' : 'This device'} · added{' '}
+                {shortDate(p.createdAt ? new Date(p.createdAt).toISOString() : null)}
               </span>
               <Button variant="ghost" onClick={() => remove(p.id)}>
                 Remove

@@ -59,10 +59,7 @@ export async function createStatementUpload(db: Database, storage: ObjectStorage
       objectKey,
       uploadedBy: input.userId,
     });
-    const [statement] = await tx
-      .insert(statements)
-      .values({ workspaceId: input.workspaceId, sourceFileId, status: 'queued' })
-      .returning();
+    const [statement] = await tx.insert(statements).values({ workspaceId: input.workspaceId, sourceFileId, status: 'queued' }).returning();
     const job = await enqueueJob(tx, {
       workspaceId: input.workspaceId,
       type: JOB_TYPES.statementImport,
@@ -126,7 +123,13 @@ export async function runStatementImport(db: Database, storage: ObjectStorage, j
     return;
   }
   await db.insert(importResults).values({ workspaceId: job.workspaceId, statementId, jobId: job.id, summary });
-  await appendProgress(db, job, 'reconciling', `${summary.created} new, ${summary.linked} matched (${summary.restored} restored), ${summary.transfersMatched} transfers linked`, summary);
+  await appendProgress(
+    db,
+    job,
+    'reconciling',
+    `${summary.created} new, ${summary.linked} matched (${summary.restored} restored), ${summary.transfersMatched} transfers linked`,
+    summary,
+  );
   await appendProgress(db, job, 'posting-events', 'Events rebuilt');
   await appendProgress(db, job, 'completed', `Imported ${summary.rows} rows`, summary);
 }
@@ -140,7 +143,15 @@ export async function commitParsedStatement(
   parsed: ParsedStatement,
 ): Promise<ImportSummary> {
   const institution = await findOrCreateInstitution(tx, workspaceId, parsed.institutionName, parsed.provider);
-  const summary: ImportSummary = { rows: 0, created: 0, linked: 0, restored: 0, transfersMatched: 0, accounts: [], warnings: [...parsed.warnings] };
+  const summary: ImportSummary = {
+    rows: 0,
+    created: 0,
+    linked: 0,
+    restored: 0,
+    transfersMatched: 0,
+    accounts: [],
+    warnings: [...parsed.warnings],
+  };
 
   for (const section of parsed.accounts) {
     const { account, created } = await findOrCreateAccount(tx, workspaceId, institution.id, section);
@@ -189,7 +200,15 @@ export async function commitParsedStatement(
     const existing = await tx
       .select({ id: transactions.id, fingerprint: transactions.fingerprint, supported: transactions.isSourceSupported })
       .from(transactions)
-      .where(and(eq(transactions.workspaceId, workspaceId), inArray(transactions.fingerprint, rows.map((r) => r.fingerprint))));
+      .where(
+        and(
+          eq(transactions.workspaceId, workspaceId),
+          inArray(
+            transactions.fingerprint,
+            rows.map((r) => r.fingerprint),
+          ),
+        ),
+      );
     const plan = planMatches(rows, new Map(existing.map((e) => [e.fingerprint, e.id])));
     const unsupported = new Set(existing.filter((e) => !e.supported).map((e) => e.id));
 
@@ -277,12 +296,7 @@ async function findOrCreateInstitution(tx: Executor, workspaceId: string, name: 
 }
 
 /** Unknown identifiers under a known institution become unconfirmed accounts (ADR 0011). */
-async function findOrCreateAccount(
-  tx: Executor,
-  workspaceId: string,
-  institutionId: string,
-  section: ParsedStatement['accounts'][number],
-) {
+async function findOrCreateAccount(tx: Executor, workspaceId: string, institutionId: string, section: ParsedStatement['accounts'][number]) {
   const [existing] = await tx
     .select()
     .from(financialAccounts)
@@ -326,7 +340,11 @@ export async function setStatementDeleted(db: Database, workspaceId: string, sta
       .from(transactionSources)
       .innerJoin(sourceRecords, eq(sourceRecords.id, transactionSources.sourceRecordId))
       .where(eq(sourceRecords.sourceFileId, row.sourceFileId));
-    await refreshTransactionSupport(tx, workspaceId, affected.map((a) => a.id));
+    await refreshTransactionSupport(
+      tx,
+      workspaceId,
+      affected.map((a) => a.id),
+    );
     await refreshProjection(tx, workspaceId);
     return true;
   });

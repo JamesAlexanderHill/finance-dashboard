@@ -1,13 +1,6 @@
 import { createServerFn } from '@tanstack/react-start';
 import { and, asc, desc, eq, gte, ilike, inArray, lte, sql, type SQL } from 'drizzle-orm';
-import {
-  idInput,
-  itemiseInput,
-  setCategoryInput,
-  setSuppressionInput,
-  setTagsInput,
-  transactionFilter,
-} from '@finance/contracts';
+import { idInput, itemiseInput, setCategoryInput, setSuppressionInput, setTagsInput, transactionFilter } from '@finance/contracts';
 import {
   categories,
   financialAccounts,
@@ -142,7 +135,14 @@ export const setLegCategory = createServerFn({ method: 'POST' })
     }
     await getDb().transaction((tx) =>
       recordDecisions(tx, workspaceId, [
-        { workspaceId, transactionId: data.transactionId, kind: 'category', legKey: data.legKey, payload: { categoryId: data.categoryId }, userId },
+        {
+          workspaceId,
+          transactionId: data.transactionId,
+          kind: 'category',
+          legKey: data.legKey,
+          payload: { categoryId: data.categoryId },
+          userId,
+        },
       ]),
     );
   });
@@ -168,7 +168,14 @@ export const setLegTags = createServerFn({ method: 'POST' })
             .where(and(eq(tags.workspaceId, workspaceId), inArray(tags.name, names)))
         : [];
       await recordDecisions(tx, workspaceId, [
-        { workspaceId, transactionId: data.transactionId, kind: 'tags', legKey: data.legKey, payload: { tagIds: rows.map((r) => r.id) }, userId },
+        {
+          workspaceId,
+          transactionId: data.transactionId,
+          kind: 'tags',
+          legKey: data.legKey,
+          payload: { tagIds: rows.map((r) => r.id) },
+          userId,
+        },
       ]);
     });
   });

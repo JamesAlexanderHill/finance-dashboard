@@ -16,7 +16,11 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
   return <div className={`border-line bg-surface rounded-lg border ${className}`}>{children}</div>;
 }
 
-export function Button({ variant = 'secondary', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'ghost' }) {
+export function Button({
+  variant = 'secondary',
+  className = '',
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'ghost' }) {
   const styles = {
     primary: 'bg-accent text-accent-ink',
     secondary: 'border-line bg-surface border',

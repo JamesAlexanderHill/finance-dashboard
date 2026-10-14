@@ -33,7 +33,9 @@ export const listEvents = createServerFn({ method: 'GET' })
       data.type ? sql`${events.type}::text = ${data.type}` : undefined,
       data.from ? gte(events.occurredOn, data.from) : undefined,
       data.to ? lte(events.occurredOn, data.to) : undefined,
-      data.accountId ? sql`exists (select 1 from event_legs l where l.event_id = "events"."id" and l.account_id = ${data.accountId})` : undefined,
+      data.accountId
+        ? sql`exists (select 1 from event_legs l where l.event_id = "events"."id" and l.account_id = ${data.accountId})`
+        : undefined,
     ];
     const rows = await getDb()
       .select({

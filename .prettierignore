@@ -1,0 +1,3 @@
+apps/web/src/routeTree.gen.ts
+packages/db/migrations
+**/dist

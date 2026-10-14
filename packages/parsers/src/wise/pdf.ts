@@ -43,9 +43,7 @@ export function detectWise(lines: TextLine[]): boolean {
  */
 export function parseWisePdf(lines: TextLine[]): ParsedStatement {
   if (!detectWise(lines)) throw new UnsupportedStatementError('Not a recognised Wise statement');
-  const content = lines
-    .filter((l) => l.items[0]!.x >= LEFT_MARGIN)
-    .map((l) => ({ ...l, text: l.items.map((i) => i.text).join(' ') }));
+  const content = lines.filter((l) => l.items[0]!.x >= LEFT_MARGIN).map((l) => ({ ...l, text: l.items.map((i) => i.text).join(' ') }));
   const page1 = content.filter((l) => l.page === 1);
 
   const currency = page1.map((l) => l.text.match(TITLE_RE)?.[1]).find(Boolean);

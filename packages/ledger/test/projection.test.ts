@@ -48,7 +48,14 @@ describe('event projection', () => {
   });
 
   test('itemisation produces one leg per line with stable keys', () => {
-    const decisions = [decision('a', 'itemisation', { lines: [{ amount: '-10', description: 'Milk' }, { amount: '-20', description: 'Bread' }] })];
+    const decisions = [
+      decision('a', 'itemisation', {
+        lines: [
+          { amount: '-10', description: 'Milk' },
+          { amount: '-20', description: 'Bread' },
+        ],
+      }),
+    ];
     const [event] = projectEvents({ transactions: [tx('a', '-30')], decisions, categories, openingBalances: [] });
     expect(event!.legs.map((l) => [l.legKey, l.amount])).toEqual([
       ['line:0', '-10'],
@@ -65,8 +72,18 @@ describe('event projection', () => {
 
 describe('itemisation validation', () => {
   test('line items must sum exactly', () => {
-    expect(() => validateItemisation('-30', [{ amount: '-10', description: '' }, { amount: '-19.99', description: '' }])).toThrow(ItemisationError);
-    expect(() => validateItemisation('-30', [{ amount: '-10', description: '' }, { amount: '-20', description: '' }])).not.toThrow();
+    expect(() =>
+      validateItemisation('-30', [
+        { amount: '-10', description: '' },
+        { amount: '-19.99', description: '' },
+      ]),
+    ).toThrow(ItemisationError);
+    expect(() =>
+      validateItemisation('-30', [
+        { amount: '-10', description: '' },
+        { amount: '-20', description: '' },
+      ]),
+    ).not.toThrow();
   });
 });
 
@@ -136,4 +153,3 @@ describe('grouping and transfers', () => {
     expect(events.map((e) => e.type).sort()).toEqual(['expense', 'income']);
   });
 });
-

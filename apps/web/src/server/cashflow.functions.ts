@@ -17,7 +17,12 @@ function cashFlowConditions(workspaceId: string, q: Pick<CashFlowQuery, 'from' |
     sql`not (${events.isInternal} and ${eventLegs.role} in ('principal', 'line_item'))`,
   ];
   if (q.tagIds.length) {
-    conditions.push(sql`${eventLegs.tagIds} && array[${sql.join(q.tagIds.map((t) => sql`${t}::uuid`), sql`, `)}]`);
+    conditions.push(
+      sql`${eventLegs.tagIds} && array[${sql.join(
+        q.tagIds.map((t) => sql`${t}::uuid`),
+        sql`, `,
+      )}]`,
+    );
   }
   return conditions;
 }

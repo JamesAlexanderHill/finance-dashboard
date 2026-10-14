@@ -63,7 +63,15 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
   async function importParsed(name: string, statement: ParsedStatement) {
     const [file] = await db
       .insert(sourceFiles)
-      .values({ workspaceId, kind: 'statement', originalName: name, contentType: 'application/pdf', sizeBytes: 1, checksumSha256: name, objectKey: name })
+      .values({
+        workspaceId,
+        kind: 'statement',
+        originalName: name,
+        contentType: 'application/pdf',
+        sizeBytes: 1,
+        checksumSha256: name,
+        objectKey: name,
+      })
       .returning();
     const [row] = await db.insert(statements).values({ workspaceId, sourceFileId: file!.id }).returning();
     const summary = await db.transaction((tx) => commitParsedStatement(tx, workspaceId, file!.id, row!.id, statement));
@@ -73,7 +81,15 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
   async function importStatement(name: string, descriptions: string[]) {
     const [file] = await db
       .insert(sourceFiles)
-      .values({ workspaceId, kind: 'statement', originalName: name, contentType: 'application/pdf', sizeBytes: 1, checksumSha256: name, objectKey: name })
+      .values({
+        workspaceId,
+        kind: 'statement',
+        originalName: name,
+        contentType: 'application/pdf',
+        sizeBytes: 1,
+        checksumSha256: name,
+        objectKey: name,
+      })
       .returning();
     const [statement] = await db.insert(statements).values({ workspaceId, sourceFileId: file!.id }).returning();
     const summary = await db.transaction((tx) => commitParsedStatement(tx, workspaceId, file!.id, statement!.id, parsed(descriptions)));
@@ -85,7 +101,9 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
       await db
         .select({ d: transactions.description })
         .from(transactions)
-        .where(and(eq(transactions.workspaceId, workspaceId), eq(transactions.isSourceSupported, true), eq(transactions.isSuppressed, false)))
+        .where(
+          and(eq(transactions.workspaceId, workspaceId), eq(transactions.isSourceSupported, true), eq(transactions.isSuppressed, false)),
+        )
     )
       .map((r) => r.d)
       .sort();
@@ -133,9 +151,13 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     const a = await importStatement('A', ['Groceries']);
     const txId = await idOf('Groceries');
     const categoryId = crypto.randomUUID();
-    await db.execute(sql`insert into categories (id, workspace_id, name, kind) values (${categoryId}, ${workspaceId}, 'Essentials', 'expense')`);
+    await db.execute(
+      sql`insert into categories (id, workspace_id, name, kind) values (${categoryId}, ${workspaceId}, 'Essentials', 'expense')`,
+    );
     await db.transaction((tx) =>
-      recordDecisions(tx, workspaceId, [{ workspaceId, transactionId: txId, kind: 'category', legKey: 'principal', payload: { categoryId }, userId }]),
+      recordDecisions(tx, workspaceId, [
+        { workspaceId, transactionId: txId, kind: 'category', legKey: 'principal', payload: { categoryId }, userId },
+      ]),
     );
 
     await setStatementDeleted(db, workspaceId, a.statementId, true, userId);
@@ -164,12 +186,23 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
         raw: {},
       })),
     });
-    const wise = (accounts: ReturnType<typeof section>[]): ParsedStatement => ({ ...parsed([]), provider: 'wise', institutionName: 'Wise', accounts });
+    const wise = (accounts: ReturnType<typeof section>[]): ParsedStatement => ({
+      ...parsed([]),
+      provider: 'wise',
+      institutionName: 'Wise',
+      accounts,
+    });
 
-    const a = await importParsed('A', wise([
-      section('AUD', 'AUD', [['CARD-1', 'Card transaction', '-1.20'], ['FEE-CARD-1', 'Wise Charges for: CARD-1', '-0.01']]),
-      section('NZD', 'NZD', [['CARD-1', 'Card transaction', '-18.40']]),
-    ]));
+    const a = await importParsed(
+      'A',
+      wise([
+        section('AUD', 'AUD', [
+          ['CARD-1', 'Card transaction', '-1.20'],
+          ['FEE-CARD-1', 'Wise Charges for: CARD-1', '-0.01'],
+        ]),
+        section('NZD', 'NZD', [['CARD-1', 'Card transaction', '-18.40']]),
+      ]),
+    );
     expect(a.summary.accounts).toHaveLength(2);
     nextRow = 0;
     const b = await importParsed('B', wise([section('AUD', 'AUD', [['CARD-1', 'Card transaction (reworded)', '-1.20']])]));
@@ -184,7 +217,11 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
   });
 
   test('a bank transfer out and a Wise top-up are linked automatically into one internal transfer', async () => {
-    const one = (provider: string, identifier: string, row: { description: string; amount: string; transferHint?: boolean; providerId?: string }) => ({
+    const one = (
+      provider: string,
+      identifier: string,
+      row: { description: string; amount: string; transferHint?: boolean; providerId?: string },
+    ) => ({
       ...parsed([]),
       provider,
       institutionName: provider,
@@ -197,19 +234,33 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
       ],
     });
     await importParsed('cba', one('commbank', '123', { description: 'Transfer To Wise', amount: '-250.00' }));
-    const wise = await importParsed('wise', one('wise', 'AUD', { description: 'Topped up account', amount: '250.00', transferHint: true, providerId: 'TRANSFER-1' }));
+    const wise = await importParsed(
+      'wise',
+      one('wise', 'AUD', { description: 'Topped up account', amount: '250.00', transferHint: true, providerId: 'TRANSFER-1' }),
+    );
     expect(wise.summary.transfersMatched).toBe(1);
 
     const all = await db.select().from(events).where(eq(events.workspaceId, workspaceId));
-    expect(all.filter((e) => e.type !== 'opening_balance').map((e) => [e.type, e.status, e.isInternal])).toEqual([['internal_transfer', 'ok', true]]);
+    expect(all.filter((e) => e.type !== 'opening_balance').map((e) => [e.type, e.status, e.isInternal])).toEqual([
+      ['internal_transfer', 'ok', true],
+    ]);
 
     // Unlinking is a user decision; the matcher never re-links those transactions.
     const ids = (await db.select({ id: transactions.id }).from(transactions)).map((r) => r.id);
     await db.transaction((tx) =>
-      recordDecisions(tx, workspaceId, ids.map((transactionId) => ({ workspaceId, transactionId, kind: 'link' as const, payload: { groupId: null }, userId }))),
+      recordDecisions(
+        tx,
+        workspaceId,
+        ids.map((transactionId) => ({ workspaceId, transactionId, kind: 'link' as const, payload: { groupId: null }, userId })),
+      ),
     );
     const after = await db.select().from(events).where(eq(events.workspaceId, workspaceId));
-    expect(after.filter((e) => e.type !== 'opening_balance').map((e) => [e.type, e.status]).sort()).toEqual([
+    expect(
+      after
+        .filter((e) => e.type !== 'opening_balance')
+        .map((e) => [e.type, e.status])
+        .sort(),
+    ).toEqual([
       ['expense', 'ok'],
       ['internal_transfer', 'unmatched_transfer'],
     ]);
@@ -225,4 +276,3 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     expect(row!.isTransferHint).toBe(true);
   });
 });
-

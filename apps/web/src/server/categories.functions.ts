@@ -91,7 +91,10 @@ export const deleteCategory = createServerFn({ method: 'POST' })
           order by transaction_id, leg_key, seq desc
         ) latest where latest.payload->>'categoryId' = ${c.id}
       `);
-      await tx.update(categories).set({ archivedAt: sql`now()` }).where(eq(categories.id, c.id));
+      await tx
+        .update(categories)
+        .set({ archivedAt: sql`now()` })
+        .where(eq(categories.id, c.id));
       await recordDecisions(
         tx,
         workspaceId,

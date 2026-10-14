@@ -82,9 +82,16 @@ function TransactionsPage() {
 
   return (
     <>
-      <PageHeader title="Transactions" description="Canonical transactions across all statements. Categorise each leg; nothing is categorised automatically." />
+      <PageHeader
+        title="Transactions"
+        description="Canonical transactions across all statements. Categorise each leg; nothing is categorised automatically."
+      />
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-        <select value={search.accountId ?? ''} onChange={(e) => set({ accountId: e.target.value || undefined })} className="border-line bg-surface rounded border px-2 py-1.5">
+        <select
+          value={search.accountId ?? ''}
+          onChange={(e) => set({ accountId: e.target.value || undefined })}
+          className="border-line bg-surface rounded border px-2 py-1.5"
+        >
           <option value="">All accounts</option>
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
@@ -92,13 +99,29 @@ function TransactionsPage() {
             </option>
           ))}
         </select>
-        <select value={search.status} onChange={(e) => set({ status: e.target.value as Search['status'] })} className="border-line bg-surface rounded border px-2 py-1.5">
+        <select
+          value={search.status}
+          onChange={(e) => set({ status: e.target.value as Search['status'] })}
+          className="border-line bg-surface rounded border px-2 py-1.5"
+        >
           <option value="active">Active</option>
           <option value="inactive">Inactive / suppressed</option>
           <option value="all">All</option>
         </select>
-        <input type="date" value={search.from ?? ''} onChange={(e) => set({ from: e.target.value || undefined })} className="border-line bg-surface rounded border px-2 py-1" aria-label="From" />
-        <input type="date" value={search.to ?? ''} onChange={(e) => set({ to: e.target.value || undefined })} className="border-line bg-surface rounded border px-2 py-1" aria-label="To" />
+        <input
+          type="date"
+          value={search.from ?? ''}
+          onChange={(e) => set({ from: e.target.value || undefined })}
+          className="border-line bg-surface rounded border px-2 py-1"
+          aria-label="From"
+        />
+        <input
+          type="date"
+          value={search.to ?? ''}
+          onChange={(e) => set({ to: e.target.value || undefined })}
+          className="border-line bg-surface rounded border px-2 py-1"
+          aria-label="To"
+        />
         <input
           placeholder="Search description"
           defaultValue={search.q}
@@ -152,11 +175,21 @@ function TransactionRow({ row, categories, tagNames }: { row: Row; categories: C
             {!row.isSourceSupported && <Badge>No active statement</Badge>}
           </div>
         </div>
-        <div className={`tabular w-28 text-right text-sm ${row.amount.startsWith('-') ? '' : 'text-positive'}`}>{money(row.amount, row.commodity)}</div>
+        <div className={`tabular w-28 text-right text-sm ${row.amount.startsWith('-') ? '' : 'text-positive'}`}>
+          {money(row.amount, row.commodity)}
+        </div>
       </div>
       {active &&
         row.legs.map((leg) => (
-          <LegEditor key={leg.id} transactionId={row.id} leg={leg} itemised={row.legs.length > 1} commodity={row.commodity} categories={categories} tagNames={tagNames} />
+          <LegEditor
+            key={leg.id}
+            transactionId={row.id}
+            leg={leg}
+            itemised={row.legs.length > 1}
+            commodity={row.commodity}
+            categories={categories}
+            tagNames={tagNames}
+          />
         ))}
       {open && (
         <div className="bg-surface-2 px-4 py-3">
@@ -172,12 +205,22 @@ function TransactionRow({ row, categories, tagNames }: { row: Row; categories: C
   );
 }
 
-function LegEditor(props: { transactionId: string; leg: LegView; itemised: boolean; commodity: string; categories: Category[]; tagNames: Map<string, string> }) {
+function LegEditor(props: {
+  transactionId: string;
+  leg: LegView;
+  itemised: boolean;
+  commodity: string;
+  categories: Category[];
+  tagNames: Map<string, string>;
+}) {
   const { transactionId, leg, categories, tagNames } = props;
   const queryClient = useQueryClient();
   const setCategory = useServerFn(setLegCategory);
   const setTags = useServerFn(setLegTags);
-  const currentTags = leg.tagIds.map((id) => tagNames.get(id)).filter(Boolean).join(', ');
+  const currentTags = leg.tagIds
+    .map((id) => tagNames.get(id))
+    .filter(Boolean)
+    .join(', ');
   const [tags, setTagsText] = useState(currentTags);
   const refresh = () => queryClient.invalidateQueries();
 
@@ -207,7 +250,10 @@ function LegEditor(props: { transactionId: string; leg: LegView; itemised: boole
         onChange={(e) => setTagsText(e.target.value)}
         onBlur={() => {
           if (tags === currentTags) return;
-          const tagNames = tags.split(',').map((t) => t.trim()).filter(Boolean);
+          const tagNames = tags
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean);
           void setTags({ data: { transactionId, legKey: leg.legKey, tagNames } }).then(refresh);
         }}
         placeholder="Tags, comma separated"
@@ -260,7 +306,12 @@ function Itemiser({ row, onChange }: { row: Row; onChange: () => void }) {
   const itemised = row.legs.length > 1;
   const sign = row.amount.startsWith('-') ? '-' : '';
   const [lines, setLines] = useState(() =>
-    itemised ? row.legs.map((l) => ({ amount: l.amount.replace(/^-/, ''), description: l.description })) : [{ amount: '', description: '' }, { amount: '', description: '' }],
+    itemised
+      ? row.legs.map((l) => ({ amount: l.amount.replace(/^-/, ''), description: l.description }))
+      : [
+          { amount: '', description: '' },
+          { amount: '', description: '' },
+        ],
   );
   const [error, setError] = useState<string | null>(null);
   const valid = lines.every((l) => /^\d+(\.\d{1,2})?$/.test(l.amount));
@@ -269,7 +320,9 @@ function Itemiser({ row, onChange }: { row: Row; onChange: () => void }) {
   const save = async (value: typeof lines | null) => {
     setError(null);
     try {
-      await itemise({ data: { transactionId: row.id, lines: value && value.map((l) => ({ amount: `${sign}${l.amount}`, description: l.description })) } });
+      await itemise({
+        data: { transactionId: row.id, lines: value && value.map((l) => ({ amount: `${sign}${l.amount}`, description: l.description })) },
+      });
       onChange();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not itemise');

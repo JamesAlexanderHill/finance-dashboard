@@ -57,14 +57,21 @@ export const setTagsInput = z.object({ transactionId: z.uuid(), legKey, tagNames
 export const setSuppressionInput = z.object({ transactionId: z.uuid(), suppressed: z.boolean() });
 export const itemiseInput = z.object({
   transactionId: z.uuid(),
-  lines: z.array(z.object({ amount: decimal, description: z.string().max(200) })).min(2).nullable(),
+  lines: z
+    .array(z.object({ amount: decimal, description: z.string().max(200) }))
+    .min(2)
+    .nullable(),
 });
 
 export const createCategoryInput = z.object({ parentId: z.uuid(), name: z.string().trim().min(1).max(80) });
 export const renameCategoryInput = z.object({ id: z.uuid(), name: z.string().trim().min(1).max(80) });
 export const deleteCategoryInput = z.object({ id: z.uuid(), reassignTo: z.uuid() });
 
-export const updateAccountInput = z.object({ id: z.uuid(), name: z.string().trim().min(1).max(80).optional(), confirm: z.boolean().optional() });
+export const updateAccountInput = z.object({
+  id: z.uuid(),
+  name: z.string().trim().min(1).max(80).optional(),
+  confirm: z.boolean().optional(),
+});
 
 export const transactionFilter = z.object({
   id: z.uuid().optional(),

@@ -82,9 +82,7 @@ describe('Commbank deposit PDF', () => {
 
 // Real statements live outside git in .personal/statements/commbank (see docs). Skipped when absent.
 const fixtures = join(import.meta.dir, '../../../.personal/statements/commbank');
-const files = existsSync(fixtures)
-  ? readdirSync(fixtures, { recursive: true, encoding: 'utf8' }).filter((f) => f.endsWith('.pdf'))
-  : [];
+const files = existsSync(fixtures) ? readdirSync(fixtures, { recursive: true, encoding: 'utf8' }).filter((f) => f.endsWith('.pdf')) : [];
 
 describe.skipIf(files.length === 0)('Commbank fixtures', () => {
   for (const file of files) {

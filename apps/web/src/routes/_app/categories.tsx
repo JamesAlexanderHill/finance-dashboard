@@ -57,7 +57,11 @@ function CategoriesPage() {
       {error && <p className="text-negative mb-4 text-sm">{error}</p>}
       <Card>
         {flat.map((c) => (
-          <div key={c.id} className="border-line flex items-center gap-3 border-b px-4 py-2 last:border-0" style={{ paddingLeft: 16 + c.depth * 24 }}>
+          <div
+            key={c.id}
+            className="border-line flex items-center gap-3 border-b px-4 py-2 last:border-0"
+            style={{ paddingLeft: 16 + c.depth * 24 }}
+          >
             <span className={c.depth === 0 ? 'font-semibold' : ''}>{c.name}</span>
             {c.depth === 0 && <Badge>{c.kind}</Badge>}
             <span className="text-muted tabular text-xs">{c.legCount} legs</span>
