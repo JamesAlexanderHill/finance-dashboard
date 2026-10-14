@@ -22,3 +22,4 @@ export async function parseStatement(bytes: Uint8Array, contentType: string): Pr
   if (detectVanguard(lines)) return parseVanguardPdf(lines);
   throw new UnsupportedStatementError('No parser recognises this PDF');
 }
+export * from './prices-csv';
