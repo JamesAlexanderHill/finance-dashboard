@@ -48,7 +48,7 @@ This feature owns its corresponding domain policies and primary records as descr
 |---|---|---|
 | [Core / Workspaces](00-core-workspaces.md) | Integration | Canonical transaction queries and uniqueness scopes include the workspace boundary. |
 | [Authentication](01-authentication.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
-| [Financial Accounts](02-financial-accounts.md) | Integration | Each canonical transaction references the owned financial account whose statement supplied it. |
+| [Financial Accounts](02-financial-accounts.md) | Integration | Each canonical transaction references the owned financial account whose statement supplied it, or the account that one is merged into. |
 | [Source Files / Statements](03-source-files-statements.md) | Integration | Transaction-source join rows preserve overlap, restoration and statement deletion semantics. |
 | [Import Processing](04-import-processing.md) | Integration | Statement imports upsert canonical transactions and their source occurrence links idempotently. |
 | [Events and Legs](06-events.md) | Integration | Eligible transactions produce economic events/legs; event provenance points back to transactions. |

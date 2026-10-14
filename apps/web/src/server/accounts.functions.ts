@@ -1,7 +1,8 @@
 import { createServerFn } from '@tanstack/react-start';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
-import { createManualAccountInput, idInput, recordManualBalanceInput, updateAccountInput } from '@finance/contracts';
+import { createManualAccountInput, idInput, mergeAccountInput, recordManualBalanceInput, updateAccountInput } from '@finance/contracts';
 import { balanceObservations, financialAccounts, getDb, institutions } from '@finance/db';
+import { mergeAccount, unmergeAccount } from '@finance/imports';
 import { workspaceMiddleware } from './session';
 
 export const listAccounts = createServerFn({ method: 'GET' })
@@ -11,6 +12,7 @@ export const listAccounts = createServerFn({ method: 'GET' })
       .select({
         id: financialAccounts.id,
         name: financialAccounts.name,
+        institutionId: financialAccounts.institutionId,
         institution: institutions.name,
         provider: institutions.provider,
         commodityKind: financialAccounts.commodityKind,
@@ -19,6 +21,7 @@ export const listAccounts = createServerFn({ method: 'GET' })
         commodity: financialAccounts.commodity,
         maskedIdentifier: financialAccounts.maskedIdentifier,
         status: financialAccounts.status,
+        mergedIntoId: financialAccounts.mergedIntoId,
         // Latest observed balance from a live statement (its own or a merged account's); never inferred from partial history.
         balance: sql<{ on: string; balance: string } | null>`(
           select json_build_object('on', bo.observed_on, 'balance', bo.balance::text)
@@ -43,6 +46,21 @@ export const updateAccount = createServerFn({ method: 'POST' })
       .update(financialAccounts)
       .set({ ...(data.name ? { name: data.name } : {}), ...(data.confirm ? { status: 'confirmed' as const } : {}) })
       .where(and(eq(financialAccounts.id, data.id), eq(financialAccounts.workspaceId, context.workspaceId)));
+  });
+
+/** ADR 0011: an unconfirmed account found to be an existing one is merged into it; reversible. */
+export const mergeAccounts = createServerFn({ method: 'POST' })
+  .middleware([workspaceMiddleware])
+  .validator(mergeAccountInput)
+  .handler(async ({ context, data }) => {
+    await mergeAccount(getDb(), context.workspaceId, data.id, data.intoId, context.userId);
+  });
+
+export const unmergeAccounts = createServerFn({ method: 'POST' })
+  .middleware([workspaceMiddleware])
+  .validator(idInput)
+  .handler(async ({ context, data }) => {
+    await unmergeAccount(getDb(), context.workspaceId, data.id);
   });
 
 const MANUAL_PROVIDER = 'manual';

@@ -18,6 +18,7 @@ Manage institutions and their single-commodity financial accounts, account types
 2. Group accounts under institutions; each account holds exactly one commodity (currency or instrument). Multi-currency providers have one account per currency.
 3. Auto-create unknown accounts found during import as *unconfirmed*; the user confirms or merges them.
 4. Display statements, transactions, holdings, and reliable balance source/date.
+5. Merging an unconfirmed account into another account of the same institution and commodity (e.g. a reissued card) is reversible. Its statements keep naming it, but their transactions and balances belong to the target: a transaction moves with its ID and decisions, and a row the target already has joins the target's transaction. Statements imported later follow the merge. Unmerging restores the original transactions and their decisions.
 
 ## Owned contracts and data
 
@@ -33,6 +34,7 @@ This feature owns its corresponding domain policies and primary records as descr
 
 - Multiple accounts at one institution are distinct.
 - Unknown balances are not inferred from incomplete history.
+- Merging then unmerging an account leaves its transactions, their IDs and decisions as they were.
 
 ## Testing notes
 
@@ -48,7 +50,7 @@ This feature owns its corresponding domain policies and primary records as descr
 | [Core / Workspaces](00-core-workspaces.md) | Integration | Workspaces own accounts; every account read/write is authorised against the active workspace. |
 | [Authentication](01-authentication.md) | Integration | Session middleware authorises financial account commands and reads. |
 | [Source Files / Statements](03-source-files-statements.md) | Integration | Statements are attached to a specific institution account and validated against its identity. |
-| [Import Processing](04-import-processing.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
+| [Import Processing](04-import-processing.md) | Integration | Imports route rows naming a merged account to the account it was merged into. |
 | [Transactions](05-transactions.md) | Integration | Each canonical transaction references the owned financial account whose statement supplied it. |
 | [Events and Legs](06-events.md) | Integration | Account-aware money legs link multi-account transfers into one economic activity. |
 | [Reconciliation](07-reconciliation.md) | Integration | Account identity, currency and balance direction constrain transfer candidate matching. |

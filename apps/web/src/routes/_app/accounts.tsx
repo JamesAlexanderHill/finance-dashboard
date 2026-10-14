@@ -6,7 +6,15 @@ import { possibleDuplicates } from '@finance/domain/accounts';
 import { todayIso } from '@finance/shared';
 import { Badge, Button, Card, Empty, PageHeader } from '../../components/ui';
 import { money, shortDate } from '../../lib/format';
-import { createManualAccount, listAccounts, listManualBalances, recordManualBalance, updateAccount } from '../../server/accounts.functions';
+import {
+  createManualAccount,
+  listAccounts,
+  listManualBalances,
+  mergeAccounts,
+  recordManualBalance,
+  unmergeAccounts,
+  updateAccount,
+} from '../../server/accounts.functions';
 
 const accountsQuery = queryOptions({ queryKey: ['accounts'], queryFn: () => listAccounts() });
 
@@ -19,7 +27,9 @@ type Account = Awaited<ReturnType<typeof listAccounts>>[number];
 
 function AccountsPage() {
   const accounts = useSuspenseQuery(accountsQuery);
-  const groups = Map.groupBy(accounts.data, (a) => a.institution);
+  // A merged account is shown inside the account it was merged into.
+  const visible = accounts.data.filter((a) => !a.mergedIntoId);
+  const groups = Map.groupBy(visible, (a) => a.institution);
 
   return (
     <>
@@ -27,7 +37,7 @@ function AccountsPage() {
         title="Accounts"
         description="Accounts are created automatically from statements. New ones start unconfirmed until you check them. Add manual accounts for things without statements, such as a house, car or super."
       />
-      <AddManualAccount accounts={accounts.data} />
+      <AddManualAccount accounts={visible} />
       {accounts.data.length === 0 && (
         <Card>
           <Empty>No accounts yet. They appear when you import a statement.</Empty>
@@ -39,7 +49,13 @@ function AccountsPage() {
             <h2 className="text-muted mb-2 text-sm font-medium">{institution}</h2>
             <Card>
               {items.map((a) => (
-                <AccountRow key={a.id} account={a} duplicates={a.provider === 'manual' ? possibleDuplicates(a, accounts.data) : []} />
+                <AccountRow
+                  key={a.id}
+                  account={a}
+                  duplicates={a.provider === 'manual' ? possibleDuplicates(a, visible) : []}
+                  mergedIn={accounts.data.filter((m) => m.mergedIntoId === a.id)}
+                  mergeTargets={visible.filter((t) => t.id !== a.id && t.institutionId === a.institutionId && t.commodity === a.commodity)}
+                />
               ))}
             </Card>
           </section>
@@ -49,7 +65,17 @@ function AccountsPage() {
   );
 }
 
-function AccountRow({ account: a, duplicates }: { account: Account; duplicates: Account[] }) {
+function AccountRow({
+  account: a,
+  duplicates,
+  mergedIn,
+  mergeTargets,
+}: {
+  account: Account;
+  duplicates: Account[];
+  mergedIn: Account[];
+  mergeTargets: Account[];
+}) {
   const queryClient = useQueryClient();
   const update = useServerFn(updateAccount);
   const [editing, setEditing] = useState(false);
@@ -88,11 +114,13 @@ function AccountRow({ account: a, duplicates }: { account: Account; duplicates: 
           {a.maskedIdentifier} · {a.accountType.replace('_', ' ')} · {a.classification} · {a.activeTransactions} transactions
         </div>
         <DuplicateWarning duplicates={duplicates} />
+        <MergedAccounts accounts={mergedIn} />
       </div>
       {a.status === 'unconfirmed' && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge tone="warning">Unconfirmed</Badge>
           <Button onClick={() => save({ confirm: true })}>Confirm</Button>
+          {mergeTargets.length > 0 && <MergeInto account={a} targets={mergeTargets} />}
         </div>
       )}
       <div className="tabular text-right">
@@ -107,6 +135,73 @@ function AccountRow({ account: a, duplicates }: { account: Account; duplicates: 
 }
 
 const field = 'border-line bg-surface rounded border px-2 py-1.5 text-sm';
+
+/** ADR 0011: an unconfirmed account that is really an existing one (e.g. a reissued card) is merged into it. */
+function MergeInto({ account, targets }: { account: Account; targets: Account[] }) {
+  const queryClient = useQueryClient();
+  const merge = useServerFn(mergeAccounts);
+  const [open, setOpen] = useState(false);
+  const [intoId, setIntoId] = useState(targets[0]!.id);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await merge({ data: { id: account.id, intoId } });
+      setOpen(false);
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not merge');
+    }
+  };
+
+  if (!open) return <Button onClick={() => setOpen(true)}>Merge…</Button>;
+  return (
+    <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
+      <select value={intoId} onChange={(e) => setIntoId(e.target.value)} className={field} aria-label="Merge into">
+        {targets.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name} ({t.maskedIdentifier})
+          </option>
+        ))}
+      </select>
+      <Button variant="primary" type="submit">
+        Merge
+      </Button>
+      <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+        Cancel
+      </Button>
+      {error && <p className="text-negative w-full text-xs">{error}</p>}
+    </form>
+  );
+}
+
+/** Accounts merged into this one: their statements post here until unmerged. */
+function MergedAccounts({ accounts }: { accounts: Account[] }) {
+  const queryClient = useQueryClient();
+  const unmerge = useServerFn(unmergeAccounts);
+  if (accounts.length === 0) return null;
+  return (
+    <ul className="text-muted mt-1 text-xs">
+      {accounts.map((m) => (
+        <li key={m.id}>
+          Includes statements for {m.name} ({m.maskedIdentifier}).{' '}
+          <button
+            type="button"
+            className="underline"
+            onClick={async () => {
+              await unmerge({ data: { id: m.id } });
+              await queryClient.invalidateQueries();
+            }}
+          >
+            Unmerge
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 /** Feature 12: a manual account that looks like a tracked one would count the same thing twice. */
 function DuplicateWarning({ duplicates }: { duplicates: Account[] }) {

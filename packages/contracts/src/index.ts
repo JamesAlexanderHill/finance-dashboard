@@ -122,6 +122,9 @@ export const updateAccountInput = z.object({
   confirm: z.boolean().optional(),
 });
 
+/** Merges an unconfirmed account into another account of the same institution and commodity. */
+export const mergeAccountInput = z.object({ id: z.uuid(), intoId: z.uuid() });
+
 export const createManualAccountInput = z.object({
   name: z.string().trim().min(1).max(80),
   classification: z.enum(['asset', 'liability']),

@@ -26,6 +26,9 @@ _Avoid_: Subaccount, wallet, ledger account
 **Unconfirmed account**:
 A financial account created by an import for an unrecognised identifier, awaiting confirmation or merge.
 
+**Merged account**:
+An unconfirmed account the user has identified as an existing financial account; its statements count toward that account until it is unmerged.
+
 **Manual account**:
 A financial account with no statements (house, car, super, personal loan) whose value comes only from user-entered balances.
 _Avoid_: Manual asset, manual liability

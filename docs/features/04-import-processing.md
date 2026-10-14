@@ -48,7 +48,7 @@ This feature owns its corresponding domain policies and primary records as descr
 |---|---|---|
 | [Core / Workspaces](00-core-workspaces.md) | Integration | Job payloads and SSE subscriptions must carry verified workspace context. |
 | [Authentication](01-authentication.md) | Integration | SSE subscriptions and job status reads are authenticated, not just UI-gated. |
-| [Financial Accounts](02-financial-accounts.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
+| [Financial Accounts](02-financial-accounts.md) | Integration | Imports route rows naming a merged account to the account it was merged into. |
 | [Source Files / Statements](03-source-files-statements.md) | Integration | The worker reads authorised RustFS source objects and writes parsed staging/source rows. |
 | [Transactions](05-transactions.md) | Integration | Statement imports upsert canonical transactions and their source occurrence links idempotently. |
 | [Events and Legs](06-events.md) | Integration | Successful transaction imports trigger event/leg posting or replay for affected records. |

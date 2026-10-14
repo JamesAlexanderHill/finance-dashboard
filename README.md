@@ -14,6 +14,7 @@ All four slices of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 - Events and legs rebuilt from transactions plus append-only decisions (categories, tags, itemisation, suppression).
 - Category tree and a cash-flow Sankey with drill-down and tag filters.
 - Wise PDF statements (one per currency): conversions become one event across currency accounts, with fee legs.
+- Merging an unconfirmed account into an existing one (e.g. a reissued card), and undoing it.
 - Transfer matching between owned accounts, persisted as decisions, with a Transfers review page and manual link/unlink.
 - Vanguard and IBKR PDF statements: holdings as instrument accounts, buys and conversions as single events, closing and trade prices.
 - American Express PDF statements: one card account for every card member; payments match the paying account as transfers, and foreign purchases split out the conversion commission.
@@ -22,7 +23,7 @@ All four slices of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 - Valuation in AUD with FX rates as priced instruments, staleness and partial totals, display-only overrides, and manual accounts (with a warning when one looks like a tracked account).
 - A dashboard with one global period control: net worth timeline, cash-flow Sankey and split bars, expenses by category with drill-down.
 
-Not built yet: a Stripe parser, merging unconfirmed accounts.
+Not built yet: a Stripe parser.
 
 ## Layout
 

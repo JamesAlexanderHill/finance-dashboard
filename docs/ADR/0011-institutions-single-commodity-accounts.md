@@ -21,7 +21,7 @@ Provider exports bundle several balances; users think in single balances. One co
 ## Consequences and follow-up
 
 - Statements route rows to accounts within one institution (ADR 0010).
-- Merging an unconfirmed account into an existing one must be a reversible decision so reprocessing reproduces it.
+- Merging an unconfirmed account into an existing one must be a reversible decision so reprocessing reproduces it. The merge is recorded on the account; its source rows and balances keep naming it, and its rows are re-fingerprinted against the target, so unmerging finds the original transactions again.
 
 ## Related specification
 
