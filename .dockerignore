@@ -1,0 +1,12 @@
+# Never send private data or secrets into the build context.
+.personal
+.env
+.env.*
+!.env.example
+
+.git
+**/node_modules
+**/dist
+**/.tanstack
+**/.output
+.DS_Store

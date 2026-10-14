@@ -26,3 +26,6 @@ playwright.local.ts
 
 # Local storage
 .data/
+
+# Build output
+apps/*/dist/

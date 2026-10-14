@@ -30,6 +30,19 @@ services:
     volumes:
       - rustfs-data:/data
 
+  migrate:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: base
+    command: ["bun", "packages/db/src/migrate.ts"]
+    environment:
+      DATABASE_URL: postgres://finance:finance@postgres:5432/finance
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   web:
     profiles: ["app"]
     build:
@@ -43,8 +56,8 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       rustfs:
         condition: service_started
 
@@ -59,8 +72,8 @@ services:
       DATABASE_URL: postgres://finance:finance@postgres:5432/finance
       S3_ENDPOINT: http://rustfs:9000
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       rustfs:
         condition: service_started
 

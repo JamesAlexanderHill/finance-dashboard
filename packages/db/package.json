@@ -15,6 +15,6 @@
   },
   "scripts": {
     "generate": "drizzle-kit generate",
-    "migrate": "bun --env-file=../../.env src/migrate.ts"
+    "migrate": "bun src/migrate.ts"
   }
 }
