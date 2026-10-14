@@ -19,9 +19,11 @@ const LONG_MONTHS = [
   'December',
 ];
 
-/** Formats a decimal string for display, e.g. `-$1,234.50`. Display only; never parse the result back. */
+/** Formats a decimal string for display, e.g. `-$1,234.50` or `12 VAS`. Display only; never parse the result back. */
 export function money(value: string | null | undefined, currency = 'AUD') {
   if (value == null) return '—';
+  // Holding-account commodities are `EXCHANGE:SYMBOL`; their amounts are unit quantities.
+  if (currency.includes(':')) return `${dec(value).toString()} ${currency.split(':')[1]}`;
   const fixed = dec(value).toFixed(2);
   const negative = fixed.startsWith('-');
   const [whole, cents] = fixed.replace('-', '').split('.') as [string, string];

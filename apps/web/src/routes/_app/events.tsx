@@ -7,7 +7,16 @@ import { listAccounts } from '../../server/accounts.functions';
 import { listEvents } from '../../server/events.functions';
 
 const PAGE = 100;
-const TYPES = ['income', 'expense', 'refund', 'internal_transfer', 'currency_conversion', 'opening_balance'] as const;
+const TYPES = [
+  'income',
+  'expense',
+  'refund',
+  'internal_transfer',
+  'currency_conversion',
+  'investment_buy',
+  'investment_sell',
+  'opening_balance',
+] as const;
 
 const searchSchema = z.object({
   accountId: z.uuid().optional(),
