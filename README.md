@@ -16,12 +16,13 @@ All four slices of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 - Wise PDF statements (one per currency): conversions become one event across currency accounts, with fee legs.
 - Transfer matching between owned accounts, persisted as decisions, with a Transfers review page and manual link/unlink.
 - Vanguard and IBKR PDF statements: holdings as instrument accounts, buys and conversions as single events, closing and trade prices.
+- American Express PDF statements: one card account for every card member; payments match the paying account as transfers, and foreign purchases split out the conversion commission.
 - Daily price CSV import with column mapping, conflict review and manual prices; holdings with separate price, units and value charts.
 
 - Valuation in AUD with FX rates as priced instruments, staleness and partial totals, display-only overrides, and manual accounts.
 - A dashboard with one global period control: net worth timeline, cash-flow Sankey and split bars, expenses by category with drill-down.
 
-Not built yet: Amex and Stripe parsers, merging unconfirmed accounts, an instrument alias UI, duplicate warnings for manual accounts.
+Not built yet: a Stripe parser, merging unconfirmed accounts, an instrument alias UI, duplicate warnings for manual accounts.
 
 ## Layout
 
@@ -31,7 +32,7 @@ apps/worker       Background worker: claims jobs from Postgres and runs statemen
 packages/db       Drizzle schema and migrations
 packages/domain   Canonical types, fixed categories, row fingerprints
 packages/contracts Zod schemas for API inputs, job payloads and progress records
-packages/parsers  Statement parsers (Commbank, Wise, Vanguard, IBKR PDFs) and price CSV mapping
+packages/parsers  Statement parsers (Commbank, Wise, Vanguard, IBKR, Amex PDFs) and price CSV mapping
 packages/imports  Job queue, RustFS storage, statement and price import pipelines
 packages/ledger   Row and transfer matching, event projection, Sankey, holdings; `ledger/store` for DB-backed rebuilds
 packages/shared   Decimal and date helpers (`shared/node` for Node-only helpers)
