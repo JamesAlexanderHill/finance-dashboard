@@ -43,6 +43,10 @@ export const manualPriceInput = z.object({
   observedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   price: z.string().regex(/^\d+(\.\d+)?$/, 'Must be a positive number'),
 });
+export const setOverrideInput = z.object({
+  instrumentId: z.uuid(),
+  price: z.string().regex(/^\d+(\.\d+)?$/, 'Must be a positive number'),
+});
 export const resolvePriceConflictInput = z.object({ observationId: z.uuid() });
 
 export const STATEMENT_STAGES = [

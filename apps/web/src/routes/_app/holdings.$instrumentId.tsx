@@ -1,10 +1,12 @@
-import { queryOptions, useSuspenseQuery } from '@tanstack/react-query';
+import { queryOptions, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
+import { useServerFn } from '@tanstack/react-start';
+import { useState, type FormEvent } from 'react';
 import { todayIso } from '@finance/shared';
 import { TimeSeriesChart } from '../../components/time-series-chart';
-import { Card, PageHeader } from '../../components/ui';
+import { Badge, Button, Card, PageHeader } from '../../components/ui';
 import { money, shortDate } from '../../lib/format';
-import { getInstrumentHistory } from '../../server/holdings.functions';
+import { clearOverride, getInstrumentHistory, setOverride } from '../../server/holdings.functions';
 
 const historyQuery = (id: string) =>
   queryOptions({ queryKey: ['instrument-history', id], queryFn: () => getInstrumentHistory({ data: { id } }) });
@@ -42,6 +44,7 @@ function InstrumentPage() {
         Price, units and value are shown separately: a rising value from buying more units is not a return. Value is plotted only on dates
         with a price{tradePriced ? '; open circles are trade prices, used only where no daily price exists' : ''}.
       </p>
+      <CurrentPrice data={data} />
       {mismatches.length > 0 && (
         <Card className="mb-4 p-3">
           {mismatches.map((m) => (
@@ -124,5 +127,70 @@ function InstrumentPage() {
         </Card>
       </details>
     </>
+  );
+}
+
+/** Today's applicable price, with a display-only override for when observations are stale. */
+function CurrentPrice({ data }: { data: Awaited<ReturnType<typeof getInstrumentHistory>> }) {
+  const queryClient = useQueryClient();
+  const save = useServerFn(setOverride);
+  const clear = useServerFn(clearOverride);
+  const [price, setPrice] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const { current, override, instrument } = data;
+  const refresh = () => queryClient.invalidateQueries();
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await save({ data: { instrumentId: instrument.id, price } });
+      setPrice('');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save');
+    }
+  };
+
+  return (
+    <Card className="mb-4 flex flex-wrap items-center gap-3 p-4 text-sm">
+      <div className="min-w-48 flex-1">
+        <div className="text-muted text-xs">Price today</div>
+        {current ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="tabular font-medium">{money(current.price, instrument.currency)}</span>
+            <span className="text-muted text-xs">from {shortDate(current.on)}</span>
+            {current.stale && <Badge tone="warning">Stale</Badge>}
+            {current.tradePriced && <Badge tone="warning">Trade-priced</Badge>}
+          </div>
+        ) : (
+          <span className="text-muted">No price yet</span>
+        )}
+      </div>
+      {override ? (
+        <div className="flex items-center gap-2">
+          <Badge>Override</Badge>
+          <span className="tabular">{money(override.price, instrument.currency)}</span>
+          <span className="text-muted text-xs">display only, cleared by a newer price</span>
+          <Button variant="ghost" onClick={() => clear({ data: { id: instrument.id } }).then(refresh)}>
+            Clear
+          </Button>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="flex items-center gap-2">
+          <input
+            required
+            inputMode="decimal"
+            placeholder="Override current price"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            className="border-line bg-surface tabular w-44 rounded border px-2 py-1"
+            aria-label="Override current price"
+          />
+          <Button type="submit">Set override</Button>
+        </form>
+      )}
+      {error && <p className="text-negative w-full text-xs">{error}</p>}
+    </Card>
   );
 }

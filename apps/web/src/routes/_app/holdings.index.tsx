@@ -17,20 +17,23 @@ const units = (q: string) => (Number(q) === Math.trunc(Number(q)) ? String(Math.
 function HoldingsPage() {
   const { data } = useSuspenseQuery(holdingsQuery);
   const held = data.filter((h) => Number(h.units) !== 0);
-  const priced = held.filter((h) => h.value !== null);
-  const total = add('0', ...priced.map((h) => h.value!));
-  const missing = held.length - priced.length;
+  const valued = held.filter((h) => h.aud !== null);
+  const total = add('0', ...valued.map((h) => h.aud!));
+  const missing = held.length - valued.length;
+  const stale = held.some((h) => h.stale);
 
   return (
     <>
       <PageHeader
         title="Holdings"
-        description="Units held per instrument across accounts, valued at each instrument's latest price. Values use that price's date; nothing is estimated."
+        description="Units held per instrument across accounts, valued today in AUD. A price or rate older than the previous business day's close is stale; nothing is estimated."
       />
       <Card className="mb-4 p-4">
-        <div className="text-muted text-xs">Holdings value</div>
+        <div className="text-muted flex items-center gap-2 text-xs">Holdings value {stale && <Badge tone="warning">Stale</Badge>}</div>
         <div className="tabular text-2xl font-semibold">{money(total)}</div>
-        {missing > 0 && <div className="text-warning text-xs">Partial: {missing} holding(s) have no price and are excluded.</div>}
+        {missing > 0 && (
+          <div className="text-warning text-xs">Partial: {missing} holding(s) have no price or FX rate and are excluded.</div>
+        )}
       </Card>
       <Card>
         {data.length === 0 && <Empty>No holdings yet. Import an investment statement to see them.</Empty>}
@@ -42,11 +45,25 @@ function HoldingsPage() {
               </Link>
               <span className="tabular text-sm">{units(h.units)} units</span>
               <span className="text-muted tabular text-sm">
-                {h.price ? `${money(h.price.price, h.price.currency)} on ${shortDate(h.price.on)}` : 'No price'}
+                {h.price ? `${money(h.price.price, h.currency)} on ${shortDate(h.price.on)}` : 'No price'}
               </span>
-              {h.price?.priceType === 'trade' && <Badge tone="warning">Trade-priced</Badge>}
-              <span className="tabular w-32 text-right font-medium">{h.value ? money(h.value, h.currency) : '—'}</span>
+              {h.price?.tradePriced && <Badge tone="warning">Trade-priced</Badge>}
+              {h.stale && <Badge tone="warning">Stale</Badge>}
+              <span className="tabular w-36 text-right">
+                <span className="font-medium">{h.aud ? money(h.aud) : '—'}</span>
+                {h.currency !== 'AUD' && h.value && <span className="text-muted block text-xs">{money(h.value, h.currency)}</span>}
+              </span>
             </div>
+            {h.notes.length > 0 && <p className="text-muted mt-1 text-xs">{h.notes.join(' · ')}</p>}
+            {h.override && (
+              <p className="mt-1 text-xs">
+                <Badge>Override</Badge>{' '}
+                <span className="text-muted">
+                  At your price of {money(h.override.price, h.currency)} this would be {money(h.override.value, h.currency)} (display only,
+                  not in any total).
+                </span>
+              </p>
+            )}
             {h.accounts.length > 1 && (
               <ul className="text-muted mt-1 text-xs">
                 {h.accounts.map((a) => (
