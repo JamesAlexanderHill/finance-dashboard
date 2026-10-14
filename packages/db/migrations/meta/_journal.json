@@ -50,6 +50,13 @@
       "when": 1791980622581,
       "tag": "0006_account_merges",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791983191747,
+      "tag": "0007_transaction_receipts",
+      "breakpoints": true
     }
   ]
 }

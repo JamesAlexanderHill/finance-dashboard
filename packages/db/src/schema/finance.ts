@@ -388,6 +388,24 @@ export const transactionSources = pgTable(
   (t) => [primaryKey({ columns: [t.transactionId, t.sourceRecordId] })],
 );
 
+/** A receipt source file attached to a canonical transaction. Removing it soft-deletes the file. */
+export const transactionReceipts = pgTable(
+  'transaction_receipts',
+  {
+    sourceFileId: uuid('source_file_id')
+      .primaryKey()
+      .references(() => sourceFiles.id),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id),
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => transactions.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('transaction_receipts_transaction_idx').on(t.transactionId)],
+);
+
 // ---------------------------------------------------------------- reconciliation decisions
 
 export const decisionKind = pgEnum('decision_kind', ['category', 'tags', 'suppression', 'itemisation', 'link', 'transfer']);
