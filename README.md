@@ -15,6 +15,7 @@ All four slices of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 - Category tree and a cash-flow Sankey with drill-down and tag filters. Select transactions (e.g. every uncategorised match for a search) to categorise them together. An uncategorised transaction is suggested the category last given to the same description (ignoring case and numbers), and counts only once accepted.
 - Wise PDF statements (one per currency): conversions become one event across currency accounts, with fee legs.
 - Merging an unconfirmed account into an existing one (e.g. a reissued card), and undoing it.
+- Archiving an account by closing it on a date: it counts toward net worth up to that date, is hidden from lists and filters afterwards, and can be unarchived.
 - An account page per account: its balance with the statement and date it came from, every reported balance, recent transactions and the statements that name it.
 - Transfer matching between owned accounts, persisted as decisions, with a Transfers review page and manual link/unlink.
 - Vanguard and IBKR PDF statements: holdings as instrument accounts, buys and conversions as single events, closing and trade prices.
