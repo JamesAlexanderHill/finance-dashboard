@@ -10,11 +10,18 @@
   },
   "dependencies": {
     "@better-auth/passkey": "^1.7.7",
+    "@finance/contracts": "workspace:*",
+    "@finance/db": "workspace:*",
+    "@finance/domain": "workspace:*",
+    "@finance/imports": "workspace:*",
+    "@finance/ledger": "workspace:*",
+    "@finance/shared": "workspace:*",
     "@tanstack/react-query": "^5.104.2",
     "@tanstack/react-router": "^1.170.44",
     "@tanstack/react-start": "^1.169.1",
     "better-auth": "^1.7.7",
     "d3-sankey": "^0.12.3",
+    "drizzle-orm": "^0.45.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

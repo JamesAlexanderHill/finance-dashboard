@@ -1,0 +1,56 @@
+@import 'tailwindcss';
+
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface-2: #f0f0ed;
+  --border: #e3e3de;
+  --text: #1c1c1a;
+  --muted: #6b6b66;
+  --accent: #2f5bd3;
+  --accent-text: #ffffff;
+  --positive: #1b7f4b;
+  --negative: #b4372f;
+  --warning: #9a6700;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #131312;
+    --surface: #1c1c1b;
+    --surface-2: #262624;
+    --border: #34342f;
+    --text: #ececea;
+    --muted: #9b9b95;
+    --accent: #7c9cf5;
+    --accent-text: #0e0e0d;
+    --positive: #4cc282;
+    --negative: #f0766b;
+    --warning: #e0b04c;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-text);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-warning: var(--warning);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
