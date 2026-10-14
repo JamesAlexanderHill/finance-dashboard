@@ -35,7 +35,7 @@ User-defined category tree, manual leg categorisation, and the income/expense Sa
 
 - Reject cross-workspace requests.
 - Top-level categories cannot be deleted or have their kind changed.
-- Deleting a child category requires reassigning its legs (to the parent or another category).
+- Deleting a child category requires reassigning its legs (to the parent or another category), and is unavailable while it still has subcategories.
 - Recategorising a leg whose transaction becomes inactive keeps the decision for restoration.
 
 ## Acceptance criteria

@@ -20,11 +20,12 @@ export function Button({
   variant = 'secondary',
   className = '',
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'ghost' }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'ghost' | 'danger' }) {
   const styles = {
     primary: 'bg-accent text-accent-ink',
     secondary: 'border-line bg-surface border',
     ghost: 'text-muted hover:text-ink',
+    danger: 'border-line bg-surface text-negative border',
   }[variant];
   return <button className={`rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${styles} ${className}`} {...props} />;
 }
