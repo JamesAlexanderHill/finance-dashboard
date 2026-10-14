@@ -12,6 +12,12 @@
   --positive: #1b7f4b;
   --negative: #b4372f;
   --warning: #9a6700;
+  /* Chart categorical slots (validated light/dark with the dataviz palette checker). */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-neutral: #9b9a94;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
@@ -26,6 +32,11 @@
     --positive: #4cc282;
     --negative: #f0766b;
     --warning: #e0b04c;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-neutral: #6f6e69;
   }
 }
 

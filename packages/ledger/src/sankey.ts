@@ -69,12 +69,6 @@ function buildTree(categories: readonly SankeyCategory[]): Tree {
   return { byId, children };
 }
 
-function pathOf(tree: Tree, id: string): SankeyCategory[] {
-  const path: SankeyCategory[] = [];
-  for (let c = tree.byId.get(id); c; c = c.parentId ? tree.byId.get(c.parentId) : undefined) path.unshift(c);
-  return path;
-}
-
 /**
  * Aggregates a period's cash-flow legs into a Sankey (feature 14).
  *
@@ -209,4 +203,3 @@ export function buildSankey(legs: readonly SankeyLeg[], categories: readonly San
   return { totals, nodes: [...nodes.values()].filter((n) => linked.has(n.id)), links, negative };
 }
 
-export { pathOf as categoryPath };
