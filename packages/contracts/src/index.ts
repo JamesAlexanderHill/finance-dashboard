@@ -65,6 +65,7 @@ export const deleteCategoryInput = z.object({ id: z.uuid(), reassignTo: z.uuid()
 export const updateAccountInput = z.object({ id: z.uuid(), name: z.string().trim().min(1).max(80).optional(), confirm: z.boolean().optional() });
 
 export const transactionFilter = z.object({
+  id: z.uuid().optional(),
   accountId: z.uuid().optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),

@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAccountsRouteImport } from './routes/_app/accounts'
 import { Route as AppCategoriesRouteImport } from './routes/_app/categories'
+import { Route as AppEventsRouteImport } from './routes/_app/events'
 import { Route as AppStatementsRouteImport } from './routes/_app/statements'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -43,6 +44,11 @@ const AppAccountsRoute = AppAccountsRouteImport.update({
 const AppCategoriesRoute = AppCategoriesRouteImport.update({
   id: '/categories',
   path: '/categories',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEventsRoute = AppEventsRouteImport.update({
+  id: '/events',
+  path: '/events',
   getParentRoute: () => AppRoute,
 } as any)
 const AppStatementsRoute = AppStatementsRouteImport.update({
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/accounts': typeof AppAccountsRoute
   '/categories': typeof AppCategoriesRoute
+  '/events': typeof AppEventsRoute
   '/statements': typeof AppStatementsRoute
   '/transactions': typeof AppTransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -92,6 +99,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/accounts': typeof AppAccountsRoute
   '/categories': typeof AppCategoriesRoute
+  '/events': typeof AppEventsRoute
   '/statements': typeof AppStatementsRoute
   '/transactions': typeof AppTransactionsRoute
   '/': typeof AppIndexRoute
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_app/accounts': typeof AppAccountsRoute
   '/_app/categories': typeof AppCategoriesRoute
+  '/_app/events': typeof AppEventsRoute
   '/_app/statements': typeof AppStatementsRoute
   '/_app/transactions': typeof AppTransactionsRoute
   '/_app/': typeof AppIndexRoute
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/accounts'
     | '/categories'
+    | '/events'
     | '/statements'
     | '/transactions'
     | '/api/auth/$'
@@ -132,6 +142,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/accounts'
     | '/categories'
+    | '/events'
     | '/statements'
     | '/transactions'
     | '/'
@@ -145,6 +156,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_app/accounts'
     | '/_app/categories'
+    | '/_app/events'
     | '/_app/statements'
     | '/_app/transactions'
     | '/_app/'
@@ -200,6 +212,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCategoriesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/events': {
+      id: '/_app/events'
+      path: '/events'
+      fullPath: '/events'
+      preLoaderRoute: typeof AppEventsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/statements': {
       id: '/_app/statements'
       path: '/statements'
@@ -248,6 +267,7 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppAccountsRoute: typeof AppAccountsRoute
   AppCategoriesRoute: typeof AppCategoriesRoute
+  AppEventsRoute: typeof AppEventsRoute
   AppStatementsRoute: typeof AppStatementsRoute
   AppTransactionsRoute: typeof AppTransactionsRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -256,6 +276,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAccountsRoute: AppAccountsRoute,
   AppCategoriesRoute: AppCategoriesRoute,
+  AppEventsRoute: AppEventsRoute,
   AppStatementsRoute: AppStatementsRoute,
   AppTransactionsRoute: AppTransactionsRoute,
   AppIndexRoute: AppIndexRoute,

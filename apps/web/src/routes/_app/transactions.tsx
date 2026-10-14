@@ -22,6 +22,8 @@ import {
 const PAGE = 100;
 
 const searchSchema = z.object({
+  /** Show a single transaction (e.g. linked from an event leg). */
+  id: z.uuid().optional(),
   accountId: z.uuid().optional(),
   status: z.enum(['active', 'inactive', 'all']).default('active'),
   uncategorised: z.boolean().default(false),
@@ -38,6 +40,7 @@ const transactionsQuery = (s: Search) =>
     queryFn: () =>
       listTransactions({
         data: {
+          id: s.id,
           accountId: s.accountId,
           status: s.status,
           uncategorisedOnly: s.uncategorised,
@@ -75,7 +78,7 @@ function TransactionsPage() {
   const { data: cats } = useSuspenseQuery(categoriesQuery);
   const categories = flattenTree(cats.categories);
   const tagNames = new Map(cats.tags.map((t) => [t.id, t.name]));
-  const set = (patch: Partial<Search>) => navigate({ search: (prev) => ({ ...prev, page: 0, ...patch }) });
+  const set = (patch: Partial<Search>) => navigate({ search: (prev) => ({ ...prev, id: undefined, page: 0, ...patch }) });
 
   return (
     <>

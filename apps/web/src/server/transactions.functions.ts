@@ -50,6 +50,7 @@ export const listTransactions = createServerFn({ method: 'GET' })
     const active = and(eq(transactions.isSourceSupported, true), eq(transactions.isSuppressed, false));
     const where: Array<SQL | undefined> = [
       eq(transactions.workspaceId, context.workspaceId),
+      data.id ? eq(transactions.id, data.id) : undefined,
       data.accountId ? eq(transactions.accountId, data.accountId) : undefined,
       data.from ? gte(transactions.postedOn, data.from) : undefined,
       data.to ? lte(transactions.postedOn, data.to) : undefined,
