@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start';
 import { and, asc, desc, eq, gte, ilike, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import {
+  acceptSuggestionsInput,
   idInput,
   itemiseInput,
   setCategoryForLegsInput,
@@ -23,7 +24,7 @@ import {
 } from '@finance/db';
 import { listReceipts, setReceiptRemoved } from '@finance/imports';
 import { validateItemisation } from '@finance/ledger';
-import { categoriseLegs, recordDecisions } from '@finance/ledger/store';
+import { acceptSuggestions, categoriseLegs, recordDecisions, suggestCategories } from '@finance/ledger/store';
 import { workspaceMiddleware } from './session';
 
 export class TransactionError extends Error {}
@@ -44,6 +45,8 @@ export interface LegView {
   amount: string;
   description: string;
   categoryId: string | null;
+  /** The category suggested for an uncategorised leg (feature 14); it counts only once accepted. */
+  suggestedCategoryId: string | null;
   tagIds: string[];
 }
 
@@ -104,7 +107,23 @@ export const listTransactions = createServerFn({ method: 'GET' })
       .orderBy(desc(transactions.postedOn), desc(transactions.createdAt))
       .limit(data.limit + 1)
       .offset(data.offset);
-    return { rows: rows.slice(0, data.limit), hasMore: rows.length > data.limit };
+    const page = rows.slice(0, data.limit);
+    const suggestions = new Map(
+      (
+        await suggestCategories(
+          getDb(),
+          context.workspaceId,
+          page.map((r) => r.id),
+        )
+      ).map((s) => [`${s.transactionId}:${s.legKey}`, s.categoryId]),
+    );
+    return {
+      rows: page.map((r) => ({
+        ...r,
+        legs: r.legs.map((l) => ({ ...l, suggestedCategoryId: suggestions.get(`${r.id}:${l.legKey}`) ?? null })),
+      })),
+      hasMore: rows.length > data.limit,
+    };
   });
 
 export const getTransactionDetail = createServerFn({ method: 'GET' })
@@ -184,6 +203,12 @@ export const setCategoryForLegs = createServerFn({ method: 'POST' })
   .handler(({ context, data }) =>
     getDb().transaction((tx) => categoriseLegs(tx, context.workspaceId, data.legs, data.categoryId, context.userId)),
   );
+
+/** Accepts the suggested category of each given leg; each gets an ordinary category decision. */
+export const acceptCategorySuggestions = createServerFn({ method: 'POST' })
+  .middleware([workspaceMiddleware])
+  .validator(acceptSuggestionsInput)
+  .handler(({ context, data }) => getDb().transaction((tx) => acceptSuggestions(tx, context.workspaceId, data.legs, context.userId)));
 
 export const setLegTags = createServerFn({ method: 'POST' })
   .middleware([workspaceMiddleware])
