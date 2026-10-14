@@ -23,7 +23,17 @@ import {
 } from '@finance/db';
 import { instrumentCommodity, type ParsedStatement } from '@finance/domain';
 import { acceptSuggestions, CategoriseError, categoriseLegs, recordDecisions, suggestCategories } from '@finance/ledger/store';
-import { AccountMergeError, commitParsedStatement, mergeAccount, setStatementDeleted, unmergeAccount } from '../src';
+import {
+  AccountArchiveError,
+  AccountMergeError,
+  closeAccount,
+  commitParsedStatement,
+  latestAccountActivity,
+  mergeAccount,
+  reopenAccount,
+  setStatementDeleted,
+  unmergeAccount,
+} from '../src';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -464,6 +474,44 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     await expect(mergeAccount(db, workspaceId, merged.id, target.id, userId)).rejects.toThrow('holds USD');
     await db.update(financialAccounts).set({ commodity: 'AUD', status: 'confirmed' }).where(eq(financialAccounts.id, merged.id));
     await expect(mergeAccount(db, workspaceId, merged.id, target.id, userId)).rejects.toThrow('Only unconfirmed');
+  });
+
+  test('an account closes no earlier than its latest live activity, and reopens', async () => {
+    const withBalance = parsed(['T1']);
+    withBalance.accounts[0]!.closingBalance = { on: '2026-01-31', balance: '0' };
+    const { statementId } = await importParsed('A', withBalance);
+    const [account] = await db.select().from(financialAccounts).where(eq(financialAccounts.workspaceId, workspaceId));
+    expect(await latestAccountActivity(db, workspaceId, account!.id)).toBe('2026-01-31');
+
+    await expect(closeAccount(db, workspaceId, account!.id, '2026-01-30')).rejects.toThrow('activity on 2026-01-31');
+    await expect(closeAccount(db, workspaceId, account!.id, '2999-01-01')).rejects.toThrow('future');
+    await closeAccount(db, workspaceId, account!.id, '2026-01-31');
+    await expect(closeAccount(db, workspaceId, account!.id, '2026-02-01')).rejects.toThrow('already archived');
+    await reopenAccount(db, workspaceId, account!.id);
+
+    // A deleted statement's rows and balances no longer hold the closing date back.
+    await setStatementDeleted(db, workspaceId, statementId, true, userId);
+    expect(await latestAccountActivity(db, workspaceId, account!.id)).toBeNull();
+    await closeAccount(db, workspaceId, account!.id, '2025-12-31');
+    const [closed] = await db.select().from(financialAccounts).where(eq(financialAccounts.id, account!.id));
+    expect(closed).toMatchObject({ closedOn: '2025-12-31' });
+    expect(closed!.archivedAt).not.toBeNull();
+
+    await reopenAccount(db, workspaceId, account!.id);
+    const [reopened] = await db.select().from(financialAccounts).where(eq(financialAccounts.id, account!.id));
+    expect(reopened).toMatchObject({ closedOn: null, archivedAt: null });
+  });
+
+  test('merged accounts cannot be archived, nor archived accounts merged', async () => {
+    await importStatement('A', ['T1']);
+    await importParsed('B', renumbered(['T2']));
+    const { target, merged } = await accountsByIdentifier();
+    await closeAccount(db, workspaceId, target.id, '2026-01-05');
+    await expect(mergeAccount(db, workspaceId, merged.id, target.id, userId)).rejects.toThrow('Archived accounts');
+    await reopenAccount(db, workspaceId, target.id);
+    await mergeAccount(db, workspaceId, merged.id, target.id, userId);
+    await expect(closeAccount(db, workspaceId, merged.id, '2026-01-05')).rejects.toThrow(AccountArchiveError);
+    await expect(closeAccount(db, workspaceId, crypto.randomUUID(), '2026-01-05')).rejects.toThrow('Account not found');
   });
 
   test('holding accounts reference a shared instrument and statement prices are recorded with conflicts flagged', async () => {

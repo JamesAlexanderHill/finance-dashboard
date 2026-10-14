@@ -1,6 +1,7 @@
 import { and, asc, count, eq, inArray, sql } from 'drizzle-orm';
 import { financialAccounts, sourceRecords, transactions, transactionSources, type Database, type Executor } from '@finance/db';
 import { withOrdinals } from '@finance/domain';
+import { todayIso, type IsoDate } from '@finance/shared';
 import { lockWorkspace, refreshProjection, refreshTransactionSupport } from '@finance/ledger/store';
 
 export class AccountMergeError extends Error {}
@@ -25,6 +26,7 @@ export async function mergeAccount(db: Database, workspaceId: string, accountId:
     if (account.status !== 'unconfirmed') throw new AccountMergeError('Only unconfirmed accounts can be merged');
     if (account.mergedIntoId) throw new AccountMergeError(`${account.name} is already merged`);
     if (into.mergedIntoId) throw new AccountMergeError(`${into.name} is merged into another account`);
+    if (account.closedOn || into.closedOn) throw new AccountMergeError('Archived accounts cannot be merged; unarchive first');
     if (account.institutionId !== into.institutionId) throw new AccountMergeError('Both accounts must belong to the same institution');
     if (account.commodity !== into.commodity) {
       throw new AccountMergeError(`${account.name} holds ${account.commodity} but ${into.name} holds ${into.commodity}`);
@@ -58,6 +60,62 @@ export async function unmergeAccount(db: Database, workspaceId: string, accountI
     await reassignSourceRecords(tx, workspaceId, account.id);
     await refreshProjection(tx, workspaceId);
   });
+}
+
+export class AccountArchiveError extends Error {}
+
+/**
+ * The latest date the account has activity that counts: a live transaction, or a balance from a live
+ * statement or entered by hand, including those of accounts merged into it. Null when it has none.
+ */
+export async function latestAccountActivity(tx: Executor, workspaceId: string, accountId: string): Promise<IsoDate | null> {
+  const [row] = await tx.execute<{ on: string | null }>(sql`
+    select greatest(
+      (select max(t.posted_on) from transactions t
+        where t.workspace_id = ${workspaceId} and t.account_id = ${accountId} and t.is_source_supported and not t.is_suppressed),
+      (select max(bo.observed_on) from balance_observations bo
+        join financial_accounts fa on fa.id = bo.account_id
+        left join source_files sf on sf.id = bo.source_file_id
+        where bo.workspace_id = ${workspaceId} and ${accountId} in (fa.id, fa.merged_into_id)
+          and (bo.source_file_id is null or sf.deleted_at is null))
+    )::text as on`);
+  return row?.on ?? null;
+}
+
+/**
+ * Archives an account by closing it on `closedOn` (feature 02): valuation counts it up to that date and
+ * excludes it afterwards. The date cannot precede the account's latest activity, nor be in the future.
+ */
+export async function closeAccount(db: Database, workspaceId: string, accountId: string, closedOn: IsoDate) {
+  return db.transaction(async (tx) => {
+    await lockWorkspace(tx, workspaceId);
+    const [account] = await tx
+      .select()
+      .from(financialAccounts)
+      .where(and(eq(financialAccounts.workspaceId, workspaceId), eq(financialAccounts.id, accountId)));
+    if (!account) throw new AccountArchiveError('Account not found');
+    if (account.mergedIntoId) throw new AccountArchiveError(`${account.name} is merged into another account`);
+    if (account.closedOn) throw new AccountArchiveError(`${account.name} is already archived`);
+    if (closedOn > todayIso()) throw new AccountArchiveError('The closing date cannot be in the future');
+    const latest = await latestAccountActivity(tx, workspaceId, accountId);
+    if (latest && closedOn < latest) {
+      throw new AccountArchiveError(`${account.name} has activity on ${latest}; it cannot close before then`);
+    }
+    await tx
+      .update(financialAccounts)
+      .set({ closedOn, archivedAt: sql`now()` })
+      .where(eq(financialAccounts.id, accountId));
+  });
+}
+
+/** Unarchives an account: it reopens and counts toward valuation on every date again. */
+export async function reopenAccount(db: Database, workspaceId: string, accountId: string) {
+  const [account] = await db
+    .update(financialAccounts)
+    .set({ closedOn: null, archivedAt: null })
+    .where(and(eq(financialAccounts.workspaceId, workspaceId), eq(financialAccounts.id, accountId)))
+    .returning({ id: financialAccounts.id });
+  if (!account) throw new AccountArchiveError('Account not found');
 }
 
 /**
