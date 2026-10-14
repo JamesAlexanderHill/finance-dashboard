@@ -13,6 +13,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAccountsRouteImport } from './routes/_app/accounts'
+import { Route as AppCashFlowRouteImport } from './routes/_app/cash-flow'
 import { Route as AppCategoriesRouteImport } from './routes/_app/categories'
 import { Route as AppEventsRouteImport } from './routes/_app/events'
 import { Route as AppPricesRouteImport } from './routes/_app/prices'
@@ -45,6 +46,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppAccountsRoute = AppAccountsRouteImport.update({
   id: '/accounts',
   path: '/accounts',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCashFlowRoute = AppCashFlowRouteImport.update({
+  id: '/cash-flow',
+  path: '/cash-flow',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCategoriesRoute = AppCategoriesRouteImport.update({
@@ -122,6 +128,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/accounts': typeof AppAccountsRoute
+  '/cash-flow': typeof AppCashFlowRoute
   '/categories': typeof AppCategoriesRoute
   '/events': typeof AppEventsRoute
   '/prices': typeof AppPricesRoute
@@ -140,6 +147,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/accounts': typeof AppAccountsRoute
+  '/cash-flow': typeof AppCashFlowRoute
   '/categories': typeof AppCategoriesRoute
   '/events': typeof AppEventsRoute
   '/prices': typeof AppPricesRoute
@@ -161,6 +169,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/accounts': typeof AppAccountsRoute
+  '/_app/cash-flow': typeof AppCashFlowRoute
   '/_app/categories': typeof AppCategoriesRoute
   '/_app/events': typeof AppEventsRoute
   '/_app/prices': typeof AppPricesRoute
@@ -183,6 +192,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/accounts'
+    | '/cash-flow'
     | '/categories'
     | '/events'
     | '/prices'
@@ -201,6 +211,7 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/accounts'
+    | '/cash-flow'
     | '/categories'
     | '/events'
     | '/prices'
@@ -221,6 +232,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/_app/accounts'
+    | '/_app/cash-flow'
     | '/_app/categories'
     | '/_app/events'
     | '/_app/prices'
@@ -276,6 +288,13 @@ declare module '@tanstack/react-router' {
       path: '/accounts'
       fullPath: '/accounts'
       preLoaderRoute: typeof AppAccountsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/cash-flow': {
+      id: '/_app/cash-flow'
+      path: '/cash-flow'
+      fullPath: '/cash-flow'
+      preLoaderRoute: typeof AppCashFlowRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/categories': {
@@ -381,6 +400,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppAccountsRoute: typeof AppAccountsRoute
+  AppCashFlowRoute: typeof AppCashFlowRoute
   AppCategoriesRoute: typeof AppCategoriesRoute
   AppEventsRoute: typeof AppEventsRoute
   AppPricesRoute: typeof AppPricesRoute
@@ -395,6 +415,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppAccountsRoute: AppAccountsRoute,
+  AppCashFlowRoute: AppCashFlowRoute,
   AppCategoriesRoute: AppCategoriesRoute,
   AppEventsRoute: AppEventsRoute,
   AppPricesRoute: AppPricesRoute,

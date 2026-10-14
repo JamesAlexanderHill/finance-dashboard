@@ -13,7 +13,8 @@ export const Route = createFileRoute('/_app')({
 });
 
 const NAV = [
-  { to: '/', label: 'Cash flow' },
+  { to: '/', label: 'Dashboard' },
+  { to: '/cash-flow', label: 'Cash flow' },
   { to: '/transactions', label: 'Transactions' },
   { to: '/events', label: 'Events' },
   { to: '/transfers', label: 'Transfers' },
@@ -44,7 +45,7 @@ function AppLayout() {
               <Link
                 key={item.to}
                 to={item.to}
-                activeOptions={{ exact: item.to === '/' }}
+                activeOptions={{ exact: item.to === '/', includeSearch: false }}
                 className="text-muted hover:text-ink rounded px-2 py-1"
                 activeProps={{ className: 'bg-surface-2 text-ink! font-medium' }}
               >
@@ -53,7 +54,7 @@ function AppLayout() {
             ))}
           </nav>
           <div className="text-muted ml-auto flex items-center gap-3 text-sm">
-            <span className="hidden sm:inline">{viewer.email}</span>
+            <span className="hidden 2xl:inline">{viewer.email}</span>
             <button onClick={signOut} className="hover:text-ink underline">
               Sign out
             </button>
