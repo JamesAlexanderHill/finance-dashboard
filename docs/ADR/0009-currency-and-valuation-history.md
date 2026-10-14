@@ -1,6 +1,6 @@
 # ADR 0009 — Dated valuations and FX with explicit incompleteness
 
-**Status:** Proposed  
+**Status:** Accepted (implementation rules in [ADR 0013](0013-valuation-rules.md))  
 **Date:** 2026-10-13
 
 ## Decision
@@ -13,7 +13,7 @@ Avoids false precision and allows historical charts without committing to upstre
 
 ## Consequences and follow-up
 
-Define rate selection, timezone/market close, gap handling and price precedence in implementation ADR.
+Rate selection, gap handling and price precedence are defined in [ADR 0013](0013-valuation-rules.md); market close time zones are not modelled yet.
 
 ## Related specification
 

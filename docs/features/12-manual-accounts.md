@@ -17,7 +17,8 @@ Track assets and liabilities that have no statements (house, car, superannuation
 1. Create manual accounts (asset or liability, one commodity) under the workspace's *Manual* institution.
 2. Enter dated balance observations as the account's only data; revisions are retained for historical summaries.
 3. Manual accounts participate in net worth, history and staleness exactly like imported accounts.
-4. Warn when a manual account appears to duplicate a tracked financial account/holding.
+4. Warn when a manual account appears to duplicate a tracked financial account/holding (not built yet).
+5. Values are entered as positive amounts; a liability's value is stored negative so it reduces net worth like an imported loan. A value applies from its date until the next one.
 
 ## Owned contracts and data
 

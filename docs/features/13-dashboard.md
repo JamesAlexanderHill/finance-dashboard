@@ -19,6 +19,8 @@ Aggregate historical/current net worth and cashflow, plus account and investment
 2. Offer investment charts: price series, unit count series, and market-value series separately.
 3. Use event classifications to avoid double-counted transfers and trades.
 4. Expose lineage, valuation date, missing/stale and incomplete summaries.
+6. Net worth is valued at each period end (or today for the current period); points marked partial or stale show why on hover. Foreign-currency cash-flow legs are converted at the rate applying on their date; legs with no rate are left out and counted.
+7. Expenses stack by top-level category in the Sankey's colours; selecting a category shows its children. More than eight segments fold into "Other".
 
 ## Owned contracts and data
 

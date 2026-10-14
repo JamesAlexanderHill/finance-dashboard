@@ -6,7 +6,7 @@ A personal finance app that imports bank statements, deduplicates them into cano
 
 ## Status
 
-Slices 1–3 of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
+All four slices of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 
 - Sign-in with passkeys or an emailed one-time code (Better Auth, Mailgun); one owner workspace per user.
 - Commbank PDF statements (Smart Access, Everyday Offset, home loan) are uploaded to RustFS and imported by a background worker. Progress streams over SSE.
@@ -18,7 +18,10 @@ Slices 1–3 of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 - Vanguard and IBKR PDF statements: holdings as instrument accounts, buys and conversions as single events, closing and trade prices.
 - Daily price CSV import with column mapping, conflict review and manual prices; holdings with separate price, units and value charts.
 
-Not built yet: Amex and Stripe parsers, valuation with staleness, FX, the net worth dashboard, merging unconfirmed accounts.
+- Valuation in AUD with FX rates as priced instruments, staleness and partial totals, display-only overrides, and manual accounts.
+- A dashboard with one global period control: net worth timeline, cash-flow Sankey and split bars, expenses by category with drill-down.
+
+Not built yet: Amex and Stripe parsers, merging unconfirmed accounts, an instrument alias UI, duplicate warnings for manual accounts.
 
 ## Layout
 

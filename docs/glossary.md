@@ -160,6 +160,13 @@ Whether all units, prices, balances and FX needed for a value are available and 
 **Reporting currency**:
 The currency totals are shown in; AUD.
 
+**FX rate**:
+The price of one unit of a currency in the reporting currency, stored as a price of that currency's instrument.
+_Avoid_: Exchange price, conversion factor
+
+**Carried balance**:
+An account balance used after the last date it was observed; stale once carried more than 35 days.
+
 ### Processing
 
 **Job progress record**:
