@@ -20,7 +20,7 @@ Calculate dated native-currency and AUD values with completeness/staleness rules
 4. Display incomplete/stale results when required input data is absent; prices/FX older than the previous business day's close are stale.
 5. Allow a cosmetic *override current price* (instruments and FX) for visualising current value; persisted per instrument/pair, badged, cleared when a newer observation arrives; display-only, never stored as an observation or used in totals.
 6. FX rates are prices of an `FX` instrument per currency (AUD per unit); statements supply year-end marks (daily) and conversion rates (trade). Rate selection, gap handling and staleness follow [ADR 0013](../ADR/0013-valuation-rules.md).
-7. Balances carried more than 35 days past their last statement or manual value are stale; before tracking starts an account is excluded, and the total is partial only if it already held money.
+7. Balances carried more than 35 days past their last statement or manual value are stale; before tracking starts an account is excluded, and the total is partial only if it already held money. After an archived account's closing date it is excluded and never stale; up to that date it counts as usual.
 
 ## Owned contracts and data
 

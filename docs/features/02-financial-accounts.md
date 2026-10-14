@@ -14,7 +14,7 @@ Manage institutions and their single-commodity financial accounts, account types
 
 ## Functional requirements
 
-1. Create/edit/archive bank, credit, loan, investment, brokerage and payment-processing accounts.
+1. Create/edit/archive bank, credit, loan, investment, brokerage and payment-processing accounts. Archiving closes an account on a date the user picks (no earlier than its latest transaction or balance): it is hidden from lists and pickers but can still be opened, and unarchiving reopens it. A warning (never a block) shows when its last known balance is not zero.
 2. Group accounts under institutions; each account holds exactly one commodity (currency or instrument). Multi-currency providers have one account per currency.
 3. Auto-create unknown accounts found during import as *unconfirmed*; the user confirms or merges them.
 4. Display statements, transactions, holdings, and reliable balance source/date. Each account has a page showing its current balance with the statement (or manual entry) and date it came from, every reported balance, its latest transactions, and the statements that name it or an account merged into it, including deleted ones.
@@ -36,6 +36,7 @@ This feature owns its corresponding domain policies and primary records as descr
 - Unknown balances are not inferred from incomplete history.
 - An account's page names the statement or manual entry, and the date, its balance comes from; with no live statement reporting one, it says the balance is unknown.
 - Merging then unmerging an account leaves its transactions, their IDs and decisions as they were.
+- Archiving an account never changes net worth or cash flow on dates before its closing date.
 
 ## Testing notes
 
