@@ -32,6 +32,7 @@ export interface ParsedInstrument {
   name: string;
   /** Currency the instrument is priced in. */
   currency: string;
+  isin?: string;
 }
 
 /** Commodity code of a holding account: exchange-qualified so it can never collide with a currency code. */

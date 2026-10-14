@@ -11,7 +11,7 @@ export async function findOrCreateInstrument(tx: Executor, workspaceId: string, 
   if (existing) return existing;
   const [created] = await tx
     .insert(instruments)
-    .values({ workspaceId, symbol: i.symbol, exchange: i.exchange, name: i.name, currency: i.currency })
+    .values({ workspaceId, symbol: i.symbol, exchange: i.exchange, name: i.name, currency: i.currency, isin: i.isin ?? null })
     .returning();
   return created!;
 }

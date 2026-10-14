@@ -1,11 +1,13 @@
 import { UnsupportedStatementError, type ParsedStatement } from '@finance/domain';
 import { detectCommbankLayout, parseCommbankPdf } from './commbank/pdf';
 import { extractLines } from './pdf';
+import { detectIbkr, parseIbkrPdf } from './ibkr/pdf';
 import { detectVanguard, parseVanguardPdf } from './vanguard/pdf';
 import { detectWise, parseWisePdf } from './wise/pdf';
 
 export { COMMBANK_PDF_PARSER_ID, COMMBANK_PDF_PARSER_VERSION } from './commbank/pdf';
 export { extractLines } from './pdf';
+export { IBKR_PDF_PARSER_ID, IBKR_PDF_PARSER_VERSION } from './ibkr/pdf';
 export { VANGUARD_PDF_PARSER_ID, VANGUARD_PDF_PARSER_VERSION } from './vanguard/pdf';
 export { WISE_PDF_PARSER_ID, WISE_PDF_PARSER_VERSION } from './wise/pdf';
 
@@ -20,6 +22,7 @@ export async function parseStatement(bytes: Uint8Array, contentType: string): Pr
   if (detectCommbankLayout(lines)) return parseCommbankPdf(lines);
   if (detectWise(lines)) return parseWisePdf(lines);
   if (detectVanguard(lines)) return parseVanguardPdf(lines);
+  if (detectIbkr(lines)) return parseIbkrPdf(lines);
   throw new UnsupportedStatementError('No parser recognises this PDF');
 }
 export * from './prices-csv';
