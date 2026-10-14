@@ -1,9 +1,11 @@
 import { UnsupportedStatementError, type ParsedStatement } from '@finance/domain';
 import { detectCommbankLayout, parseCommbankPdf } from './commbank/pdf';
 import { extractLines } from './pdf';
+import { detectWise, parseWisePdf } from './wise/pdf';
 
 export { COMMBANK_PDF_PARSER_ID, COMMBANK_PDF_PARSER_VERSION } from './commbank/pdf';
 export { extractLines } from './pdf';
+export { WISE_PDF_PARSER_ID, WISE_PDF_PARSER_VERSION } from './wise/pdf';
 
 /**
  * Parses a statement file with the first parser that recognises it.
@@ -14,5 +16,6 @@ export async function parseStatement(bytes: Uint8Array, contentType: string): Pr
   if (!isPdf) throw new UnsupportedStatementError(`No parser supports ${contentType} files yet`);
   const lines = await extractLines(bytes);
   if (detectCommbankLayout(lines)) return parseCommbankPdf(lines);
+  if (detectWise(lines)) return parseWisePdf(lines);
   throw new UnsupportedStatementError('No parser recognises this PDF');
 }
