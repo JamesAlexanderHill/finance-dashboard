@@ -19,6 +19,7 @@ Instrument identity for ETFs/shares across investments and historical prices.
 3. Do not merge identical tickers on different exchanges without validation: an instrument is identified by (exchange, symbol), and a bare symbol listed on several exchanges does not resolve.
 4. Holding accounts reference their instrument; their commodity is `EXCHANGE:SYMBOL` and their amounts are unit quantities.
 5. Statement imports find or create instruments; price-CSV values resolve by symbol, `EXCHANGE:SYMBOL`, `SYMBOL.AX` (ASX) or a recorded alias.
+6. **Aliases** are other names for an instrument, case-insensitive and unique per workspace. Before a price CSV is imported by instrument column, names that match nothing are listed with their row counts and can each be mapped to an instrument, which records an alias; aliases are also listed, added and removed on the Prices page. An alias is the user's explicit choice and wins over derived names, so it can pick one listing of a symbol traded on several exchanges. Unmapped names' rows are rejected, never guessed.
 
 ## Owned contracts and data
 
@@ -34,6 +35,7 @@ This feature owns its corresponding domain policies and primary records as descr
 
 - A holding and daily-price observation resolve to the same intended instrument.
 - Ambiguous instrument mapping requires review.
+- A CSV naming `AU:VAS` lists it as unmatched before import; mapping it to VAS once makes later files with that name import without asking.
 
 ## Testing notes
 

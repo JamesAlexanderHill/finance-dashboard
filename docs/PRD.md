@@ -124,7 +124,7 @@ Users upload a CSV containing one or more daily instrument/unit-price series. Su
 1. Choose an instrument (or map an instrument-identification column for multiple instruments).
 2. Map CSV columns to `date`, `unit_price`, and optional `instrument`, `currency`, `price_type/source`.
 3. Preview/validate rows; report invalid dates, unsupported currency, missing instrument and bad/negative numeric values.
-4. Import dated observations asynchronously, with source row provenance and parser/mapping version. Supported date formats: `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`; instrument values resolve by symbol, `EXCHANGE:SYMBOL`, `SYMBOL.AX` for ASX listings, or an alias.
+4. Import dated observations asynchronously, with source row provenance and parser/mapping version. Supported date formats: `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`; instrument values resolve by symbol, `EXCHANGE:SYMBOL`, `SYMBOL.AX` for ASX listings, or an alias. Unmatched names are listed before import so the user can map each to an instrument as an alias.
 5. Overlapping uploads with identical observations are deduplicated; conflicting prices for the same instrument, date, currency and price-type are not silently overwritten, but resolved through review or explicit selection.
 6. Soft-deleting a price-import file deactivates its unsupported observations; surviving observations from other active source files remain. Existing source files/rows are preserved.
 7. Trade rows in statements (e.g. Vanguard/IBKR buys) also record their execution unit price as a price observation of type `trade`, with the statement row as provenance.

@@ -48,6 +48,8 @@ export const setOverrideInput = z.object({
   price: z.string().regex(/^\d+(\.\d+)?$/, 'Must be a positive number'),
 });
 export const resolvePriceConflictInput = z.object({ observationId: z.uuid() });
+export const instrumentAliasInput = z.object({ instrumentId: z.uuid(), alias: z.string().trim().min(1).max(64) });
+export const unresolvedInstrumentsInput = z.object({ sourceFileId: z.uuid(), column: z.string().min(1) });
 
 export const STATEMENT_STAGES = [
   'uploaded',

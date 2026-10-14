@@ -17,12 +17,12 @@ All four slices of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 - Transfer matching between owned accounts, persisted as decisions, with a Transfers review page and manual link/unlink.
 - Vanguard and IBKR PDF statements: holdings as instrument accounts, buys and conversions as single events, closing and trade prices.
 - American Express PDF statements: one card account for every card member; payments match the paying account as transfers, and foreign purchases split out the conversion commission.
-- Daily price CSV import with column mapping, conflict review and manual prices; holdings with separate price, units and value charts.
+- Daily price CSV import with column mapping, conflict review, manual prices and instrument aliases; holdings with separate price, units and value charts.
 
 - Valuation in AUD with FX rates as priced instruments, staleness and partial totals, display-only overrides, and manual accounts.
 - A dashboard with one global period control: net worth timeline, cash-flow Sankey and split bars, expenses by category with drill-down.
 
-Not built yet: a Stripe parser, merging unconfirmed accounts, an instrument alias UI, duplicate warnings for manual accounts.
+Not built yet: a Stripe parser, merging unconfirmed accounts, duplicate warnings for manual accounts.
 
 ## Layout
 

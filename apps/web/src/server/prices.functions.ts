@@ -1,15 +1,27 @@
 import { createServerFn } from '@tanstack/react-start';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
-import { idInput, manualPriceInput, resolvePriceConflictInput, startPriceImportInput, type PriceImportSummary } from '@finance/contracts';
+import {
+  idInput,
+  instrumentAliasInput,
+  manualPriceInput,
+  resolvePriceConflictInput,
+  startPriceImportInput,
+  unresolvedInstrumentsInput,
+  type PriceImportSummary,
+} from '@finance/contracts';
 import { getDb, instruments, priceObservations, sourceFiles } from '@finance/db';
 import {
   activePriceOverrides,
   getStorage,
+  listInstrumentAliases,
   previewPriceCsv,
   recordPriceObservations,
+  removeInstrumentAlias,
   resolvePriceConflict,
+  setInstrumentAlias,
   setPriceFileDeleted,
   startPriceImport,
+  unresolvedInstrumentNames,
 } from '@finance/imports';
 import { priceAt } from '@finance/ledger';
 import { todayIso } from '@finance/shared';
@@ -57,6 +69,30 @@ export const previewPriceFile = createServerFn({ method: 'GET' })
   .middleware([workspaceMiddleware])
   .validator(idInput)
   .handler(async ({ context, data }) => previewPriceCsv(getDb(), getStorage(), context.workspaceId, data.id));
+
+/** Names in the chosen instrument column that match no instrument or alias yet. */
+export const listUnresolvedInstruments = createServerFn({ method: 'GET' })
+  .middleware([workspaceMiddleware])
+  .validator(unresolvedInstrumentsInput)
+  .handler(async ({ context, data }) =>
+    unresolvedInstrumentNames(getDb(), getStorage(), context.workspaceId, data.sourceFileId, data.column),
+  );
+
+export const listAliases = createServerFn({ method: 'GET' })
+  .middleware([workspaceMiddleware])
+  .handler(async ({ context }) => listInstrumentAliases(getDb(), context.workspaceId));
+
+export const addAlias = createServerFn({ method: 'POST' })
+  .middleware([workspaceMiddleware])
+  .validator(instrumentAliasInput)
+  .handler(async ({ context, data }) => {
+    await setInstrumentAlias(getDb(), context.workspaceId, data.instrumentId, data.alias);
+  });
+
+export const removeAlias = createServerFn({ method: 'POST' })
+  .middleware([workspaceMiddleware])
+  .validator(idInput)
+  .handler(async ({ context, data }) => removeInstrumentAlias(getDb(), context.workspaceId, data.id));
 
 export const importPriceFile = createServerFn({ method: 'POST' })
   .middleware([workspaceMiddleware])

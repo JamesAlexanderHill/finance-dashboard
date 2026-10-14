@@ -7,15 +7,19 @@ import { Badge, Button, Card, Empty, PageHeader } from '../../components/ui';
 import { money, shortDate } from '../../lib/format';
 import { useJobProgress } from '../../lib/use-job-progress';
 import {
+  addAlias,
   addManualPrice,
   choosePrice,
   deletePriceFile,
   importPriceFile,
+  listAliases,
   listFxRates,
   listInstruments,
   listPriceConflicts,
   listPriceFiles,
+  listUnresolvedInstruments,
   previewPriceFile,
+  removeAlias,
   restorePriceFile,
 } from '../../server/prices.functions';
 
@@ -23,6 +27,7 @@ const filesQuery = queryOptions({ queryKey: ['price-files'], queryFn: () => list
 const instrumentsQuery = queryOptions({ queryKey: ['instruments'], queryFn: () => listInstruments() });
 const conflictsQuery = queryOptions({ queryKey: ['price-conflicts'], queryFn: () => listPriceConflicts() });
 const fxQuery = queryOptions({ queryKey: ['fx-rates'], queryFn: () => listFxRates() });
+const aliasesQuery = queryOptions({ queryKey: ['instrument-aliases'], queryFn: () => listAliases() });
 
 export const Route = createFileRoute('/_app/prices')({
   loader: ({ context }) =>
@@ -31,6 +36,7 @@ export const Route = createFileRoute('/_app/prices')({
       context.queryClient.ensureQueryData(instrumentsQuery),
       context.queryClient.ensureQueryData(conflictsQuery),
       context.queryClient.ensureQueryData(fxQuery),
+      context.queryClient.ensureQueryData(aliasesQuery),
     ]),
   component: PricesPage,
 });
@@ -140,6 +146,7 @@ function PricesPage() {
       </section>
 
       {instruments.length > 0 && <ManualPrice instruments={instruments} onChange={refresh} />}
+      {instruments.length > 0 && <Aliases instruments={instruments} />}
     </>
   );
 }
@@ -243,7 +250,7 @@ function MappingForm({ sourceFileId, instruments, onDone }: { sourceFileId: stri
             <select value={value('instrumentId', instruments[0]?.id ?? '')} onChange={set('instrumentId')} className={select}>
               {instruments.map((i) => (
                 <option key={i.id} value={i.id}>
-                  {i.symbol} · {i.exchange} · {i.name}
+                  {instrumentLabel(i)}
                 </option>
               ))}
             </select>
@@ -251,6 +258,13 @@ function MappingForm({ sourceFileId, instruments, onDone }: { sourceFileId: stri
             columnSelect('instrumentColumn', guess(/symbol|code|ticker/i))
           )}
         </div>
+        {mode === 'column' && preview.data && (
+          <UnresolvedNames
+            sourceFileId={sourceFileId}
+            column={value('instrumentColumn', guess(/symbol|code|ticker/i))}
+            instruments={instruments}
+          />
+        )}
         <label className="flex flex-col gap-1">
           Currency column (optional; defaults to the instrument&apos;s currency) {columnSelect('currencyColumn', '', true)}
         </label>
@@ -265,6 +279,144 @@ function MappingForm({ sourceFileId, instruments, onDone }: { sourceFileId: stri
       </form>
       {error && <p className="text-negative mt-2 text-xs">{error}</p>}
     </Card>
+  );
+}
+
+const instrumentLabel = (i: Instrument) => `${i.symbol} · ${i.exchange} · ${i.name}`;
+
+/** Names in the instrument column that match nothing yet; mapping one records an alias. */
+function UnresolvedNames({ sourceFileId, column, instruments }: { sourceFileId: string; column: string; instruments: Instrument[] }) {
+  const queryClient = useQueryClient();
+  const fetchUnresolved = useServerFn(listUnresolvedInstruments);
+  const unresolved = useQuery({
+    queryKey: ['unresolved-instruments', sourceFileId, column],
+    queryFn: () => fetchUnresolved({ data: { sourceFileId, column } }),
+    enabled: column !== '',
+  });
+  if (!unresolved.data?.length) return null;
+  return (
+    <div className="border-line rounded border p-3 sm:col-span-2">
+      <p className="mb-2 text-xs">
+        <span className="text-warning">
+          {unresolved.data.length === 1 ? '1 name matches' : `${unresolved.data.length} names match`} no instrument.
+        </span>{' '}
+        <span className="text-muted">Map each to an instrument (remembered as an alias), or leave it and its rows are rejected.</span>
+      </p>
+      {unresolved.data.map((u) => (
+        <MapName
+          key={u.name}
+          name={u.name}
+          rows={u.rows}
+          instruments={instruments}
+          onMapped={() =>
+            queryClient.invalidateQueries({ queryKey: ['unresolved-instruments'] }).then(() => queryClient.invalidateQueries(aliasesQuery))
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+function MapName(props: { name: string; rows: number; instruments: Instrument[]; onMapped: () => void }) {
+  const add = useServerFn(addAlias);
+  const [instrumentId, setInstrumentId] = useState('');
+  return (
+    <div className="flex flex-wrap items-center gap-2 py-1 text-sm">
+      <span className="w-32 font-medium break-all">{props.name}</span>
+      <span className="text-muted w-16 text-xs">{props.rows} rows</span>
+      <select
+        value={instrumentId}
+        onChange={(e) => setInstrumentId(e.target.value)}
+        className={`${select} min-w-0 flex-1`}
+        aria-label={`Instrument for ${props.name}`}
+      >
+        <option value="">Choose an instrument…</option>
+        {props.instruments.map((i) => (
+          <option key={i.id} value={i.id}>
+            {instrumentLabel(i)}
+          </option>
+        ))}
+      </select>
+      <Button
+        type="button"
+        disabled={!instrumentId}
+        onClick={() => add({ data: { instrumentId, alias: props.name } }).then(props.onMapped)}
+      >
+        Map
+      </Button>
+    </div>
+  );
+}
+
+function Aliases({ instruments }: { instruments: Instrument[] }) {
+  const queryClient = useQueryClient();
+  const { data: aliases } = useSuspenseQuery(aliasesQuery);
+  const add = useServerFn(addAlias);
+  const remove = useServerFn(removeAlias);
+  const [alias, setAlias] = useState('');
+  const [instrumentId, setInstrumentId] = useState(instruments[0]!.id);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = () => queryClient.invalidateQueries(aliasesQuery);
+  const byId = new Map(instruments.map((i) => [i.id, i]));
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await add({ data: { instrumentId, alias } });
+      setAlias('');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save');
+    }
+  };
+
+  return (
+    <section className="mt-8">
+      <h2 className="mb-1 text-sm font-medium">Instrument aliases</h2>
+      <p className="text-muted mb-2 text-xs">
+        Other names a price CSV may use for an instrument. Symbols, EXCHANGE:SYMBOL and SYMBOL.AX already match without one.
+      </p>
+      <Card>
+        {aliases.length === 0 && <Empty>No aliases yet.</Empty>}
+        {aliases.map((a) => {
+          const i = byId.get(a.instrumentId);
+          return (
+            <div key={a.id} className="border-line flex flex-wrap items-center gap-3 border-b px-4 py-2 text-sm last:border-0">
+              <span className="w-32 font-medium break-all">{a.alias}</span>
+              <span className="text-muted flex-1 text-xs">→ {i ? instrumentLabel(i) : 'Unknown instrument'}</span>
+              <Button variant="ghost" onClick={() => remove({ data: { id: a.id } }).then(refresh)}>
+                Remove
+              </Button>
+            </div>
+          );
+        })}
+        <form onSubmit={submit} className="border-line flex flex-wrap items-end gap-2 border-t p-4 text-sm">
+          <input
+            required
+            placeholder="Name in the CSV"
+            value={alias}
+            onChange={(e) => setAlias(e.target.value)}
+            className={`${select} w-40`}
+            aria-label="Alias"
+          />
+          <select
+            value={instrumentId}
+            onChange={(e) => setInstrumentId(e.target.value)}
+            className={`${select} min-w-0`}
+            aria-label="Instrument"
+          >
+            {instruments.map((i) => (
+              <option key={i.id} value={i.id}>
+                {instrumentLabel(i)}
+              </option>
+            ))}
+          </select>
+          <Button type="submit">Add alias</Button>
+          {error && <span className="text-negative text-xs">{error}</span>}
+        </form>
+      </Card>
+    </section>
   );
 }
 
