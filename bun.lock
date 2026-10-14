@@ -32,6 +32,10 @@
         "vite": "^8.3.4",
       },
     },
+    "apps/worker": {
+      "name": "@finance/worker",
+      "version": "0.0.0",
+    },
     "packages/contracts": {
       "name": "@finance/contracts",
       "version": "0.0.0",
@@ -53,6 +57,9 @@
     "packages/domain": {
       "name": "@finance/domain",
       "version": "0.0.0",
+      "dependencies": {
+        "@finance/shared": "workspace:*",
+      },
     },
     "packages/imports": {
       "name": "@finance/imports",
@@ -245,6 +252,8 @@
     "@finance/shared": ["@finance/shared@workspace:packages/shared"],
 
     "@finance/web": ["@finance/web@workspace:apps/web"],
+
+    "@finance/worker": ["@finance/worker@workspace:apps/worker"],
 
     "@hexagon/base64": ["@hexagon/base64@1.1.28", "", {}, "sha512-lhqDEAvWixy3bZ+UOYbPwUbBkwBq5C1LAJ/xPC8Oi+lL54oyakv/npbA0aU2hgCsx/1NUd4IBvV03+aUBWxerw=="],
 
