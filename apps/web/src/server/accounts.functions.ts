@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { createManualAccountInput, idInput, mergeAccountInput, recordManualBalanceInput, updateAccountInput } from '@finance/contracts';
-import { balanceObservations, financialAccounts, getDb, institutions } from '@finance/db';
+import { balanceObservations, financialAccounts, getDb, institutions, sourceFiles, sourceRecords, statements } from '@finance/db';
 import { mergeAccount, unmergeAccount } from '@finance/imports';
 import { workspaceMiddleware } from './session';
 
@@ -36,6 +36,120 @@ export const listAccounts = createServerFn({ method: 'GET' })
       .innerJoin(institutions, eq(institutions.id, financialAccounts.institutionId))
       .where(eq(financialAccounts.workspaceId, context.workspaceId))
       .orderBy(asc(institutions.name), asc(financialAccounts.classification), asc(financialAccounts.name));
+  });
+
+/**
+ * One account with what it is built from: every balance observation (its own and those of accounts merged
+ * into it), and the statements naming any of them. The current balance follows the same rule as
+ * `listAccounts`: the latest observation from a live statement or entered by hand.
+ */
+export const getAccount = createServerFn({ method: 'GET' })
+  .middleware([workspaceMiddleware])
+  .validator(idInput)
+  .handler(async ({ context, data }) => {
+    const db = getDb();
+    const accountColumns = {
+      id: financialAccounts.id,
+      name: financialAccounts.name,
+      institution: institutions.name,
+      provider: institutions.provider,
+      accountType: financialAccounts.accountType,
+      classification: financialAccounts.classification,
+      commodityKind: financialAccounts.commodityKind,
+      commodity: financialAccounts.commodity,
+      instrumentId: financialAccounts.instrumentId,
+      maskedIdentifier: financialAccounts.maskedIdentifier,
+      status: financialAccounts.status,
+      mergedIntoId: financialAccounts.mergedIntoId,
+    };
+    const related = await db
+      .select(accountColumns)
+      .from(financialAccounts)
+      .innerJoin(institutions, eq(institutions.id, financialAccounts.institutionId))
+      .where(
+        and(
+          eq(financialAccounts.workspaceId, context.workspaceId),
+          or(eq(financialAccounts.id, data.id), eq(financialAccounts.mergedIntoId, data.id)),
+        ),
+      )
+      .orderBy(asc(financialAccounts.name));
+    const account = related.find((a) => a.id === data.id);
+    if (!account) throw new Error('Account not found');
+    const mergedIn = related.filter((a) => a.mergedIntoId === account.id);
+    const ids = related.map((a) => a.id);
+    const [mergedInto] = account.mergedIntoId
+      ? await db
+          .select({ id: financialAccounts.id, name: financialAccounts.name })
+          .from(financialAccounts)
+          .where(eq(financialAccounts.id, account.mergedIntoId))
+      : [];
+
+    const balances = await db
+      .select({
+        id: balanceObservations.id,
+        on: balanceObservations.observedOn,
+        kind: balanceObservations.kind,
+        balance: balanceObservations.balance,
+        source: balanceObservations.source,
+        accountId: balanceObservations.accountId,
+        sourceFileId: balanceObservations.sourceFileId,
+        fileName: sourceFiles.originalName,
+        live: sql<boolean>`${sourceFiles.deletedAt} is null`,
+      })
+      .from(balanceObservations)
+      .leftJoin(sourceFiles, eq(sourceFiles.id, balanceObservations.sourceFileId))
+      .where(and(eq(balanceObservations.workspaceId, context.workspaceId), inArray(balanceObservations.accountId, ids)))
+      .orderBy(
+        desc(balanceObservations.observedOn),
+        desc(sql`${balanceObservations.kind} = 'closing'`),
+        desc(balanceObservations.createdAt),
+      );
+
+    const idList = sql.join(
+      ids.map((id) => sql`${id}::uuid`),
+      sql`, `,
+    );
+    const files = await db
+      .select({
+        id: statements.id,
+        sourceFileId: sourceFiles.id,
+        fileName: sourceFiles.originalName,
+        periodStart: statements.periodStart,
+        periodEnd: statements.periodEnd,
+        status: statements.status,
+        deletedAt: sourceFiles.deletedAt,
+        rows: sql<number>`(select count(*)::int from source_records sr where sr.source_file_id = ${sourceFiles.id} and sr.account_id in (${idList}))`,
+      })
+      .from(statements)
+      .innerJoin(sourceFiles, eq(sourceFiles.id, statements.sourceFileId))
+      .where(
+        and(
+          eq(statements.workspaceId, context.workspaceId),
+          or(
+            inArray(
+              sourceFiles.id,
+              db.selectDistinct({ id: sourceRecords.sourceFileId }).from(sourceRecords).where(inArray(sourceRecords.accountId, ids)),
+            ),
+            inArray(
+              sourceFiles.id,
+              db
+                .selectDistinct({ id: sql<string>`${balanceObservations.sourceFileId}` })
+                .from(balanceObservations)
+                .where(inArray(balanceObservations.accountId, ids)),
+            ),
+          ),
+        ),
+      )
+      .orderBy(desc(statements.periodEnd), desc(sourceFiles.uploadedAt));
+
+    return {
+      account,
+      mergedInto: mergedInto ?? null,
+      mergedIn,
+      balance: balances.find((b) => b.live) ?? null,
+      balances,
+      statements: files.map((f) => ({ ...f, deletedAt: f.deletedAt?.toISOString() ?? null })),
+    };
   });
 
 export const updateAccount = createServerFn({ method: 'POST' })
