@@ -5,6 +5,7 @@ import {
   itemiseInput,
   setCategoryForLegsInput,
   setCategoryInput,
+  setReceiptRemovedInput,
   setSuppressionInput,
   setTagsInput,
   transactionFilter,
@@ -20,6 +21,7 @@ import {
   transactions,
   transactionSources,
 } from '@finance/db';
+import { listReceipts, setReceiptRemoved } from '@finance/imports';
 import { validateItemisation } from '@finance/ledger';
 import { categoriseLegs, recordDecisions } from '@finance/ledger/store';
 import { workspaceMiddleware } from './session';
@@ -83,6 +85,8 @@ export const listTransactions = createServerFn({ method: 'GET' })
         isSourceSupported: transactions.isSourceSupported,
         isSuppressed: transactions.isSuppressed,
         sourceCount: sql<number>`(select count(*)::int from transaction_sources ts where ts.transaction_id = ${transactions.id})`,
+        receiptCount: sql<number>`(select count(*)::int from transaction_receipts r join source_files f on f.id = r.source_file_id
+          where r.transaction_id = ${transactions.id} and f.deleted_at is null)`,
         legs: sql<LegView[]>`coalesce((select json_agg(json_build_object(
             'id', l.id, 'legKey', l.leg_key, 'role', l.role, 'amount', l.amount::text, 'description', l.description,
             'categoryId', l.category_id, 'tagIds', l.tag_ids) order by l.leg_key)
@@ -109,7 +113,7 @@ export const getTransactionDetail = createServerFn({ method: 'GET' })
   .handler(async ({ context, data }) => {
     await ownedTransaction(context.workspaceId, data.id);
     const db = getDb();
-    const [sources, history] = await Promise.all([
+    const [sources, history, receipts] = await Promise.all([
       db
         .select({
           sourceFileId: sourceFiles.id,
@@ -137,10 +141,12 @@ export const getTransactionDetail = createServerFn({ method: 'GET' })
         .from(reconciliationDecisions)
         .where(and(eq(reconciliationDecisions.transactionId, data.id), eq(reconciliationDecisions.workspaceId, context.workspaceId)))
         .orderBy(desc(reconciliationDecisions.seq)),
+      listReceipts(db, context.workspaceId, data.id),
     ]);
     return {
       sources: sources.map((s) => ({ ...s, fileDeletedAt: s.fileDeletedAt?.toISOString() ?? null, linkedAt: s.linkedAt.toISOString() })),
       history: history.map(({ payload, ...h }) => ({ ...h, payload: JSON.stringify(payload), createdAt: h.createdAt.toISOString() })),
+      receipts,
     };
   });
 
@@ -239,3 +245,9 @@ export const itemiseTransaction = createServerFn({ method: 'POST' })
       ]),
     );
   });
+
+/** Removes a receipt (its file is retained) or restores it. Uploading goes through `/api/receipts`. */
+export const setReceiptRemoval = createServerFn({ method: 'POST' })
+  .middleware([workspaceMiddleware])
+  .validator(setReceiptRemovedInput)
+  .handler(({ context, data }) => setReceiptRemoved(getDb(), context.workspaceId, data.sourceFileId, data.removed, context.userId));

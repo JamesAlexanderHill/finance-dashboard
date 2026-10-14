@@ -112,6 +112,7 @@ export const linkTransactionsInput = z.object({ transactionIds: z.array(z.uuid()
 export const unlinkTransactionInput = z.object({ transactionId: z.uuid() });
 export const setTransferMarkInput = z.object({ transactionId: z.uuid(), isTransfer: z.boolean() });
 export const setSuppressionInput = z.object({ transactionId: z.uuid(), suppressed: z.boolean() });
+export const setReceiptRemovedInput = z.object({ sourceFileId: z.uuid(), removed: z.boolean() });
 export const itemiseInput = z.object({
   transactionId: z.uuid(),
   lines: z

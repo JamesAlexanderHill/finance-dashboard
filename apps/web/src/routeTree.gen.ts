@@ -26,6 +26,7 @@ import { Route as AppHoldingsIndexRouteImport } from './routes/_app/holdings.ind
 import { Route as AppHoldingsInstrumentIdRouteImport } from './routes/_app/holdings.$instrumentId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiPricesIndexRouteImport } from './routes/api/prices/index'
+import { Route as ApiReceiptsIndexRouteImport } from './routes/api/receipts/index'
 import { Route as ApiSourceFilesIdRouteImport } from './routes/api/source-files/$id'
 import { Route as ApiStatementsIndexRouteImport } from './routes/api/statements/index'
 import { Route as ApiJobsJobIdEventsRouteImport } from './routes/api/jobs/$jobId/events'
@@ -114,6 +115,11 @@ const ApiPricesIndexRoute = ApiPricesIndexRouteImport.update({
   path: '/api/prices/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiReceiptsIndexRoute = ApiReceiptsIndexRouteImport.update({
+  id: '/api/receipts/',
+  path: '/api/receipts/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSourceFilesIdRoute = ApiSourceFilesIdRouteImport.update({
   id: '/api/source-files/$id',
   path: '/api/source-files/$id',
@@ -148,6 +154,7 @@ export interface FileRoutesByFullPath {
   '/accounts/': typeof AppAccountsIndexRoute
   '/holdings/': typeof AppHoldingsIndexRoute
   '/api/prices/': typeof ApiPricesIndexRoute
+  '/api/receipts/': typeof ApiReceiptsIndexRoute
   '/api/statements/': typeof ApiStatementsIndexRoute
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
 }
@@ -169,6 +176,7 @@ export interface FileRoutesByTo {
   '/accounts': typeof AppAccountsIndexRoute
   '/holdings': typeof AppHoldingsIndexRoute
   '/api/prices': typeof ApiPricesIndexRoute
+  '/api/receipts': typeof ApiReceiptsIndexRoute
   '/api/statements': typeof ApiStatementsIndexRoute
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
 }
@@ -192,6 +200,7 @@ export interface FileRoutesById {
   '/_app/accounts/': typeof AppAccountsIndexRoute
   '/_app/holdings/': typeof AppHoldingsIndexRoute
   '/api/prices/': typeof ApiPricesIndexRoute
+  '/api/receipts/': typeof ApiReceiptsIndexRoute
   '/api/statements/': typeof ApiStatementsIndexRoute
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
 }
@@ -215,6 +224,7 @@ export interface FileRouteTypes {
     | '/accounts/'
     | '/holdings/'
     | '/api/prices/'
+    | '/api/receipts/'
     | '/api/statements/'
     | '/api/jobs/$jobId/events'
   fileRoutesByTo: FileRoutesByTo
@@ -236,6 +246,7 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/holdings'
     | '/api/prices'
+    | '/api/receipts'
     | '/api/statements'
     | '/api/jobs/$jobId/events'
   id:
@@ -258,6 +269,7 @@ export interface FileRouteTypes {
     | '/_app/accounts/'
     | '/_app/holdings/'
     | '/api/prices/'
+    | '/api/receipts/'
     | '/api/statements/'
     | '/api/jobs/$jobId/events'
   fileRoutesById: FileRoutesById
@@ -268,6 +280,7 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiSourceFilesIdRoute: typeof ApiSourceFilesIdRoute
   ApiPricesIndexRoute: typeof ApiPricesIndexRoute
+  ApiReceiptsIndexRoute: typeof ApiReceiptsIndexRoute
   ApiStatementsIndexRoute: typeof ApiStatementsIndexRoute
   ApiJobsJobIdEventsRoute: typeof ApiJobsJobIdEventsRoute
 }
@@ -393,6 +406,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPricesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/receipts/': {
+      id: '/api/receipts/'
+      path: '/api/receipts'
+      fullPath: '/api/receipts/'
+      preLoaderRoute: typeof ApiReceiptsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/source-files/$id': {
       id: '/api/source-files/$id'
       path: '/api/source-files/$id'
@@ -457,6 +477,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiSourceFilesIdRoute: ApiSourceFilesIdRoute,
   ApiPricesIndexRoute: ApiPricesIndexRoute,
+  ApiReceiptsIndexRoute: ApiReceiptsIndexRoute,
   ApiStatementsIndexRoute: ApiStatementsIndexRoute,
   ApiJobsJobIdEventsRoute: ApiJobsJobIdEventsRoute,
 }
