@@ -1,0 +1,1 @@
+ALTER TABLE "financial_accounts" ADD COLUMN "closed_on" date;

@@ -101,7 +101,10 @@ export const financialAccounts = pgTable(
     mergedAt: timestamp('merged_at', { withTimezone: true }),
     mergedBy: text('merged_by').references(() => user.id),
     createdAt: createdAt(),
+    /** Set with `closedOn` when the user archives (closes) the account; both are cleared on unarchive. */
     archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /** Last date the account counts toward valuation (feature 02); after it the account is excluded, never stale. */
+    closedOn: date('closed_on'),
   },
   (t) => [
     uniqueIndex('financial_accounts_identifier_uq').on(t.institutionId, t.identifier),
