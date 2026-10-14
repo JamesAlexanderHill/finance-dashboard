@@ -1,56 +1,17 @@
 import { createServerFn } from '@tanstack/react-start';
 import { and, asc, eq, gte, isNull, lte, ne, sql, type SQL } from 'drizzle-orm';
-import { cashFlowQuery, legsQuery, type CashFlowQuery } from '@finance/contracts';
-import { categories, eventLegs, events, financialAccounts, getDb } from '@finance/db';
+import { cashFlowQuery, legsQuery } from '@finance/contracts';
+import { eventLegs, events, financialAccounts, getDb } from '@finance/db';
 import { buildSankey, UNCATEGORISED_EXPENSE, UNCATEGORISED_INCOME } from '@finance/ledger';
+import { cashFlowConditions, loadCashFlowLegs, loadCategories } from './cashflow.server';
 import { workspaceMiddleware } from './session';
-
-const REPORTING_CURRENCY = 'AUD';
-
-/** Cash-flow legs: active (projected), in period, not opening balances, not internal principal legs. */
-function cashFlowConditions(workspaceId: string, q: Pick<CashFlowQuery, 'from' | 'to' | 'tagIds'>): SQL[] {
-  const conditions = [
-    eq(eventLegs.workspaceId, workspaceId),
-    gte(eventLegs.occurredOn, q.from),
-    lte(eventLegs.occurredOn, q.to),
-    ne(events.type, 'opening_balance'),
-    sql`not (${events.isInternal} and ${eventLegs.role} in ('principal', 'line_item'))`,
-  ];
-  if (q.tagIds.length) {
-    conditions.push(
-      sql`${eventLegs.tagIds} && array[${sql.join(
-        q.tagIds.map((t) => sql`${t}::uuid`),
-        sql`, `,
-      )}]`,
-    );
-  }
-  return conditions;
-}
-
-async function loadCategories(workspaceId: string) {
-  return getDb()
-    .select({ id: categories.id, parentId: categories.parentId, name: categories.name, kind: categories.kind })
-    .from(categories)
-    .where(and(eq(categories.workspaceId, workspaceId), isNull(categories.archivedAt)))
-    .orderBy(asc(categories.sortOrder), asc(categories.name));
-}
 
 export const getCashFlow = createServerFn({ method: 'GET' })
   .middleware([workspaceMiddleware])
   .validator(cashFlowQuery)
   .handler(async ({ context, data }) => {
-    const [legs, cats] = await Promise.all([
-      getDb()
-        .select({ amount: eventLegs.amount, categoryId: eventLegs.categoryId, commodity: eventLegs.commodity })
-        .from(eventLegs)
-        .innerJoin(events, eq(events.id, eventLegs.eventId))
-        .where(and(...cashFlowConditions(context.workspaceId, data))),
-      loadCategories(context.workspaceId),
-    ]);
-
-    // FX is a later slice: non-AUD legs are flagged and left out rather than converted 1:1.
-    const reportable = legs.filter((l) => l.commodity === REPORTING_CURRENCY);
-    const result = buildSankey(reportable, cats, data.focusId);
+    const [converted, cats] = await Promise.all([loadCashFlowLegs(context.workspaceId, data), loadCategories(context.workspaceId)]);
+    const result = buildSankey(converted.legs, cats, data.focusId);
     const byId = new Map(cats.map((c) => [c.id, c]));
     const pathFor = (id: string) => {
       const path: string[] = [];
@@ -62,8 +23,11 @@ export const getCashFlow = createServerFn({ method: 'GET' })
       ...result,
       nodes: result.nodes.map((n) => ({ ...n, root: n.categoryId ? (pathFor(n.categoryId)[0] ?? null) : null })),
       focus: data.focusId && byId.has(data.focusId) ? { id: data.focusId, path: pathFor(data.focusId) } : null,
-      excludedForeignLegs: legs.length - reportable.length,
-      legCount: reportable.length,
+      /** Foreign legs with no FX rate on or before their date (left out, never converted 1:1). */
+      unconvertedLegs: converted.unconverted,
+      /** Foreign legs converted with a stale or trade-only rate. */
+      staleConvertedLegs: converted.staleConverted,
+      legCount: converted.legs.length,
     };
   });
 

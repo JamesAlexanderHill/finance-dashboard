@@ -136,10 +136,16 @@ function CashFlowPage() {
           </Link>
         </p>
       )}
-      {data.excludedForeignLegs > 0 && (
-        <p className="text-warning mb-4 text-sm">{data.excludedForeignLegs} non-AUD legs are excluded until FX rates are available.</p>
+      {(data.unconvertedLegs > 0 || data.staleConvertedLegs > 0) && (
+        <p className="text-warning mb-4 text-sm">
+          {data.unconvertedLegs > 0 &&
+            `${data.unconvertedLegs} foreign-currency legs have no FX rate on or before their date and are left out. `}
+          {data.staleConvertedLegs > 0 && `${data.staleConvertedLegs} were converted with a stale or trade-only rate.`}{' '}
+          <Link to="/prices" className="underline">
+            Add FX rates
+          </Link>
+        </p>
       )}
-
       <Card className="p-4">
         {data.focus && (
           <div className="mb-2 flex items-center gap-2 text-sm">
