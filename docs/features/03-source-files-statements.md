@@ -17,7 +17,7 @@ Retain source PDF/CSV files in RustFS and manage their provenance and soft-delet
 1. Upload statements only into the caller's workspace; the parser routes each row to a financial account of the statement's institution (ADR 0010), auto-creating unconfirmed accounts for unknown identifiers (ADR 0011).
 2. Retain file and extracted rows on soft delete; deactivate their contribution without physical deletion.
 3. Support upload checksums, file metadata, parser version, restoration and statement list.
-4. Support source-file kinds: statement, price import (CSV) and receipt (image/PDF attached to a canonical transaction; not parsed in v1).
+4. Support source-file kinds: statement, price import (CSV) and receipt (image/PDF attached to a canonical transaction; not parsed in v1). A receipt's type is read from its bytes, and only PDF, JPEG, PNG and WebP are accepted, since files are served back inline. Removing a receipt soft-deletes its file; it stays listed on the transaction and can be restored.
 5. Reject an upload whose bytes (SHA-256) match a file that is already live in the workspace; re-uploading a soft-deleted file is allowed, and its rows re-attach to the original canonical transactions.
 
 ## Owned contracts and data
@@ -34,6 +34,7 @@ This feature owns its corresponding domain policies and primary records as descr
 
 - Soft-deleting a statement removes only unsupported active contributions.
 - Underlying file is retained and can be inspected by authorised owners.
+- A receipt attached to a transaction can be opened, removed and restored; a file that is not a PDF or supported image is refused, whatever its name.
 
 ## Testing notes
 
@@ -50,7 +51,7 @@ This feature owns its corresponding domain policies and primary records as descr
 | [Authentication](01-authentication.md) | Integration | Session-bound permissions protect PDF/CSV uploads and private RustFS downloads. |
 | [Financial Accounts](02-financial-accounts.md) | Integration | Statements are attached to a specific institution account and validated against its identity. |
 | [Import Processing](04-import-processing.md) | Integration | The worker reads authorised RustFS source objects and writes parsed staging/source rows. |
-| [Transactions](05-transactions.md) | Integration | Transaction-source join rows preserve overlap, restoration and statement deletion semantics. |
+| [Transactions](05-transactions.md) | Integration | Transaction-source join rows preserve overlap, restoration and statement deletion semantics. Receipts attach to a canonical transaction by ID, so reimports keep them attached. |
 | [Events and Legs](06-events.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Reconciliation](07-reconciliation.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Financial Instruments](08-instruments.md) | None | No direct interaction in v0.2; review if either feature changes scope. |

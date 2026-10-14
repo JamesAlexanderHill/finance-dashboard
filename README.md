@@ -10,7 +10,7 @@ All four slices of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 
 - Sign-in with passkeys or an emailed one-time code (Better Auth, Mailgun); one owner workspace per user.
 - Commbank PDF statements (Smart Access, Everyday Offset, home loan) are uploaded to RustFS and imported by a background worker. Progress streams over SSE.
-- Canonical transactions with soft-delete, reimport that restores original IDs, and manual suppression.
+- Canonical transactions with soft-delete, reimport that restores original IDs, and manual suppression. Receipts (a PDF or photo) can be attached to a transaction as evidence; they are never read automatically.
 - Events and legs rebuilt from transactions plus append-only decisions (categories, tags, itemisation, suppression).
 - Category tree and a cash-flow Sankey with drill-down and tag filters. Select transactions (e.g. every uncategorised match for a search) to categorise them together.
 - Wise PDF statements (one per currency): conversions become one event across currency accounts, with fee legs.
