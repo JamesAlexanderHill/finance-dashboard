@@ -15,10 +15,10 @@ Slices 1–3 of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 - Category tree and a cash-flow Sankey with drill-down and tag filters.
 - Wise PDF statements (one per currency): conversions become one event across currency accounts, with fee legs.
 - Transfer matching between owned accounts, persisted as decisions, with a Transfers review page and manual link/unlink.
-- Vanguard PDF statements: ETF holdings as instrument accounts, buys as investment events, closing and trade prices.
+- Vanguard and IBKR PDF statements: holdings as instrument accounts, buys and conversions as single events, closing and trade prices.
 - Daily price CSV import with column mapping, conflict review and manual prices; holdings with separate price, units and value charts.
 
-Not built yet: IBKR (no fixtures yet), Amex and Stripe parsers, valuation with staleness, FX, the net worth dashboard, merging unconfirmed accounts.
+Not built yet: Amex and Stripe parsers, valuation with staleness, FX, the net worth dashboard, merging unconfirmed accounts.
 
 ## Layout
 
@@ -28,7 +28,7 @@ apps/worker       Background worker: claims jobs from Postgres and runs statemen
 packages/db       Drizzle schema and migrations
 packages/domain   Canonical types, fixed categories, row fingerprints
 packages/contracts Zod schemas for API inputs, job payloads and progress records
-packages/parsers  Statement parsers (Commbank, Wise, Vanguard PDFs) and price CSV mapping
+packages/parsers  Statement parsers (Commbank, Wise, Vanguard, IBKR PDFs) and price CSV mapping
 packages/imports  Job queue, RustFS storage, statement and price import pipelines
 packages/ledger   Row and transfer matching, event projection, Sankey, holdings; `ledger/store` for DB-backed rebuilds
 packages/shared   Decimal and date helpers (`shared/node` for Node-only helpers)
