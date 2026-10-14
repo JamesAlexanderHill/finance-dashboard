@@ -22,7 +22,7 @@ import {
 } from '@finance/db';
 import { instrumentCommodity, type ParsedStatement } from '@finance/domain';
 import { recordDecisions } from '@finance/ledger/store';
-import { commitParsedStatement, setStatementDeleted } from '../src';
+import { AccountMergeError, commitParsedStatement, mergeAccount, setStatementDeleted, unmergeAccount } from '../src';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -293,17 +293,21 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     expect(row!.isTransferHint).toBe(true);
   });
 
+  /** The same rows under another identifier of the same institution, e.g. after a card is reissued. */
+  const renumbered = (descriptions: string[]) => {
+    const p = parsed(descriptions);
+    p.accounts[0]!.identifier = '456';
+    return p;
+  };
+  const accountsByIdentifier = async () => {
+    const accounts = await db.select().from(financialAccounts).where(eq(financialAccounts.workspaceId, workspaceId));
+    return { target: accounts.find((a) => a.identifier === '123')!, merged: accounts.find((a) => a.identifier === '456')! };
+  };
+
   test('statements naming a merged account post to the account it was merged into', async () => {
     await importStatement('A', ['T1', 'T2']);
-    const renumbered = (descriptions: string[]) => {
-      const p = parsed(descriptions);
-      p.accounts[0]!.identifier = '456';
-      return p;
-    };
     await importParsed('empty', renumbered([]));
-    const accounts = await db.select().from(financialAccounts).where(eq(financialAccounts.workspaceId, workspaceId));
-    const target = accounts.find((a) => a.identifier === '123')!;
-    const merged = accounts.find((a) => a.identifier === '456')!;
+    const { target, merged } = await accountsByIdentifier();
     await db.update(financialAccounts).set({ mergedIntoId: target.id }).where(eq(financialAccounts.id, merged.id));
 
     const b = await importParsed('B', renumbered(['T2', 'T3']));
@@ -317,6 +321,59 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
       .from(sourceRecords)
       .where(eq(sourceRecords.sourceFileId, b.sourceFileId));
     expect(rows.map((r) => r.accountId)).toEqual([merged.id, merged.id]);
+  });
+
+  test('merging moves the account transactions or joins them to duplicates, and unmerging restores them', async () => {
+    await importStatement('A', ['T1', 'T2']);
+    const b = renumbered(['T2', 'T3']);
+    b.accounts[0]!.openingBalance = { on: '2026-01-01', balance: '100.00' };
+    await importParsed('B', b);
+    const { target, merged } = await accountsByIdentifier();
+    const accountOf = async (id: string) => (await db.select().from(transactions).where(eq(transactions.id, id)))[0]!;
+    const [duplicate] = await db
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(and(eq(transactions.accountId, merged.id), eq(transactions.description, 'T2')));
+    const moved = await idOf('T3');
+    const categoryId = crypto.randomUUID();
+    await db.execute(
+      sql`insert into categories (id, workspace_id, name, kind) values (${categoryId}, ${workspaceId}, 'Lifestyle', 'expense')`,
+    );
+    await db.transaction((tx) =>
+      recordDecisions(tx, workspaceId, [
+        { workspaceId, transactionId: moved, kind: 'category', legKey: 'principal', payload: { categoryId }, userId },
+      ]),
+    );
+
+    await mergeAccount(db, workspaceId, merged.id, target.id, userId);
+    expect(await activeDescriptions()).toEqual(['T1', 'T2', 'T3']);
+    // T3 moved whole, keeping its ID and category; the duplicate T2 joined the target's transaction.
+    expect(await accountOf(moved)).toMatchObject({ accountId: target.id, isSourceSupported: true });
+    expect(await accountOf(duplicate!.id)).toMatchObject({ accountId: merged.id, isSourceSupported: false });
+    const legs = await db.select().from(eventLegs).where(eq(eventLegs.workspaceId, workspaceId));
+    expect(legs.find((l) => l.transactionId === moved)!.categoryId).toBe(categoryId);
+    expect(new Set(legs.map((l) => l.accountId))).toEqual(new Set([target.id]));
+
+    await unmergeAccount(db, workspaceId, merged.id);
+    expect(await activeDescriptions()).toEqual(['T1', 'T2', 'T2', 'T3']);
+    expect(await accountOf(moved)).toMatchObject({ accountId: merged.id, isSourceSupported: true });
+    expect(await accountOf(duplicate!.id)).toMatchObject({ accountId: merged.id, isSourceSupported: true });
+    const after = await db.select().from(eventLegs).where(eq(eventLegs.transactionId, moved));
+    expect(after[0]!.categoryId).toBe(categoryId);
+  });
+
+  test('only an unconfirmed account merges, into another of the same institution and commodity', async () => {
+    await importStatement('A', ['T1']);
+    await importParsed('B', renumbered(['T2']));
+    const { target, merged } = await accountsByIdentifier();
+    await expect(mergeAccount(db, workspaceId, merged.id, merged.id, userId)).rejects.toThrow(AccountMergeError);
+    await expect(mergeAccount(db, workspaceId, target.id, merged.id, userId)).resolves.toBeUndefined();
+    await unmergeAccount(db, workspaceId, target.id);
+
+    await db.update(financialAccounts).set({ commodity: 'USD' }).where(eq(financialAccounts.id, merged.id));
+    await expect(mergeAccount(db, workspaceId, merged.id, target.id, userId)).rejects.toThrow('holds USD');
+    await db.update(financialAccounts).set({ commodity: 'AUD', status: 'confirmed' }).where(eq(financialAccounts.id, merged.id));
+    await expect(mergeAccount(db, workspaceId, merged.id, target.id, userId)).rejects.toThrow('Only unconfirmed');
   });
 
   test('holding accounts reference a shared instrument and statement prices are recorded with conflicts flagged', async () => {
