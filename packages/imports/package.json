@@ -7,6 +7,13 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1151.0"
+    "@aws-sdk/client-s3": "^3.1151.0",
+    "@finance/contracts": "workspace:*",
+    "@finance/db": "workspace:*",
+    "@finance/domain": "workspace:*",
+    "@finance/ledger": "workspace:*",
+    "@finance/parsers": "workspace:*",
+    "@finance/shared": "workspace:*",
+    "drizzle-orm": "^0.45.4"
   }
 }

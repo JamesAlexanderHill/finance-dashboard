@@ -2,7 +2,10 @@
   "name": "finance-dashboard",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "bun run --filter '@finance/web' --filter '@finance/worker' dev",
     "dev:web": "bun run --filter '@finance/web' dev",
@@ -13,7 +16,8 @@
     "db:migrate": "bun run --filter '@finance/db' migrate",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "bun test",
-    "docs:validate": "bun scripts/validate-feature-docs.ts"
+    "docs:validate": "bun scripts/validate-feature-docs.ts",
+    "test:db": "TEST_DATABASE_URL=postgres://finance:finance@localhost:54329/finance_test bun test"
   },
   "devDependencies": {
     "@types/bun": "^1.4.3",
