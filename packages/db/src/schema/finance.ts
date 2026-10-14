@@ -86,6 +86,8 @@ export const financialAccounts = pgTable(
     commodityKind: commodityKind('commodity_kind').notNull().default('currency'),
     /** ISO currency code or instrument symbol; one commodity per account (ADR 0011). */
     commodity: text('commodity').notNull(),
+    /** Set for holding accounts: the shared instrument this account holds (ADR 0011). */
+    instrumentId: uuid('instrument_id').references(() => instruments.id),
     /** Provider identifier used to route source rows (e.g. BSB + account number). */
     identifier: text('identifier').notNull(),
     maskedIdentifier: text('masked_identifier').notNull(),
@@ -121,6 +123,79 @@ export const balanceObservations = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('balance_observations_account_idx').on(t.accountId, t.observedOn)],
+);
+
+// ---------------------------------------------------------------- instruments and prices
+
+/** A security shared by every account that holds it; prices are stored once per instrument. */
+export const instruments = pgTable(
+  'instruments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id),
+    symbol: text('symbol').notNull(),
+    /** ISO 10383 market identifier, e.g. `XASX`. Same symbol on different exchanges is a different instrument. */
+    exchange: text('exchange').notNull(),
+    name: text('name').notNull(),
+    /** Currency the instrument is priced in. */
+    currency: text('currency').notNull(),
+    isin: text('isin'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('instruments_symbol_uq').on(t.workspaceId, t.exchange, t.symbol)],
+);
+
+/** Other names an instrument goes by in imports (e.g. `VAS.AX` in a price CSV). */
+export const instrumentAliases = pgTable(
+  'instrument_aliases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id),
+    instrumentId: uuid('instrument_id')
+      .notNull()
+      .references(() => instruments.id),
+    alias: text('alias').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('instrument_aliases_uq').on(t.workspaceId, t.alias)],
+);
+
+export const priceType = pgEnum('price_type', ['daily', 'trade', 'manual']);
+export const priceSource = pgEnum('price_source', ['statement', 'csv', 'manual']);
+/** `conflict` marks observations that disagree for the same instrument/date/currency/type until the user picks one. */
+export const priceStatus = pgEnum('price_status', ['active', 'conflict', 'rejected']);
+
+export const priceObservations = pgTable(
+  'price_observations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id),
+    instrumentId: uuid('instrument_id')
+      .notNull()
+      .references(() => instruments.id),
+    observedOn: date('observed_on').notNull(),
+    price: amount('price').notNull(),
+    currency: text('currency').notNull(),
+    priceType: priceType('price_type').notNull(),
+    source: priceSource('source').notNull(),
+    /** Provenance; observations from a soft-deleted file drop out of active use. */
+    sourceFileId: uuid('source_file_id').references(() => sourceFiles.id),
+    /** Row within the source file (CSV line or statement row), when known. */
+    sourceRow: integer('source_row'),
+    status: priceStatus('status').notNull().default('active'),
+    createdBy: text('created_by').references(() => user.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('price_observations_instrument_idx').on(t.instrumentId, t.observedOn),
+    index('price_observations_file_idx').on(t.sourceFileId),
+  ],
 );
 
 // ---------------------------------------------------------------- source files

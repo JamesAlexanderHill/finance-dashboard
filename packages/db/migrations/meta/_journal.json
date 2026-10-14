@@ -15,6 +15,13 @@
       "when": 1791968914249,
       "tag": "0001_provider_refs_and_transfers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791972252660,
+      "tag": "0002_instruments_and_prices",
+      "breakpoints": true
     }
   ]
 }
