@@ -71,6 +71,10 @@
     "packages/ledger": {
       "name": "@finance/ledger",
       "version": "0.0.0",
+      "dependencies": {
+        "@finance/domain": "workspace:*",
+        "@finance/shared": "workspace:*",
+      },
     },
     "packages/parsers": {
       "name": "@finance/parsers",
