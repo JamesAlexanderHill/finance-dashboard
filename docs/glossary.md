@@ -48,6 +48,10 @@ A source file attached to a canonical transaction as evidence for its itemisatio
 **Source row**:
 One parsed row of a source file; rows within one file are never merged with each other.
 
+**Provider reference**:
+An identifier a provider gives one activity, shared by all its rows (e.g. a conversion's rows in two currency balances and its fee row); rows sharing one form a single event.
+_Avoid_: Group ID, batch
+
 ### Transactions
 
 **Canonical transaction**:
@@ -85,6 +89,10 @@ An event moving value between the user's own financial accounts (transfer, conve
 
 **Unmatched transfer**:
 A transfer leg whose counterpart has not been imported yet.
+
+**Link**:
+A reconciliation decision joining transactions from different accounts into one event; made automatically for unambiguous transfers or by the user.
+_Avoid_: Match (for the stored decision), pair
 
 **Opening-balance event**:
 An event establishing an account's starting balance or position.

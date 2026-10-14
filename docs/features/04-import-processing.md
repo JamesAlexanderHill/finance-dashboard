@@ -52,7 +52,7 @@ This feature owns its corresponding domain policies and primary records as descr
 | [Source Files / Statements](03-source-files-statements.md) | Integration | The worker reads authorised RustFS source objects and writes parsed staging/source rows. |
 | [Transactions](05-transactions.md) | Integration | Statement imports upsert canonical transactions and their source occurrence links idempotently. |
 | [Events and Legs](06-events.md) | Integration | Successful transaction imports trigger event/leg posting or replay for affected records. |
-| [Reconciliation](07-reconciliation.md) | Integration | Successful imports schedule affected-account deduplication and candidate reconciliation. |
+| [Reconciliation](07-reconciliation.md) | Integration | Each import commit runs automatic transfer matching before rebuilding events, in the same DB transaction, and reports the number of transfers linked. |
 | [Financial Instruments](08-instruments.md) | Integration | Provider-specific trade and price identifiers are resolved to canonical instruments. |
 | [Asset Price History](09-asset-price-history.md) | Integration | Price CSV parse/validation runs through persistent jobs and streams progress. |
 | [Investment Holdings](10-holdings.md) | Integration | After trade statement posting, affected position histories are recalculated idempotently. |

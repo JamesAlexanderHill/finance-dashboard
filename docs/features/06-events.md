@@ -18,6 +18,8 @@ Consolidated cross-account economic events with typed movement legs and provenan
 2. Internal transfers are one event and not income or expense.
 3. Investment buy/sell events affect units and cash, not ordinary consumption.
 4. Provide cross-account timeline and per-leg source traceability.
+5. Build one event from transactions sharing a provider reference or a current link group. Principal legs moving value both in and out make an internal event (a currency conversion when commodities differ, otherwise a transfer); fee rows become fee legs.
+6. A lone transaction hinted or marked as a transfer, or whose linked counterpart is inactive, is an unmatched transfer: internal and excluded from income/expense.
 
 ## Owned contracts and data
 

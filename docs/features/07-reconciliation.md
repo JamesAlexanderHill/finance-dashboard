@@ -17,6 +17,8 @@ Cross-account matching, low-confidence review and manual overrides.
 1. Match by reliable references, signed amounts, currencies and tolerant settlement dates. Auto-match a transfer only when two owned accounts show opposite-signed, exactly equal amounts in the same commodity within ±5 calendar days with exactly one candidate on each side; otherwise review.
 2. Keep uncertain matches unresolved rather than silently merging.
 3. Record audit-friendly manual confirmations/rejections; never overwrite them by reprocessing. Decisions are append-only: changes supersede, undo is a new decision, and history is viewable per transaction.
+4. Persist automatic matches as system `link` decisions; never auto-match a transaction that already has a link decision (ADR 0012).
+5. Provide a review queue of unmatched transfers (with plausible counterparts) and ambiguous candidates; allow linking any transactions in different accounts, unlinking a whole group, and marking a lone transaction as a transfer or not.
 
 ## Owned contracts and data
 
@@ -48,7 +50,7 @@ This feature owns its corresponding domain policies and primary records as descr
 | [Authentication](01-authentication.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Financial Accounts](02-financial-accounts.md) | Integration | Account identity, currency and balance direction constrain transfer candidate matching. |
 | [Source Files / Statements](03-source-files-statements.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
-| [Import Processing](04-import-processing.md) | Integration | Successful imports schedule affected-account deduplication and candidate reconciliation. |
+| [Import Processing](04-import-processing.md) | Integration | Each import commit runs automatic transfer matching before rebuilding events, in the same DB transaction, and reports the number of transfers linked. |
 | [Transactions](05-transactions.md) | Integration | Transaction provenance and stable IDs support safe link/unlink and duplicate-review decisions. |
 | [Events and Legs](06-events.md) | Integration | Reconciliation consolidates matched transactions into one financial event and preserves manual decisions. |
 | [Financial Instruments](08-instruments.md) | None | No direct interaction in v0.2; review if either feature changes scope. |

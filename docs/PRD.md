@@ -59,7 +59,10 @@ Supported statement formats:
 
 | Institution | Format | Parser | Notes |
 |---|---|---|---|
-| Commonwealth Bank | PDF deposit statements (Smart Access, Everyday Offset) and home-loan statements | `commbank-pdf` 1.0.0 | Every row's running balance and the closing balance must reconcile, otherwise the statement fails as unsupported. Home-loan PDFs may begin with letters before the statement pages. |
+| Commonwealth Bank | PDF deposit statements (Smart Access, Everyday Offset) and home-loan statements | `commbank-pdf` 1.1.0 | Every row's running balance and the closing balance must reconcile, otherwise the statement fails as unsupported. Home-loan PDFs may begin with letters before the statement pages. Loan repayments and drawdowns are hinted as transfers. |
+| Wise | PDF per-currency balance statements (one currency per file) | `wise-pdf` 1.0.0 | Rows carry Wise transaction IDs (used as provider IDs). Fee rows and rows of one conversion or card payment across currency files share a provider reference and form one event. Top-ups are hinted as transfers. Running balances must reconcile. |
+
+Rows with a provider ID are matched across files by (account, provider ID) instead of the fingerprint. Reimporting a row refreshes source hints (provider reference, fee role, transfer hint) on its existing canonical transaction.
 
 ### Statement lifecycle
 
@@ -100,7 +103,8 @@ An **event** is one economic activity, possibly spanning accounts; a **leg** des
 - A Commbank → Wise AUD 500 transfer is one event with two owned-account legs, not income plus spending.
 - An ETF purchase has a cash reduction plus an instrument acquisition (quantity and cost), not an ordinary consumption expense.
 - Stripe: a customer payment is an income event (+gross into the Stripe balance account, −fee leg); a payout is an internal transfer to the bank. Revenue counts once, at gross.
-- Matching considers provider references, amount, date windows, account direction and currency. A transfer is matched automatically when two owned accounts show opposite-signed, exactly equal amounts in the same commodity within ±5 calendar days and each side has exactly one candidate; ambiguous matches remain reviewable; manual link/unlink choices survive reprocessing.
+- Matching considers provider references, amount, date windows, account direction and currency. A transfer is matched automatically when two owned accounts show opposite-signed, exactly equal amounts in the same commodity within ±5 calendar days and each side has exactly one candidate; ambiguous matches remain reviewable; manual link/unlink choices survive reprocessing. Automatic matches are persisted as system link decisions and never re-made after a user unlinks (ADR 0012).
+- Rows sharing a provider reference (a Wise conversion's AUD and NZD rows plus its fee row; a card payment split across currency balances) form one event without any decision. Users can link any transactions in different accounts by hand (e.g. a loan drawdown landing partly in an offset account), and mark a lone transaction as a transfer or not.
 - A source's soft-deletion/restoration invalidates related event projections, without physically deleting provenance or decisions.
 - Event pages offer unified timeline, account/date/type filtering, leg expansion, and review actions.
 

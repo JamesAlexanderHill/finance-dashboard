@@ -6,15 +6,17 @@ A personal finance app that imports bank statements, deduplicates them into cano
 
 ## Status
 
-Slice 1 of the [delivery plan](docs/PRD.md#12-delivery-plan) is built:
+Slices 1 and 2 of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 
 - Sign-in with passkeys or an emailed one-time code (Better Auth, Mailgun); one owner workspace per user.
 - Commbank PDF statements (Smart Access, Everyday Offset, home loan) are uploaded to RustFS and imported by a background worker. Progress streams over SSE.
 - Canonical transactions with soft-delete, reimport that restores original IDs, and manual suppression.
 - Events and legs rebuilt from transactions plus append-only decisions (categories, tags, itemisation, suppression).
 - Category tree and a cash-flow Sankey with drill-down and tag filters.
+- Wise PDF statements (one per currency): conversions become one event across currency accounts, with fee legs.
+- Transfer matching between owned accounts, persisted as decisions, with a Transfers review page and manual link/unlink.
 
-Not built yet (later slices): transfer matching, Wise/Vanguard/IBKR/Amex/Stripe parsers, instruments and prices, FX, net worth dashboard, merging unconfirmed accounts.
+Not built yet (later slices): Vanguard/IBKR/Amex/Stripe parsers, instruments and prices, FX, net worth dashboard, merging unconfirmed accounts.
 
 ## Layout
 
@@ -24,9 +26,9 @@ apps/worker       Background worker: claims jobs from Postgres and runs statemen
 packages/db       Drizzle schema and migrations
 packages/domain   Canonical types, fixed categories, row fingerprints
 packages/contracts Zod schemas for API inputs, job payloads and progress records
-packages/parsers  Statement parsers (Commbank PDF)
+packages/parsers  Statement parsers (Commbank PDF, Wise PDF)
 packages/imports  Job queue, RustFS storage, statement import pipeline
-packages/ledger   Matching, event projection, Sankey aggregation; `ledger/store` for DB-backed rebuilds
+packages/ledger   Row matching, transfer matching, event projection, Sankey; `ledger/store` for DB-backed rebuilds
 packages/shared   Decimal and date helpers (`shared/node` for Node-only helpers)
 infra/            Docker Compose (Postgres, RustFS, migrate, web, worker) and Dockerfile
 ```
@@ -49,7 +51,7 @@ bun run dev                   # web on http://localhost:3000 and the worker
 
 Sign in with your email. Without Mailgun settings in `.env`, the one-time code is printed in the web server log. Add a passkey from **Settings** afterwards. Set `ALLOWED_SIGNUP_EMAILS` to stop anyone else registering.
 
-Then upload statements from **Statements**.
+Then upload statements from **Statements**. Review anything the transfer matcher could not decide on **Transfers**.
 
 ### Checks
 

@@ -73,6 +73,7 @@
     "0008-cross-feature-doc-governance.md",
     "0009-currency-and-valuation-history.md",
     "0010-statement-multi-account-routing.md",
-    "0011-institutions-single-commodity-accounts.md"
+    "0011-institutions-single-commodity-accounts.md",
+    "0012-persisted-automatic-transfer-matches.md"
   ]
 }

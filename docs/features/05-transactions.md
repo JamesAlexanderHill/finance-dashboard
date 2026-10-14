@@ -15,9 +15,10 @@ Canonical normalised transaction identity, source occurrences, soft-delete and r
 ## Functional requirements
 
 1. One transaction may reference multiple active/soft-deleted statement rows.
-2. Provider IDs preferred for deduplication; ambiguous collisions routed to review.
+2. Provider IDs preferred for deduplication: rows with one match by (account, provider ID); others by fingerprint. Ambiguous collisions routed to review.
 3. Statement-sourced inactivity and explicit user suppression are distinct states.
 4. Restore original ID when a source-deactivated transaction reappears; preserve manual suppression unless explicitly restored.
+5. Keep source hints on the transaction (provider reference, principal/fee role, transfer hint); a reimport refreshes them without changing identity.
 
 ## Owned contracts and data
 
