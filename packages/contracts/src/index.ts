@@ -149,6 +149,20 @@ export const cashFlowQuery = z.object({
 });
 export type CashFlowQuery = z.infer<typeof cashFlowQuery>;
 
+export const dashboardQuery = z.object({
+  granularity: z.enum(['week', 'month', 'quarter', 'year', 'custom']).default('month'),
+  /** Number of previous periods to compare against. */
+  n: z.number().int().min(1).max(24).default(6),
+  /** Any date in the selected period (default today); ignored for custom. */
+  date: isoDate.optional(),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  tagIds: z.array(z.uuid()).default([]),
+  /** Expense category to drill into for the stacked expense bars. */
+  expenseFocus: z.uuid().nullable().default(null),
+});
+export type DashboardQuery = z.infer<typeof dashboardQuery>;
+
 export const legsQuery = z.object({
   from: isoDate,
   to: isoDate,
