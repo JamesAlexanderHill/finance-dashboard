@@ -76,6 +76,8 @@
       "name": "@finance/parsers",
       "version": "0.0.0",
       "dependencies": {
+        "@finance/domain": "workspace:*",
+        "@finance/shared": "workspace:*",
         "unpdf": "^1.8.1",
       },
     },
