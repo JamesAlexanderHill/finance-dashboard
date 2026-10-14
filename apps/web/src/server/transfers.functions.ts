@@ -1,6 +1,6 @@
 import { createServerFn } from '@tanstack/react-start';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { linkTransactionsInput, setTransferMarkInput, unlinkTransactionInput } from '@finance/contracts';
+import { idInput, linkTransactionsInput, setTransferMarkInput, unlinkTransactionInput } from '@finance/contracts';
 import { financialAccounts, getDb, transactions } from '@finance/db';
 import { planTransferMatches, transferCounterparts, type TransferCandidate } from '@finance/ledger';
 import { recordDecisions, transferCandidates } from '@finance/ledger/store';
@@ -119,4 +119,28 @@ export const setTransferMark = createServerFn({ method: 'POST' })
         { workspaceId, transactionId: t.id, kind: 'transfer', payload: { isTransfer: data.isTransfer }, userId },
       ]),
     );
+  });
+
+const LINK_SEARCH_DAYS = 14;
+
+/**
+ * Transactions that could be linked with this one by hand: active, in another account, within two
+ * weeks. Exact opposite amounts come first, then the closest dates. Amounts need not match, e.g. a
+ * loan drawdown that lands partly in an offset account.
+ */
+export const findLinkCandidates = createServerFn({ method: 'GET' })
+  .middleware([workspaceMiddleware])
+  .validator(idInput)
+  .handler(async ({ context, data }) => {
+    const rows = await getDb().execute<{ id: string }>(sql`
+      select o.id from transactions t
+      join transactions o on o.workspace_id = t.workspace_id and o.account_id <> t.account_id
+        and o.posted_on between t.posted_on - ${LINK_SEARCH_DAYS}::int and t.posted_on + ${LINK_SEARCH_DAYS}::int
+        and o.is_source_supported and not o.is_suppressed and o.role = 'principal'
+      where t.id = ${data.id} and t.workspace_id = ${context.workspaceId}
+      order by (o.amount = -t.amount and o.commodity = t.commodity) desc, abs(o.posted_on - t.posted_on), abs(o.amount + t.amount)
+      limit 40`);
+    const ids = [...rows].map((r) => r.id);
+    const view = await describe(context.workspaceId, ids);
+    return ids.map((id) => view.get(id)!);
   });

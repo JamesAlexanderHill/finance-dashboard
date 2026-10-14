@@ -9,7 +9,7 @@ import { flattenTree } from '../../lib/category-tree';
 import { money, shortDate } from '../../lib/format';
 import { listAccounts } from '../../server/accounts.functions';
 import { listCategories } from '../../server/categories.functions';
-import { setTransferMark, unlinkTransaction } from '../../server/transfers.functions';
+import { findLinkCandidates, linkTransactions, setTransferMark, unlinkTransaction } from '../../server/transfers.functions';
 import {
   getTransactionDetail,
   itemiseTransaction,
@@ -332,7 +332,10 @@ function TransactionDetail({ row, onChange }: { row: Row; onChange: () => void }
             </li>
           ))}
         </ul>
-        {row.isSourceSupported && !row.isSuppressed && <Itemiser row={row} onChange={onChange} />}
+        {row.isSourceSupported && !row.isSuppressed && !row.event?.isInternal && row.legs[0]?.role !== 'fee' && (
+          <Itemiser row={row} onChange={onChange} />
+        )}
+        {row.isSourceSupported && !row.isSuppressed && <LinkPicker row={row} onChange={onChange} />}
       </div>
       <div>
         <h3 className="mb-1 font-medium">Decision history</h3>
@@ -346,6 +349,54 @@ function TransactionDetail({ row, onChange }: { row: Row; onChange: () => void }
           ))}
         </ul>
       </div>
+    </div>
+  );
+}
+
+/** Links this transaction with one in another account, e.g. the two sides of a transfer whose amounts differ. */
+function LinkPicker({ row, onChange }: { row: Row; onChange: () => void }) {
+  const fetchCandidates = useServerFn(findLinkCandidates);
+  const link = useServerFn(linkTransactions);
+  const candidates = useQuery({ queryKey: ['link-candidates', row.id], queryFn: () => fetchCandidates({ data: { id: row.id } }) });
+  const [selected, setSelected] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    setError(null);
+    try {
+      await link({ data: { transactionIds: [row.id, selected] } });
+      setSelected('');
+      onChange();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not link');
+    }
+  };
+
+  return (
+    <div className="mt-4">
+      <h3 className="mb-1 font-medium">Link with another account</h3>
+      <p className="text-muted mb-2 text-xs">
+        Joins both transactions into one event, e.g. a transfer or loan drawdown whose sides differ.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className="border-line bg-surface max-w-full min-w-0 flex-1 rounded border px-2 py-1"
+          aria-label="Transaction to link"
+        >
+          <option value="">{candidates.data?.length === 0 ? 'No transactions within two weeks' : 'Choose a transaction…'}</option>
+          {candidates.data?.map((c) => (
+            <option key={c.id} value={c.id}>
+              {shortDate(c.postedOn)} · {c.accountName} · {money(c.amount, c.commodity)} · {c.description}
+            </option>
+          ))}
+        </select>
+        <Button disabled={!selected} onClick={save}>
+          Link
+        </Button>
+      </div>
+      {error && <p className="text-negative mt-1 text-xs">{error}</p>}
     </div>
   );
 }
