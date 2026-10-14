@@ -16,6 +16,7 @@ const NAV = [
   { to: '/', label: 'Cash flow' },
   { to: '/transactions', label: 'Transactions' },
   { to: '/events', label: 'Events' },
+  { to: '/transfers', label: 'Transfers' },
   { to: '/statements', label: 'Statements' },
   { to: '/accounts', label: 'Accounts' },
   { to: '/categories', label: 'Categories' },

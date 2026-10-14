@@ -18,6 +18,7 @@ import { Route as AppEventsRouteImport } from './routes/_app/events'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppStatementsRouteImport } from './routes/_app/statements'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
+import { Route as AppTransfersRouteImport } from './routes/_app/transfers'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiSourceFilesIdRouteImport } from './routes/api/source-files/$id'
 import { Route as ApiStatementsIndexRouteImport } from './routes/api/statements/index'
@@ -67,6 +68,11 @@ const AppTransactionsRoute = AppTransactionsRouteImport.update({
   path: '/transactions',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTransfersRoute = AppTransfersRouteImport.update({
+  id: '/transfers',
+  path: '/transfers',
+  getParentRoute: () => AppRoute,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/statements': typeof AppStatementsRoute
   '/transactions': typeof AppTransactionsRoute
+  '/transfers': typeof AppTransfersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
   '/api/statements/': typeof ApiStatementsIndexRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AppSettingsRoute
   '/statements': typeof AppStatementsRoute
   '/transactions': typeof AppTransactionsRoute
+  '/transfers': typeof AppTransfersRoute
   '/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
@@ -126,6 +134,7 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRoute
   '/_app/statements': typeof AppStatementsRoute
   '/_app/transactions': typeof AppTransactionsRoute
+  '/_app/transfers': typeof AppTransfersRoute
   '/_app/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
@@ -143,6 +152,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/statements'
     | '/transactions'
+    | '/transfers'
     | '/api/auth/$'
     | '/api/source-files/$id'
     | '/api/statements/'
@@ -156,6 +166,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/statements'
     | '/transactions'
+    | '/transfers'
     | '/'
     | '/api/auth/$'
     | '/api/source-files/$id'
@@ -171,6 +182,7 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/statements'
     | '/_app/transactions'
+    | '/_app/transfers'
     | '/_app/'
     | '/api/auth/$'
     | '/api/source-files/$id'
@@ -252,6 +264,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTransactionsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/transfers': {
+      id: '/_app/transfers'
+      path: '/transfers'
+      fullPath: '/transfers'
+      preLoaderRoute: typeof AppTransfersRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -290,6 +309,7 @@ interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRoute
   AppStatementsRoute: typeof AppStatementsRoute
   AppTransactionsRoute: typeof AppTransactionsRoute
+  AppTransfersRoute: typeof AppTransfersRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
@@ -300,6 +320,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRoute,
   AppStatementsRoute: AppStatementsRoute,
   AppTransactionsRoute: AppTransactionsRoute,
+  AppTransfersRoute: AppTransfersRoute,
   AppIndexRoute: AppIndexRoute,
 }
 

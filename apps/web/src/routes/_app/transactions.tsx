@@ -9,6 +9,7 @@ import { flattenTree } from '../../lib/category-tree';
 import { money, shortDate } from '../../lib/format';
 import { listAccounts } from '../../server/accounts.functions';
 import { listCategories } from '../../server/categories.functions';
+import { setTransferMark, unlinkTransaction } from '../../server/transfers.functions';
 import {
   getTransactionDetail,
   itemiseTransaction,
@@ -16,8 +17,23 @@ import {
   setLegCategory,
   setLegTags,
   setSuppression,
+  type EventView,
   type LegView,
 } from '../../server/transactions.functions';
+
+const EVENT_LABELS: Record<string, string> = {
+  internal_transfer: 'Transfer',
+  currency_conversion: 'Conversion',
+  refund: 'Refund',
+};
+
+function EventBadge({ event }: { event: EventView | null }) {
+  if (!event) return null;
+  if (event.status === 'unmatched_transfer') return <Badge tone="warning">Unmatched transfer</Badge>;
+  const label = EVENT_LABELS[event.type];
+  if (!label && event.members < 2) return null;
+  return <Badge>{label ?? `${event.members}-part ${event.type}`}</Badge>;
+}
 
 const PAGE = 100;
 
@@ -156,9 +172,21 @@ function TransactionsPage() {
 function TransactionRow({ row, categories, tagNames }: { row: Row; categories: Category[]; tagNames: Map<string, string> }) {
   const queryClient = useQueryClient();
   const suppress = useServerFn(setSuppression);
+  const unlink = useServerFn(unlinkTransaction);
+  const markTransfer = useServerFn(setTransferMark);
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const active = row.isSourceSupported && !row.isSuppressed;
   const refresh = () => queryClient.invalidateQueries();
+  const act = async (fn: () => Promise<unknown>) => {
+    setError(null);
+    try {
+      await fn();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+    }
+  };
 
   return (
     <div className={`border-line border-b last:border-0 ${active ? '' : 'opacity-60'}`}>
@@ -171,6 +199,7 @@ function TransactionRow({ row, categories, tagNames }: { row: Row; categories: C
           <div className="text-muted flex flex-wrap gap-2 text-xs">
             <span>{row.accountName}</span>
             {row.sourceCount > 1 && <span>{row.sourceCount} sources</span>}
+            <EventBadge event={row.event} />
             {row.isSuppressed && <Badge tone="warning">Suppressed</Badge>}
             {!row.isSourceSupported && <Badge>No active statement</Badge>}
           </div>
@@ -186,6 +215,7 @@ function TransactionRow({ row, categories, tagNames }: { row: Row; categories: C
             transactionId={row.id}
             leg={leg}
             itemised={row.legs.length > 1}
+            internal={!!row.event?.isInternal}
             commodity={row.commodity}
             categories={categories}
             tagNames={tagNames}
@@ -194,11 +224,24 @@ function TransactionRow({ row, categories, tagNames }: { row: Row; categories: C
       {open && (
         <div className="bg-surface-2 px-4 py-3">
           <TransactionDetail row={row} onChange={refresh} />
-          <div className="mt-3">
-            <Button onClick={() => suppress({ data: { transactionId: row.id, suppressed: !row.isSuppressed } }).then(refresh)}>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button onClick={() => act(() => suppress({ data: { transactionId: row.id, suppressed: !row.isSuppressed } }))}>
               {row.isSuppressed ? 'Restore transaction' : 'Suppress transaction'}
             </Button>
+            {active && row.isLinked && (
+              <Button onClick={() => act(() => unlink({ data: { transactionId: row.id } }))}>Unlink transfer</Button>
+            )}
+            {active && !row.isLinked && row.event?.members === 1 && (
+              <Button
+                onClick={() =>
+                  act(() => markTransfer({ data: { transactionId: row.id, isTransfer: row.event?.status !== 'unmatched_transfer' } }))
+                }
+              >
+                {row.event?.status === 'unmatched_transfer' ? 'Not a transfer' : 'Mark as transfer'}
+              </Button>
+            )}
           </div>
+          {error && <p className="text-negative mt-2 text-xs">{error}</p>}
         </div>
       )}
     </div>
@@ -209,6 +252,7 @@ function LegEditor(props: {
   transactionId: string;
   leg: LegView;
   itemised: boolean;
+  internal: boolean;
   commodity: string;
   categories: Category[];
   tagNames: Map<string, string>;
@@ -231,20 +275,25 @@ function LegEditor(props: {
           {leg.description} · <span className="tabular">{money(leg.amount, props.commodity)}</span>
         </span>
       )}
-      <select
-        value={leg.categoryId ?? ''}
-        onChange={(e) => setCategory({ data: { transactionId, legKey: leg.legKey, categoryId: e.target.value || null } }).then(refresh)}
-        className={`border-line bg-surface rounded border px-2 py-1 ${leg.categoryId ? '' : 'text-warning'}`}
-        aria-label="Category"
-      >
-        <option value="">Uncategorised</option>
-        {categories.map((c) => (
-          <option key={c.id} value={c.id}>
-            {'  '.repeat(c.depth)}
-            {c.name}
-          </option>
-        ))}
-      </select>
+      {leg.role === 'fee' && <span className="text-muted">Fee</span>}
+      {props.internal && leg.role !== 'fee' ? (
+        <span className="text-muted">Moves money between your accounts; not categorised</span>
+      ) : (
+        <select
+          value={leg.categoryId ?? ''}
+          onChange={(e) => setCategory({ data: { transactionId, legKey: leg.legKey, categoryId: e.target.value || null } }).then(refresh)}
+          className={`border-line bg-surface rounded border px-2 py-1 ${leg.categoryId ? '' : 'text-warning'}`}
+          aria-label="Category"
+        >
+          <option value="">Uncategorised</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {'  '.repeat(c.depth)}
+              {c.name}
+            </option>
+          ))}
+        </select>
+      )}
       <input
         value={tags}
         onChange={(e) => setTagsText(e.target.value)}

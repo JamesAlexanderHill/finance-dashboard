@@ -30,10 +30,18 @@ async function ownedTransaction(workspaceId: string, id: string) {
 export interface LegView {
   id: string;
   legKey: string;
+  role: 'principal' | 'fee' | 'line_item';
   amount: string;
   description: string;
   categoryId: string | null;
   tagIds: string[];
+}
+
+export interface EventView {
+  type: string;
+  status: 'ok' | 'unmatched_transfer';
+  isInternal: boolean;
+  members: number;
 }
 
 export const listTransactions = createServerFn({ method: 'GET' })
@@ -66,9 +74,15 @@ export const listTransactions = createServerFn({ method: 'GET' })
         isSuppressed: transactions.isSuppressed,
         sourceCount: sql<number>`(select count(*)::int from transaction_sources ts where ts.transaction_id = ${transactions.id})`,
         legs: sql<LegView[]>`coalesce((select json_agg(json_build_object(
-            'id', l.id, 'legKey', l.leg_key, 'amount', l.amount::text, 'description', l.description,
+            'id', l.id, 'legKey', l.leg_key, 'role', l.role, 'amount', l.amount::text, 'description', l.description,
             'categoryId', l.category_id, 'tagIds', l.tag_ids) order by l.leg_key)
           from event_legs l where l.transaction_id = ${transactions.id}), '[]'::json)`,
+        event: sql<EventView | null>`(select json_build_object('type', e.type, 'status', e.status, 'isInternal', e.is_internal,
+            'members', (select count(*) from event_transaction_links x where x.event_id = e.id))
+          from event_transaction_links etl join events e on e.id = etl.event_id where etl.transaction_id = ${transactions.id} limit 1)`,
+        isLinked: sql<boolean>`coalesce((select d.payload->>'groupId' is not null from reconciliation_decisions d
+          where d.transaction_id = ${transactions.id} and d.kind = 'link' order by d.seq desc limit 1), false)`,
+        isTransferHint: transactions.isTransferHint,
       })
       .from(transactions)
       .innerJoin(financialAccounts, eq(financialAccounts.id, transactions.accountId))

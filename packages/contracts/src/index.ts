@@ -54,6 +54,9 @@ export const idInput = z.object({ id: z.uuid() });
 
 export const setCategoryInput = z.object({ transactionId: z.uuid(), legKey, categoryId: z.uuid().nullable() });
 export const setTagsInput = z.object({ transactionId: z.uuid(), legKey, tagNames: z.array(z.string().trim().min(1).max(60)).max(20) });
+export const linkTransactionsInput = z.object({ transactionIds: z.array(z.uuid()).min(2).max(20) });
+export const unlinkTransactionInput = z.object({ transactionId: z.uuid() });
+export const setTransferMarkInput = z.object({ transactionId: z.uuid(), isTransfer: z.boolean() });
 export const setSuppressionInput = z.object({ transactionId: z.uuid(), suppressed: z.boolean() });
 export const itemiseInput = z.object({
   transactionId: z.uuid(),
