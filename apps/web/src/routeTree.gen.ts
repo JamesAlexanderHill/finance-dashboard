@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
-import { Route as AppAccountsRouteImport } from './routes/_app/accounts'
 import { Route as AppCashFlowRouteImport } from './routes/_app/cash-flow'
 import { Route as AppCategoriesRouteImport } from './routes/_app/categories'
 import { Route as AppEventsRouteImport } from './routes/_app/events'
@@ -21,6 +20,8 @@ import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppStatementsRouteImport } from './routes/_app/statements'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppTransfersRouteImport } from './routes/_app/transfers'
+import { Route as AppAccountsIndexRouteImport } from './routes/_app/accounts.index'
+import { Route as AppAccountsAccountIdRouteImport } from './routes/_app/accounts.$accountId'
 import { Route as AppHoldingsIndexRouteImport } from './routes/_app/holdings.index'
 import { Route as AppHoldingsInstrumentIdRouteImport } from './routes/_app/holdings.$instrumentId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -41,11 +42,6 @@ const LoginRoute = LoginRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppAccountsRoute = AppAccountsRouteImport.update({
-  id: '/accounts',
-  path: '/accounts',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCashFlowRoute = AppCashFlowRouteImport.update({
@@ -88,6 +84,16 @@ const AppTransfersRoute = AppTransfersRouteImport.update({
   path: '/transfers',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAccountsIndexRoute = AppAccountsIndexRouteImport.update({
+  id: '/accounts/',
+  path: '/accounts/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountsAccountIdRoute = AppAccountsAccountIdRouteImport.update({
+  id: '/accounts/$accountId',
+  path: '/accounts/$accountId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppHoldingsIndexRoute = AppHoldingsIndexRouteImport.update({
   id: '/holdings/',
   path: '/holdings/',
@@ -127,7 +133,6 @@ const ApiJobsJobIdEventsRoute = ApiJobsJobIdEventsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
-  '/accounts': typeof AppAccountsRoute
   '/cash-flow': typeof AppCashFlowRoute
   '/categories': typeof AppCategoriesRoute
   '/events': typeof AppEventsRoute
@@ -136,9 +141,11 @@ export interface FileRoutesByFullPath {
   '/statements': typeof AppStatementsRoute
   '/transactions': typeof AppTransactionsRoute
   '/transfers': typeof AppTransfersRoute
+  '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/holdings/$instrumentId': typeof AppHoldingsInstrumentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
+  '/accounts/': typeof AppAccountsIndexRoute
   '/holdings/': typeof AppHoldingsIndexRoute
   '/api/prices/': typeof ApiPricesIndexRoute
   '/api/statements/': typeof ApiStatementsIndexRoute
@@ -146,7 +153,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
-  '/accounts': typeof AppAccountsRoute
   '/cash-flow': typeof AppCashFlowRoute
   '/categories': typeof AppCategoriesRoute
   '/events': typeof AppEventsRoute
@@ -156,9 +162,11 @@ export interface FileRoutesByTo {
   '/transactions': typeof AppTransactionsRoute
   '/transfers': typeof AppTransfersRoute
   '/': typeof AppIndexRoute
+  '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/holdings/$instrumentId': typeof AppHoldingsInstrumentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
+  '/accounts': typeof AppAccountsIndexRoute
   '/holdings': typeof AppHoldingsIndexRoute
   '/api/prices': typeof ApiPricesIndexRoute
   '/api/statements': typeof ApiStatementsIndexRoute
@@ -168,7 +176,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
-  '/_app/accounts': typeof AppAccountsRoute
   '/_app/cash-flow': typeof AppCashFlowRoute
   '/_app/categories': typeof AppCategoriesRoute
   '/_app/events': typeof AppEventsRoute
@@ -178,9 +185,11 @@ export interface FileRoutesById {
   '/_app/transactions': typeof AppTransactionsRoute
   '/_app/transfers': typeof AppTransfersRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/_app/holdings/$instrumentId': typeof AppHoldingsInstrumentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
+  '/_app/accounts/': typeof AppAccountsIndexRoute
   '/_app/holdings/': typeof AppHoldingsIndexRoute
   '/api/prices/': typeof ApiPricesIndexRoute
   '/api/statements/': typeof ApiStatementsIndexRoute
@@ -191,7 +200,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
-    | '/accounts'
     | '/cash-flow'
     | '/categories'
     | '/events'
@@ -200,9 +208,11 @@ export interface FileRouteTypes {
     | '/statements'
     | '/transactions'
     | '/transfers'
+    | '/accounts/$accountId'
     | '/holdings/$instrumentId'
     | '/api/auth/$'
     | '/api/source-files/$id'
+    | '/accounts/'
     | '/holdings/'
     | '/api/prices/'
     | '/api/statements/'
@@ -210,7 +220,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
-    | '/accounts'
     | '/cash-flow'
     | '/categories'
     | '/events'
@@ -220,9 +229,11 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/transfers'
     | '/'
+    | '/accounts/$accountId'
     | '/holdings/$instrumentId'
     | '/api/auth/$'
     | '/api/source-files/$id'
+    | '/accounts'
     | '/holdings'
     | '/api/prices'
     | '/api/statements'
@@ -231,7 +242,6 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/login'
-    | '/_app/accounts'
     | '/_app/cash-flow'
     | '/_app/categories'
     | '/_app/events'
@@ -241,9 +251,11 @@ export interface FileRouteTypes {
     | '/_app/transactions'
     | '/_app/transfers'
     | '/_app/'
+    | '/_app/accounts/$accountId'
     | '/_app/holdings/$instrumentId'
     | '/api/auth/$'
     | '/api/source-files/$id'
+    | '/_app/accounts/'
     | '/_app/holdings/'
     | '/api/prices/'
     | '/api/statements/'
@@ -281,13 +293,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/accounts': {
-      id: '/_app/accounts'
-      path: '/accounts'
-      fullPath: '/accounts'
-      preLoaderRoute: typeof AppAccountsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/cash-flow': {
@@ -346,6 +351,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTransfersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/accounts/': {
+      id: '/_app/accounts/'
+      path: '/accounts'
+      fullPath: '/accounts/'
+      preLoaderRoute: typeof AppAccountsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/accounts/$accountId': {
+      id: '/_app/accounts/$accountId'
+      path: '/accounts/$accountId'
+      fullPath: '/accounts/$accountId'
+      preLoaderRoute: typeof AppAccountsAccountIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/holdings/': {
       id: '/_app/holdings/'
       path: '/holdings'
@@ -399,7 +418,6 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
-  AppAccountsRoute: typeof AppAccountsRoute
   AppCashFlowRoute: typeof AppCashFlowRoute
   AppCategoriesRoute: typeof AppCategoriesRoute
   AppEventsRoute: typeof AppEventsRoute
@@ -409,12 +427,13 @@ interface AppRouteChildren {
   AppTransactionsRoute: typeof AppTransactionsRoute
   AppTransfersRoute: typeof AppTransfersRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppAccountsAccountIdRoute: typeof AppAccountsAccountIdRoute
   AppHoldingsInstrumentIdRoute: typeof AppHoldingsInstrumentIdRoute
+  AppAccountsIndexRoute: typeof AppAccountsIndexRoute
   AppHoldingsIndexRoute: typeof AppHoldingsIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppAccountsRoute: AppAccountsRoute,
   AppCashFlowRoute: AppCashFlowRoute,
   AppCategoriesRoute: AppCategoriesRoute,
   AppEventsRoute: AppEventsRoute,
@@ -424,7 +443,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppTransactionsRoute: AppTransactionsRoute,
   AppTransfersRoute: AppTransfersRoute,
   AppIndexRoute: AppIndexRoute,
+  AppAccountsAccountIdRoute: AppAccountsAccountIdRoute,
   AppHoldingsInstrumentIdRoute: AppHoldingsInstrumentIdRoute,
+  AppAccountsIndexRoute: AppAccountsIndexRoute,
   AppHoldingsIndexRoute: AppHoldingsIndexRoute,
 }
 

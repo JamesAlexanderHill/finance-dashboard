@@ -1,5 +1,5 @@
 import { queryOptions, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
 import { useState, type FormEvent } from 'react';
 import { possibleDuplicates } from '@finance/domain/accounts';
@@ -18,7 +18,7 @@ import {
 
 const accountsQuery = queryOptions({ queryKey: ['accounts'], queryFn: () => listAccounts() });
 
-export const Route = createFileRoute('/_app/accounts')({
+export const Route = createFileRoute('/_app/accounts/')({
   loader: ({ context }) => context.queryClient.ensureQueryData(accountsQuery),
   component: AccountsPage,
 });
@@ -106,9 +106,14 @@ function AccountRow({
             <Button type="submit">Save</Button>
           </form>
         ) : (
-          <button className="font-medium hover:underline" onClick={() => setEditing(true)} title="Rename">
-            {a.name}
-          </button>
+          <div className="flex items-baseline gap-2">
+            <Link to="/accounts/$accountId" params={{ accountId: a.id }} className="font-medium hover:underline">
+              {a.name}
+            </Link>
+            <button type="button" className="text-muted text-xs hover:underline" onClick={() => setEditing(true)}>
+              Rename
+            </button>
+          </div>
         )}
         <div className="text-muted text-xs">
           {a.maskedIdentifier} · {a.accountType.replace('_', ' ')} · {a.classification} · {a.activeTransactions} transactions
