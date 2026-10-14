@@ -1,8 +1,15 @@
 import { createServerFn } from '@tanstack/react-start';
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
-import { createManualAccountInput, idInput, mergeAccountInput, recordManualBalanceInput, updateAccountInput } from '@finance/contracts';
+import {
+  closeAccountInput,
+  createManualAccountInput,
+  idInput,
+  mergeAccountInput,
+  recordManualBalanceInput,
+  updateAccountInput,
+} from '@finance/contracts';
 import { balanceObservations, financialAccounts, getDb, institutions, sourceFiles, sourceRecords, statements } from '@finance/db';
-import { mergeAccount, unmergeAccount } from '@finance/imports';
+import { closeAccount, latestAccountActivity, mergeAccount, reopenAccount, unmergeAccount } from '@finance/imports';
 import { workspaceMiddleware } from './session';
 
 export const listAccounts = createServerFn({ method: 'GET' })
@@ -22,6 +29,7 @@ export const listAccounts = createServerFn({ method: 'GET' })
         maskedIdentifier: financialAccounts.maskedIdentifier,
         status: financialAccounts.status,
         mergedIntoId: financialAccounts.mergedIntoId,
+        closedOn: financialAccounts.closedOn,
         // Latest observed balance from a live statement (its own or a merged account's); never inferred from partial history.
         balance: sql<{ on: string; balance: string } | null>`(
           select json_build_object('on', bo.observed_on, 'balance', bo.balance::text)
@@ -61,6 +69,7 @@ export const getAccount = createServerFn({ method: 'GET' })
       maskedIdentifier: financialAccounts.maskedIdentifier,
       status: financialAccounts.status,
       mergedIntoId: financialAccounts.mergedIntoId,
+      closedOn: financialAccounts.closedOn,
     };
     const related = await db
       .select(accountColumns)
@@ -144,6 +153,8 @@ export const getAccount = createServerFn({ method: 'GET' })
 
     return {
       account,
+      /** The earliest date the account can be archived (closed) on. */
+      latestActivityOn: await latestAccountActivity(db, context.workspaceId, account.id),
       mergedInto: mergedInto ?? null,
       mergedIn,
       balance: balances.find((b) => b.live) ?? null,
@@ -175,6 +186,21 @@ export const unmergeAccounts = createServerFn({ method: 'POST' })
   .validator(idInput)
   .handler(async ({ context, data }) => {
     await unmergeAccount(getDb(), context.workspaceId, data.id);
+  });
+
+/** Archives an account by closing it on a date (feature 02); it stays viewable and can be unarchived. */
+export const archiveAccount = createServerFn({ method: 'POST' })
+  .middleware([workspaceMiddleware])
+  .validator(closeAccountInput)
+  .handler(async ({ context, data }) => {
+    await closeAccount(getDb(), context.workspaceId, data.id, data.closedOn);
+  });
+
+export const unarchiveAccount = createServerFn({ method: 'POST' })
+  .middleware([workspaceMiddleware])
+  .validator(idInput)
+  .handler(async ({ context, data }) => {
+    await reopenAccount(getDb(), context.workspaceId, data.id);
   });
 
 const MANUAL_PROVIDER = 'manual';

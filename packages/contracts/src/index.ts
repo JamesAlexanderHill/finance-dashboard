@@ -133,6 +133,8 @@ export const updateAccountInput = z.object({
 
 /** Merges an unconfirmed account into another account of the same institution and commodity. */
 export const mergeAccountInput = z.object({ id: z.uuid(), intoId: z.uuid() });
+/** Archives an account by closing it on a date. */
+export const closeAccountInput = z.object({ id: z.uuid(), closedOn: isoDate });
 
 export const createManualAccountInput = z.object({
   name: z.string().trim().min(1).max(80),

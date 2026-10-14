@@ -30,17 +30,13 @@ export async function loadValuationInputs(workspaceId: string): Promise<Valuatio
         instrumentCurrency: instruments.currency,
         institution: institutions.name,
         provider: institutions.provider,
+        closedOn: financialAccounts.closedOn,
       })
       .from(financialAccounts)
       .innerJoin(institutions, eq(institutions.id, financialAccounts.institutionId))
       .leftJoin(instruments, eq(instruments.id, financialAccounts.instrumentId))
-      .where(
-        and(
-          eq(financialAccounts.workspaceId, workspaceId),
-          sql`${financialAccounts.archivedAt} is null`,
-          isNull(financialAccounts.mergedIntoId),
-        ),
-      ),
+      // Archived accounts are kept: they count up to their closing date.
+      .where(and(eq(financialAccounts.workspaceId, workspaceId), isNull(financialAccounts.mergedIntoId))),
     // Balance observations from live statements, plus manual entries. A merged account's count toward its target.
     db.execute<{ account_id: string; observed_on: string; kind: string; balance: string; source: string }>(sql`
       select coalesce(fa.merged_into_id, bo.account_id) as account_id, bo.observed_on::text, bo.kind, bo.balance::text, bo.source
@@ -80,6 +76,7 @@ export async function loadValuationInputs(workspaceId: string): Promise<Valuatio
       institution: a.institution,
       provider: a.provider,
       accountType: a.accountType,
+      closedOn: a.closedOn,
       movements: movementRows.filter((m) => m.accountId === a.id).map((m) => ({ on: m.on, quantity: m.quantity })),
     };
     if (a.provider === 'manual') {
