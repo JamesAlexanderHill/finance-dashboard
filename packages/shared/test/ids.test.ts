@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { add, deterministicUuid, normalise } from '../src';
+import { add, normalise } from '../src';
+import { deterministicUuid } from '../src/node';
 
 test('deterministic UUIDs are stable and well-formed', () => {
   const id = deterministicUuid('event', 'a', 'b');

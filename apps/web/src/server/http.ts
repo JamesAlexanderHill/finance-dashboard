@@ -1,4 +1,4 @@
-import { UnauthorizedError } from './session';
+import { UnauthorizedError } from './session.server';
 
 export const json = (body: unknown, status = 200) => Response.json(body, { status });
 

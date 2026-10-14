@@ -1,4 +1,5 @@
-import { deterministicUuid, isPositive, type DecimalString, type IsoDate } from '@finance/shared';
+import { isPositive, type DecimalString, type IsoDate } from '@finance/shared';
+import { deterministicUuid } from '@finance/shared/node';
 import {
   currentDecisions,
   decisionKey,

@@ -1,4 +1,5 @@
-import { normalise, sha256Hex, type DecimalString, type IsoDate } from '@finance/shared';
+import { normalise, type DecimalString, type IsoDate } from '@finance/shared';
+import { sha256Hex } from '@finance/shared/node';
 
 /** Upper-case, alphanumerics only, single spaces. Used for cross-file matching. */
 export function normaliseDescription(description: string): string {

@@ -17,7 +17,7 @@ import { UnsupportedStatementError, withOrdinals, type ParsedStatement } from '@
 import { planMatches } from '@finance/ledger';
 import { lockWorkspace, rebuildEvents, refreshTransactionSupport } from '@finance/ledger/store';
 import { parseStatement } from '@finance/parsers';
-import { sha256Hex } from '@finance/shared';
+import { sha256Hex } from '@finance/shared/node';
 import { appendProgress, enqueueJob, type Job } from './queue';
 import { sourceFileKey, type ObjectStorage } from './storage';
 

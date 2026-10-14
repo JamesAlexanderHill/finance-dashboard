@@ -3,7 +3,7 @@ import { MAX_UPLOAD_BYTES } from '@finance/contracts';
 import { getDb } from '@finance/db';
 import { createStatementUpload, DuplicateUploadError, getStorage } from '@finance/imports';
 import { json, withErrors } from '../../../server/http';
-import { requireWorkspace } from '../../../server/session';
+import { requireWorkspace } from '../../../server/session.server';
 
 const contentTypeFor = (file: File) =>
   file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')

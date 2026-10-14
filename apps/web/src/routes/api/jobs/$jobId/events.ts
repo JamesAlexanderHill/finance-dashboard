@@ -4,7 +4,7 @@ import { TERMINAL_STAGES, type JobProgressRecord } from '@finance/contracts';
 import { getDb, jobs } from '@finance/db';
 import { progressSince } from '@finance/imports';
 import { json, withErrors } from '../../../../server/http';
-import { requireWorkspace } from '../../../../server/session';
+import { requireWorkspace } from '../../../../server/session.server';
 
 const POLL_MS = 750;
 const KEEPALIVE_MS = 15_000;

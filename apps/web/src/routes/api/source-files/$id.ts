@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { getDb, sourceFiles } from '@finance/db';
 import { getStorage } from '@finance/imports';
 import { json, withErrors } from '../../../server/http';
-import { requireWorkspace } from '../../../server/session';
+import { requireWorkspace } from '../../../server/session.server';
 
 /** Streams a retained source file to its workspace owner (soft-deleted files remain inspectable). */
 export const Route = createFileRoute('/api/source-files/$id')({
