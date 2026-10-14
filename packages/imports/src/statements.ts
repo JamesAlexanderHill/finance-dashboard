@@ -162,10 +162,23 @@ export async function commitParsedStatement(
     warnings: [...parsed.warnings],
   };
 
+  const routes = [];
   for (const section of parsed.accounts) {
     const { account, created } = await findOrCreateAccount(tx, workspaceId, institution.id, section);
-    summary.accounts.push({ id: account.id, name: account.name, created });
+    // A merged account's rows belong to the account it was merged into.
+    const target = account.mergedIntoId ? await accountById(tx, account.mergedIntoId) : account;
+    routes.push({ section, account, target });
+    summary.accounts.push({ id: target.id, name: target.name, created });
+  }
+  // Ordinals count identical rows across the whole file, so two sections routed to one account never share a fingerprint.
+  const fingerprinted = new Map(
+    withOrdinals(routes.flatMap(({ section, target }) => section.rows.map((r) => ({ ...r, accountId: target.id })))).map((r) => [
+      r.rowIndex,
+      r,
+    ]),
+  );
 
+  for (const { section, account, target } of routes) {
     for (const balance of [
       section.openingBalance && { kind: 'opening' as const, ...section.openingBalance },
       section.closingBalance && { kind: 'closing' as const, ...section.closingBalance },
@@ -182,7 +195,7 @@ export async function commitParsedStatement(
       });
     }
 
-    const rows = withOrdinals(section.rows.map((r) => ({ ...r, accountId: account.id })));
+    const rows = section.rows.map((r) => fingerprinted.get(r.rowIndex)!);
     if (rows.length === 0) continue;
     summary.rows += rows.length;
 
@@ -230,7 +243,7 @@ export async function commitParsedStatement(
               const r = byRow.get(rowIndex)!;
               return {
                 workspaceId,
-                accountId: account.id,
+                accountId: target.id,
                 postedOn: r.postedOn,
                 description: r.description,
                 amount: r.amount,
@@ -334,6 +347,12 @@ async function findOrCreateInstitution(tx: Executor, workspaceId: string, name: 
   if (existing) return existing;
   const [created] = await tx.insert(institutions).values({ workspaceId, name, provider }).returning();
   return created!;
+}
+
+async function accountById(tx: Executor, id: string) {
+  const [account] = await tx.select().from(financialAccounts).where(eq(financialAccounts.id, id));
+  if (!account) throw new Error(`Account ${id} not found`);
+  return account;
 }
 
 /** Unknown identifiers under a known institution become unconfirmed accounts (ADR 0011). */

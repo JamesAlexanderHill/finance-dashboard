@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { financialAccounts, getDb, institutions, instruments, priceObservations, transactions } from '@finance/db';
 import { activePriceOverrides, livePriceCondition } from '@finance/imports';
 import type { AccountValuationInput, PriceObservationInput } from '@finance/ledger';
@@ -34,11 +34,18 @@ export async function loadValuationInputs(workspaceId: string): Promise<Valuatio
       .from(financialAccounts)
       .innerJoin(institutions, eq(institutions.id, financialAccounts.institutionId))
       .leftJoin(instruments, eq(instruments.id, financialAccounts.instrumentId))
-      .where(and(eq(financialAccounts.workspaceId, workspaceId), sql`${financialAccounts.archivedAt} is null`)),
-    // Balance observations from live statements, plus manual entries.
+      .where(
+        and(
+          eq(financialAccounts.workspaceId, workspaceId),
+          sql`${financialAccounts.archivedAt} is null`,
+          isNull(financialAccounts.mergedIntoId),
+        ),
+      ),
+    // Balance observations from live statements, plus manual entries. A merged account's count toward its target.
     db.execute<{ account_id: string; observed_on: string; kind: string; balance: string; source: string }>(sql`
-      select bo.account_id, bo.observed_on::text, bo.kind, bo.balance::text, bo.source
-      from balance_observations bo left join source_files sf on sf.id = bo.source_file_id
+      select coalesce(fa.merged_into_id, bo.account_id) as account_id, bo.observed_on::text, bo.kind, bo.balance::text, bo.source
+      from balance_observations bo join financial_accounts fa on fa.id = bo.account_id
+      left join source_files sf on sf.id = bo.source_file_id
       where bo.workspace_id = ${workspaceId} and (bo.source_file_id is null or sf.deleted_at is null)
       order by bo.observed_on, bo.created_at`),
     db

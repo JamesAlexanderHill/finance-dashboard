@@ -19,11 +19,12 @@ export const listAccounts = createServerFn({ method: 'GET' })
         commodity: financialAccounts.commodity,
         maskedIdentifier: financialAccounts.maskedIdentifier,
         status: financialAccounts.status,
-        // Latest observed balance from a live statement; never inferred from partial history.
+        // Latest observed balance from a live statement (its own or a merged account's); never inferred from partial history.
         balance: sql<{ on: string; balance: string } | null>`(
           select json_build_object('on', bo.observed_on, 'balance', bo.balance::text)
-          from balance_observations bo left join source_files sf on sf.id = bo.source_file_id
-          where bo.account_id = ${financialAccounts.id} and (bo.source_file_id is null or sf.deleted_at is null)
+          from balance_observations bo join financial_accounts m on m.id = bo.account_id
+          left join source_files sf on sf.id = bo.source_file_id
+          where ${financialAccounts.id} in (m.id, m.merged_into_id) and (bo.source_file_id is null or sf.deleted_at is null)
           order by bo.observed_on desc, (bo.kind = 'closing') desc limit 1)`,
         activeTransactions: sql<number>`(select count(*)::int from transactions t where t.account_id = ${financialAccounts.id}
           and t.is_source_supported and not t.is_suppressed)`,

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   boolean,
@@ -92,6 +93,13 @@ export const financialAccounts = pgTable(
     identifier: text('identifier').notNull(),
     maskedIdentifier: text('masked_identifier').notNull(),
     status: accountStatus('status').notNull().default('confirmed'),
+    /**
+     * Set when the user merged this (unconfirmed) account into another (ADR 0011). Its statements keep
+     * naming it, but their transactions and balances belong to the target. Cleared by an unmerge.
+     */
+    mergedIntoId: uuid('merged_into_id').references((): AnyPgColumn => financialAccounts.id),
+    mergedAt: timestamp('merged_at', { withTimezone: true }),
+    mergedBy: text('merged_by').references(() => user.id),
     createdAt: createdAt(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
   },
@@ -111,6 +119,7 @@ export const balanceObservations = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id),
+    /** The account the statement or user named; a merged account's balances count toward its target. */
     accountId: uuid('account_id')
       .notNull()
       .references(() => financialAccounts.id),
@@ -298,6 +307,7 @@ export const sourceRecords = pgTable(
       .notNull()
       .references(() => sourceFiles.id),
     rowIndex: integer('row_index').notNull(),
+    /** The account the statement named. Its transaction may sit on the account this one is merged into. */
     accountId: uuid('account_id')
       .notNull()
       .references(() => financialAccounts.id),

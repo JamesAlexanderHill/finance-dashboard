@@ -59,14 +59,16 @@ export async function rebuildEvents(tx: Executor, workspaceId: string) {
       .from(categories)
       .where(and(eq(categories.workspaceId, workspaceId), isNull(categories.archivedAt))),
     // Earliest opening balance per account from a live statement, preferring statements over manual entry.
+    // A merged account's openings belong to the account it was merged into.
     tx.execute<{ account_id: string; observed_on: string; balance: string; commodity: string }>(sql`
-      select distinct on (bo.account_id) bo.account_id, bo.observed_on::text, bo.balance::text, fa.commodity
+      select distinct on (coalesce(fa.merged_into_id, fa.id)) coalesce(fa.merged_into_id, fa.id) as account_id,
+        bo.observed_on::text, bo.balance::text, fa.commodity
       from balance_observations bo
       join ${financialAccounts} fa on fa.id = bo.account_id
       left join source_files sf on sf.id = bo.source_file_id
       where bo.workspace_id = ${workspaceId} and bo.kind = 'opening'
         and (bo.source_file_id is null or sf.deleted_at is null)
-      order by bo.account_id, (bo.source = 'statement') desc, bo.observed_on asc
+      order by coalesce(fa.merged_into_id, fa.id), (bo.source = 'statement') desc, bo.observed_on asc
     `),
   ]);
 

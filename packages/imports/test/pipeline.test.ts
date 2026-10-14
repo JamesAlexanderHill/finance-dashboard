@@ -13,6 +13,7 @@ import {
   instruments,
   priceObservations,
   sourceFiles,
+  sourceRecords,
   statements,
   transactions,
   user,
@@ -88,7 +89,7 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
       .returning();
     const [row] = await db.insert(statements).values({ workspaceId, sourceFileId: file!.id }).returning();
     const summary = await db.transaction((tx) => commitParsedStatement(tx, workspaceId, file!.id, row!.id, statement));
-    return { statementId: row!.id, summary };
+    return { statementId: row!.id, sourceFileId: file!.id, summary };
   }
 
   async function importStatement(name: string, descriptions: string[]) {
@@ -290,6 +291,32 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     expect(again.summary).toMatchObject({ created: 0, linked: 1 });
     const [row] = await db.select().from(transactions).where(eq(transactions.workspaceId, workspaceId));
     expect(row!.isTransferHint).toBe(true);
+  });
+
+  test('statements naming a merged account post to the account it was merged into', async () => {
+    await importStatement('A', ['T1', 'T2']);
+    const renumbered = (descriptions: string[]) => {
+      const p = parsed(descriptions);
+      p.accounts[0]!.identifier = '456';
+      return p;
+    };
+    await importParsed('empty', renumbered([]));
+    const accounts = await db.select().from(financialAccounts).where(eq(financialAccounts.workspaceId, workspaceId));
+    const target = accounts.find((a) => a.identifier === '123')!;
+    const merged = accounts.find((a) => a.identifier === '456')!;
+    await db.update(financialAccounts).set({ mergedIntoId: target.id }).where(eq(financialAccounts.id, merged.id));
+
+    const b = await importParsed('B', renumbered(['T2', 'T3']));
+    expect(b.summary).toMatchObject({ created: 1, linked: 1, accounts: [{ id: target.id }] });
+    expect(await activeDescriptions()).toEqual(['T1', 'T2', 'T3']);
+    const posted = await db.select({ accountId: transactions.accountId }).from(transactions);
+    expect(new Set(posted.map((t) => t.accountId))).toEqual(new Set([target.id]));
+    // The source rows still record the account the statement named.
+    const rows = await db
+      .select({ accountId: sourceRecords.accountId })
+      .from(sourceRecords)
+      .where(eq(sourceRecords.sourceFileId, b.sourceFileId));
+    expect(rows.map((r) => r.accountId)).toEqual([merged.id, merged.id]);
   });
 
   test('holding accounts reference a shared instrument and statement prices are recorded with conflicts flagged', async () => {

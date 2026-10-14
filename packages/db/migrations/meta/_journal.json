@@ -43,6 +43,13 @@
       "when": 1791977212019,
       "tag": "0005_price_overrides",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791980622581,
+      "tag": "0006_account_merges",
+      "breakpoints": true
     }
   ]
 }
