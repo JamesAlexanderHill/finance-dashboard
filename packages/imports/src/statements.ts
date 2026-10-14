@@ -230,6 +230,19 @@ export async function commitParsedStatement(
 
     const linkedIds = plan.linked.map((l) => l.transactionId);
     await refreshTransactionSupport(tx, workspaceId, linkedIds);
+    // A newer parser may know more about a row than the one that created its transaction.
+    for (const l of plan.linked) {
+      const r = byRow.get(l.rowIndex)!;
+      if (!r.groupRef && !r.transferHint && !r.role) continue;
+      await tx
+        .update(transactions)
+        .set({
+          ...(r.groupRef ? { providerGroupRef: r.groupRef } : {}),
+          ...(r.role ? { role: r.role } : {}),
+          ...(r.transferHint ? { isTransferHint: true } : {}),
+        })
+        .where(eq(transactions.id, l.transactionId));
+    }
     summary.created += plan.created.length;
     summary.linked += plan.linked.length;
     summary.restored += linkedIds.filter((id) => unsupported.has(id)).length;

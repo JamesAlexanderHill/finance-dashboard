@@ -214,5 +214,15 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
       ['internal_transfer', 'unmatched_transfer'],
     ]);
   });
+
+  test('reimporting with a newer parser updates source hints on existing transactions', async () => {
+    await importStatement('old', ['Repayment/Payment']);
+    const hinted = parsed(['Repayment/Payment']);
+    hinted.accounts[0]!.rows[0]!.transferHint = true;
+    const again = await importParsed('new', hinted);
+    expect(again.summary).toMatchObject({ created: 0, linked: 1 });
+    const [row] = await db.select().from(transactions).where(eq(transactions.workspaceId, workspaceId));
+    expect(row!.isTransferHint).toBe(true);
+  });
 });
 

@@ -8,7 +8,14 @@ import { add, eq, isoDate, type DecimalString, type IsoDate } from '@finance/sha
 import type { TextItem, TextLine } from '../pdf';
 
 export const COMMBANK_PDF_PARSER_ID = 'commbank-pdf';
-export const COMMBANK_PDF_PARSER_VERSION = '1.0.0';
+export const COMMBANK_PDF_PARSER_VERSION = '1.1.0';
+
+/**
+ * Home-loan rows that move principal rather than earn or spend: repayments arrive from another
+ * account, and the drawdown pays for an asset. They are hinted as transfers so they stay out of
+ * income and expense until matched. Interest and fees are not hinted.
+ */
+const LOAN_TRANSFER_RE = /^(Repayment\/Payment|Money we lent you)\b/;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_RE = MONTHS.join('|');
@@ -62,6 +69,7 @@ export function parseCommbankPdf(lines: TextLine[]): ParsedStatement {
   const section = layout === 'home-loan' ? readLoanAccount(content) : readDepositAccount(content);
   const warnings: string[] = [];
   const { rows, opening, closing } = readTransactions(content, periodStart, periodEnd, section.liability);
+  if (layout === 'home-loan') for (const row of rows) if (LOAN_TRANSFER_RE.test(row.description)) row.transferHint = true;
 
   if (!opening) throw new UnsupportedStatementError('Opening balance row not found');
   if (!closing) throw new UnsupportedStatementError('Closing balance row not found');

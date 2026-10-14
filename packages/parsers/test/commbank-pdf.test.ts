@@ -29,6 +29,30 @@ function depositStatement(rows: TextLine[], closing = '95.50 CR'): TextLine[] {
   ];
 }
 
+describe('Commbank home-loan PDF', () => {
+  const loan = [
+    line(1, 788, [377, 'Your Statement']),
+    line(1, 756, [354, 'Account number'], [516, '000111222']),
+    line(1, 737, [354, 'Statement period'], [443, '1 Jan 2026'], [507, '31 Jan 2026']),
+    line(2, 470, [56, 'Investment Home Loan Transactions']),
+    line(2, 449, [56, 'Date'], [98, 'Transaction description'], [330, 'Debits'], [403, 'Credits'], [522, 'Balance']),
+    line(2, 412, [56, '01 Jan'], [98, 'Opening balance'], [492, '$1,000.00 DR']),
+    line(2, 275, [56, '10 Jan'], [98, 'Interest charged'], [323, '5.00'], [491, '$1,005.00 DR']),
+    line(2, 256, [56, '10 Jan'], [98, 'Repayment/Payment'], [395, '$105.00'], [491, '$900.00 DR']),
+    line(2, 75, [56, '31 Jan'], [98, 'Closing balance'], [492, '$900.00 DR']),
+  ];
+
+  test('signs balances as owed and hints repayments, not interest, as transfers', () => {
+    const account = parseCommbankPdf(loan).accounts[0]!;
+    expect(account).toMatchObject({ classification: 'liability', accountType: 'loan', name: 'Investment Home Loan' });
+    expect(account.openingBalance!.balance).toBe('-1000.00');
+    expect(account.rows.map((r) => [r.description, r.amount, r.transferHint ?? false])).toEqual([
+      ['Interest charged', '-5.00', false],
+      ['Repayment/Payment', '105.00', true],
+    ]);
+  });
+});
+
 describe('Commbank deposit PDF', () => {
   const rows = [
     line(1, 375, [57, '30 Dec Coffee Shop SYDNEY']),
