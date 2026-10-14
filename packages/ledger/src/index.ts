@@ -5,3 +5,4 @@ export * from './matching';
 export * from './transfers';
 export * from './holdings';
 export * from './valuation';
+export * from './networth';
