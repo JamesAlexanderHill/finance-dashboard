@@ -18,6 +18,8 @@ Calculate instrument quantities over time from position movements and verified o
 2. Dated snapshots establish baselines/reconciliation checkpoints, never double-count units.
 3. Produce quantity-by-date per account/instrument; invalidate on changed transaction activity.
 4. Holdings views aggregate an instrument across accounts with a per-account breakdown (e.g. VAS at Vanguard and IBKR).
+5. Units at a date = the earliest live opening position + movements up to that date. Statement closing quantities are checkpoints; disagreements are shown, never added.
+6. Value = units held × that date's effective price (manual, then daily, then trade as a marked fallback), only on dates with a price. Charts show unit price, units owned and holding value separately on a shared time axis.
 
 ## Owned contracts and data
 

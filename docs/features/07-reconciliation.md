@@ -17,7 +17,7 @@ Cross-account matching, low-confidence review and manual overrides.
 1. Match by reliable references, signed amounts, currencies and tolerant settlement dates. Auto-match a transfer only when two owned accounts show opposite-signed, exactly equal amounts in the same commodity within ±5 calendar days with exactly one candidate on each side; otherwise review.
 2. Keep uncertain matches unresolved rather than silently merging.
 3. Record audit-friendly manual confirmations/rejections; never overwrite them by reprocessing. Decisions are append-only: changes supersede, undo is a new decision, and history is viewable per transaction.
-4. Persist automatic matches as system `link` decisions; never auto-match a transaction that already has a link decision (ADR 0012).
+4. Persist automatic matches as system `link` decisions; never auto-match a transaction that already has a link decision (ADR 0012). A stated counterpart date (from a payment reference) restricts candidates to that posting date.
 5. Provide a review queue of unmatched transfers (with plausible counterparts) and ambiguous candidates; allow linking any transactions in different accounts, unlinking a whole group, and marking a lone transaction as a transfer or not.
 
 ## Owned contracts and data

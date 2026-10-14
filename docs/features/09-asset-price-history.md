@@ -19,7 +19,10 @@ CSV uploads and retained dated unit-price observations used for historical chart
 3. Conflicting same-day prices require explicit resolution or deterministic approved precedence.
 4. Record trade execution prices from statement trade rows as `trade`-type observations.
 5. Keep manual single-date observations possible; soft-deleting a price file deactivates orphaned observations.
-5. Provide effective-date series and missing/stale markers.
+6. Provide effective-date series and missing/stale markers.
+7. Every source keeps its own observation (so deleting one file never removes a price another live file reports); equal prices are de-duplicated when read.
+8. A daily or manual price disagreeing with a live one for the same instrument, date, currency and type marks both `conflict`; neither is used until the user chooses one, which rejects the others. Trade prices never conflict.
+9. Statements record closing prices (as daily observations) and trade prices. Each CSV import reports rows recorded, already known, conflicting and rejected (with line numbers).
 
 ## Owned contracts and data
 

@@ -60,6 +60,7 @@ Supported statement formats:
 | Institution | Format | Parser | Notes |
 |---|---|---|---|
 | Commonwealth Bank | PDF deposit statements (Smart Access, Everyday Offset) and home-loan statements | `commbank-pdf` 1.1.0 | Every row's running balance and the closing balance must reconcile, otherwise the statement fails as unsupported. Home-loan PDFs may begin with letters before the statement pages. Loan repayments and drawdowns are hinted as transfers. |
+| Vanguard | PDF Vanguard Personal Investor annual statements | `vanguard-pdf` 1.1.0 | Cash account rows, ETF buys and the year-end valuation. Each buy's cash and units rows form one investment event. Closing and trade prices are recorded. Deposits are hinted as transfers; BPAY receipts give the payer's posting date. Sells, brokerage, transfers in/out and other investment types are rejected until fixtures exist. |
 | Wise | PDF per-currency balance statements (one currency per file) | `wise-pdf` 1.0.0 | Rows carry Wise transaction IDs (used as provider IDs). Fee rows and rows of one conversion or card payment across currency files share a provider reference and form one event. Top-ups are hinted as transfers. Running balances must reconcile. |
 
 Rows with a provider ID are matched across files by (account, provider ID) instead of the fingerprint. Reimporting a row refreshes source hints (provider reference, fee role, transfer hint) on its existing canonical transaction.
@@ -103,7 +104,7 @@ An **event** is one economic activity, possibly spanning accounts; a **leg** des
 - A Commbank → Wise AUD 500 transfer is one event with two owned-account legs, not income plus spending.
 - An ETF purchase has a cash reduction plus an instrument acquisition (quantity and cost), not an ordinary consumption expense.
 - Stripe: a customer payment is an income event (+gross into the Stripe balance account, −fee leg); a payout is an internal transfer to the bank. Revenue counts once, at gross.
-- Matching considers provider references, amount, date windows, account direction and currency. A transfer is matched automatically when two owned accounts show opposite-signed, exactly equal amounts in the same commodity within ±5 calendar days and each side has exactly one candidate; ambiguous matches remain reviewable; manual link/unlink choices survive reprocessing. Automatic matches are persisted as system link decisions and never re-made after a user unlinks (ADR 0012).
+- Matching considers provider references, amount, date windows, account direction and currency. A transfer is matched automatically when two owned accounts show opposite-signed, exactly equal amounts in the same commodity within ±5 calendar days and each side has exactly one candidate; ambiguous matches remain reviewable; manual link/unlink choices survive reprocessing. Automatic matches are persisted as system link decisions and never re-made after a user unlinks (ADR 0012). When a payment reference states the other side's posting date (e.g. a BPAY receipt), only a transaction posted on that date is a candidate; matches must still be unique on both sides.
 - Rows sharing a provider reference (a Wise conversion's AUD and NZD rows plus its fee row; a card payment split across currency balances) form one event without any decision. Users can link any transactions in different accounts by hand (e.g. a loan drawdown landing partly in an offset account), and mark a lone transaction as a transfer or not.
 - A source's soft-deletion/restoration invalidates related event projections, without physically deleting provenance or decisions.
 - Event pages offer unified timeline, account/date/type filtering, leg expansion, and review actions.
@@ -121,7 +122,7 @@ Users upload a CSV containing one or more daily instrument/unit-price series. Su
 1. Choose an instrument (or map an instrument-identification column for multiple instruments).
 2. Map CSV columns to `date`, `unit_price`, and optional `instrument`, `currency`, `price_type/source`.
 3. Preview/validate rows; report invalid dates, unsupported currency, missing instrument and bad/negative numeric values.
-4. Import dated observations asynchronously, with source row provenance and parser/mapping version.
+4. Import dated observations asynchronously, with source row provenance and parser/mapping version. Supported date formats: `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`; instrument values resolve by symbol, `EXCHANGE:SYMBOL`, `SYMBOL.AX` for ASX listings, or an alias.
 5. Overlapping uploads with identical observations are deduplicated; conflicting prices for the same instrument, date, currency and price-type are not silently overwritten, but resolved through review or explicit selection.
 6. Soft-deleting a price-import file deactivates its unsupported observations; surviving observations from other active source files remain. Existing source files/rows are preserved.
 7. Trade rows in statements (e.g. Vanguard/IBKR buys) also record their execution unit price as a price observation of type `trade`, with the statement row as provenance.
@@ -162,7 +163,7 @@ Historical chart values are as-of-date calculations. Never apply today's price t
 | Import execution | `jobs`, `job_progress`, `import_results` | Job leases, idempotency, durable progress and user-visible outcomes |
 | Canonical activity | `transactions`, `transaction_sources` | Many statement-row occurrences can support one logical transaction |
 | Economic activity | `events`, `event_legs`, `event_transaction_links`, `reconciliation_decisions` | Traceable and regenerable; manual matches not overwritten |
-| Investments | `instruments`, `instrument_aliases`, `position_movements`, `position_snapshots` | Dated holdings derived from verified baselines plus unique movements |
+| Investments | `instruments`, `instrument_aliases`; position movements are transactions on holding accounts and position snapshots are their balance observations (ADR 0011) | Dated holdings derived from verified baselines plus unique movements |
 | Asset prices | `price_observations`, `price_sources` | Dated price per instrument/currency/price convention; overlapping sources retained |
 | FX | `fx_rate_observations` | Dated FX inputs with source and explicit incompleteness |
 

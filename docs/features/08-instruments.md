@@ -16,7 +16,9 @@ Instrument identity for ETFs/shares across investments and historical prices.
 
 1. Store ticker, ISIN where available, exchange, currency, type and canonical instrument identity.
 2. Map provider instrument identifiers and price-CSV symbols to canonical instruments.
-3. Do not merge identical tickers on different exchanges without validation.
+3. Do not merge identical tickers on different exchanges without validation: an instrument is identified by (exchange, symbol), and a bare symbol listed on several exchanges does not resolve.
+4. Holding accounts reference their instrument; their commodity is `EXCHANGE:SYMBOL` and their amounts are unit quantities.
+5. Statement imports find or create instruments; price-CSV values resolve by symbol, `EXCHANGE:SYMBOL`, `SYMBOL.AX` (ASX) or a recorded alias.
 
 ## Owned contracts and data
 

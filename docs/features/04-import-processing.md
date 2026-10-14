@@ -15,7 +15,7 @@ Durable PostgreSQL job queue, independent Bun worker, staged parsing, SSE and re
 ## Functional requirements
 
 1. Use jobs and append-only job_progress tables; claim with safe row-level locking.
-2. Support PDF/CSV statement and daily-price CSV jobs as distinct job types.
+2. Support PDF/CSV statement and daily-price CSV jobs as distinct job types (`statement.import`, `price.import`). A price import runs only after the user maps the file's columns; the mapping and its version travel in the job payload.
 3. Persist parse/validation outcomes and broadcast SSE with recovery cursor.
 4. Use versioned parsers; idempotent retry and atomic financial commits.
 
