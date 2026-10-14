@@ -1,7 +1,7 @@
 import { queryOptions, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { z } from 'zod';
 import { add, eq } from '@finance/shared';
 import { Badge, Button, Card, Empty, PageHeader } from '../../components/ui';
@@ -17,6 +17,7 @@ import {
   setCategoryForLegs,
   setLegCategory,
   setLegTags,
+  setReceiptRemoval,
   setSuppression,
   type EventView,
   type LegView,
@@ -323,6 +324,7 @@ function TransactionRow(props: {
           <div className="text-muted flex flex-wrap gap-2 text-xs">
             <span>{row.accountName}</span>
             {row.sourceCount > 1 && <span>{row.sourceCount} sources</span>}
+            {row.receiptCount > 0 && <span>{row.receiptCount === 1 ? '1 receipt' : `${row.receiptCount} receipts`}</span>}
             <EventBadge event={row.event} />
             {row.isSuppressed && <Badge tone="warning">Suppressed</Badge>}
             {!row.isSourceSupported && <Badge>No active statement</Badge>}
@@ -456,6 +458,7 @@ function TransactionDetail({ row, onChange }: { row: Row; onChange: () => void }
             </li>
           ))}
         </ul>
+        <Receipts transactionId={row.id} receipts={detail.data?.receipts} onChange={onChange} />
         {row.isSourceSupported && !row.isSuppressed && !row.event?.isInternal && row.legs[0]?.role !== 'fee' && (
           <Itemiser row={row} onChange={onChange} />
         )}
@@ -473,6 +476,84 @@ function TransactionDetail({ row, onChange }: { row: Row; onChange: () => void }
           ))}
         </ul>
       </div>
+    </div>
+  );
+}
+
+type Receipt = NonNullable<Awaited<ReturnType<typeof getTransactionDetail>>>['receipts'][number];
+
+const fileSize = (bytes: number) =>
+  bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+/** Receipts are kept as evidence for the transaction (e.g. for itemising it); they are never read automatically. */
+function Receipts({ transactionId, receipts, onChange }: { transactionId: string; receipts?: Receipt[]; onChange: () => void }) {
+  const setRemoval = useServerFn(setReceiptRemoval);
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setError(null);
+    setBusy(true);
+    const body = new FormData();
+    body.append('transactionId', transactionId);
+    body.append('file', file);
+    try {
+      const res = await fetch('/api/receipts', { method: 'POST', body });
+      const data = (await res.json()) as { error?: string };
+      if (data.error) setError(data.error);
+      else onChange();
+    } catch {
+      setError('Could not upload the receipt');
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = '';
+    }
+  };
+  const toggle = async (r: Receipt) => {
+    setError(null);
+    try {
+      await setRemoval({ data: { sourceFileId: r.sourceFileId, removed: !r.removedAt } });
+      onChange();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+    }
+  };
+
+  return (
+    <div className="mt-4">
+      <h3 className="mb-1 font-medium">Receipts</h3>
+      {receipts?.length === 0 && (
+        <p className="text-muted mb-2 text-xs">No receipts. Attach a PDF or photo as evidence for this transaction.</p>
+      )}
+      <ul className="mb-2 space-y-1 text-xs">
+        {receipts?.map((r) => (
+          <li key={r.sourceFileId} className={`flex flex-wrap items-center gap-x-2 ${r.removedAt ? 'text-muted' : ''}`}>
+            <a className="min-w-0 truncate hover:underline" href={`/api/source-files/${r.sourceFileId}`} target="_blank" rel="noreferrer">
+              {r.fileName}
+            </a>
+            <span className="text-muted">
+              {fileSize(r.sizeBytes)}
+              {r.removedAt && ' · removed'}
+            </span>
+            <button className="text-muted hover:text-ink underline" onClick={() => toggle(r)}>
+              {r.removedAt ? 'Restore' : 'Remove'}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <input
+        ref={input}
+        type="file"
+        accept="application/pdf,image/jpeg,image/png,image/webp"
+        hidden
+        onChange={(e) => upload(e.target.files?.[0])}
+      />
+      <Button disabled={busy} onClick={() => input.current?.click()}>
+        {busy ? 'Uploading…' : 'Attach receipt'}
+      </Button>
+      {error && <p className="text-negative mt-1 text-xs">{error}</p>}
     </div>
   );
 }
