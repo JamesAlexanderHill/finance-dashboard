@@ -20,6 +20,8 @@ import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppStatementsRouteImport } from './routes/_app/statements'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppTransfersRouteImport } from './routes/_app/transfers'
+import { Route as AppHoldingsIndexRouteImport } from './routes/_app/holdings.index'
+import { Route as AppHoldingsInstrumentIdRouteImport } from './routes/_app/holdings.$instrumentId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiPricesIndexRouteImport } from './routes/api/prices/index'
 import { Route as ApiSourceFilesIdRouteImport } from './routes/api/source-files/$id'
@@ -80,6 +82,16 @@ const AppTransfersRoute = AppTransfersRouteImport.update({
   path: '/transfers',
   getParentRoute: () => AppRoute,
 } as any)
+const AppHoldingsIndexRoute = AppHoldingsIndexRouteImport.update({
+  id: '/holdings/',
+  path: '/holdings/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppHoldingsInstrumentIdRoute = AppHoldingsInstrumentIdRouteImport.update({
+  id: '/holdings/$instrumentId',
+  path: '/holdings/$instrumentId',
+  getParentRoute: () => AppRoute,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -117,8 +129,10 @@ export interface FileRoutesByFullPath {
   '/statements': typeof AppStatementsRoute
   '/transactions': typeof AppTransactionsRoute
   '/transfers': typeof AppTransfersRoute
+  '/holdings/$instrumentId': typeof AppHoldingsInstrumentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
+  '/holdings/': typeof AppHoldingsIndexRoute
   '/api/prices/': typeof ApiPricesIndexRoute
   '/api/statements/': typeof ApiStatementsIndexRoute
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
@@ -134,8 +148,10 @@ export interface FileRoutesByTo {
   '/transactions': typeof AppTransactionsRoute
   '/transfers': typeof AppTransfersRoute
   '/': typeof AppIndexRoute
+  '/holdings/$instrumentId': typeof AppHoldingsInstrumentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
+  '/holdings': typeof AppHoldingsIndexRoute
   '/api/prices': typeof ApiPricesIndexRoute
   '/api/statements': typeof ApiStatementsIndexRoute
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
@@ -153,8 +169,10 @@ export interface FileRoutesById {
   '/_app/transactions': typeof AppTransactionsRoute
   '/_app/transfers': typeof AppTransfersRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/holdings/$instrumentId': typeof AppHoldingsInstrumentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
+  '/_app/holdings/': typeof AppHoldingsIndexRoute
   '/api/prices/': typeof ApiPricesIndexRoute
   '/api/statements/': typeof ApiStatementsIndexRoute
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
@@ -172,8 +190,10 @@ export interface FileRouteTypes {
     | '/statements'
     | '/transactions'
     | '/transfers'
+    | '/holdings/$instrumentId'
     | '/api/auth/$'
     | '/api/source-files/$id'
+    | '/holdings/'
     | '/api/prices/'
     | '/api/statements/'
     | '/api/jobs/$jobId/events'
@@ -189,8 +209,10 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/transfers'
     | '/'
+    | '/holdings/$instrumentId'
     | '/api/auth/$'
     | '/api/source-files/$id'
+    | '/holdings'
     | '/api/prices'
     | '/api/statements'
     | '/api/jobs/$jobId/events'
@@ -207,8 +229,10 @@ export interface FileRouteTypes {
     | '/_app/transactions'
     | '/_app/transfers'
     | '/_app/'
+    | '/_app/holdings/$instrumentId'
     | '/api/auth/$'
     | '/api/source-files/$id'
+    | '/_app/holdings/'
     | '/api/prices/'
     | '/api/statements/'
     | '/api/jobs/$jobId/events'
@@ -303,6 +327,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTransfersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/holdings/': {
+      id: '/_app/holdings/'
+      path: '/holdings'
+      fullPath: '/holdings/'
+      preLoaderRoute: typeof AppHoldingsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/holdings/$instrumentId': {
+      id: '/_app/holdings/$instrumentId'
+      path: '/holdings/$instrumentId'
+      fullPath: '/holdings/$instrumentId'
+      preLoaderRoute: typeof AppHoldingsInstrumentIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -351,6 +389,8 @@ interface AppRouteChildren {
   AppTransactionsRoute: typeof AppTransactionsRoute
   AppTransfersRoute: typeof AppTransfersRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppHoldingsInstrumentIdRoute: typeof AppHoldingsInstrumentIdRoute
+  AppHoldingsIndexRoute: typeof AppHoldingsIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -363,6 +403,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppTransactionsRoute: AppTransactionsRoute,
   AppTransfersRoute: AppTransfersRoute,
   AppIndexRoute: AppIndexRoute,
+  AppHoldingsInstrumentIdRoute: AppHoldingsInstrumentIdRoute,
+  AppHoldingsIndexRoute: AppHoldingsIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
