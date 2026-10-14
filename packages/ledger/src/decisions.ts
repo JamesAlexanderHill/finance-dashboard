@@ -1,6 +1,6 @@
 import { add, eq, type DecimalString } from '@finance/shared';
 
-export type DecisionKind = 'category' | 'tags' | 'suppression' | 'itemisation' | 'link';
+export type DecisionKind = 'category' | 'tags' | 'suppression' | 'itemisation' | 'link' | 'transfer';
 
 export interface DecisionRecord {
   id: string;
@@ -23,6 +23,17 @@ export interface SuppressionPayload {
 export interface ItemisationLine {
   amount: DecimalString;
   description: string;
+}
+/**
+ * Links transactions into one event (e.g. both halves of a transfer). Every member gets a decision
+ * with the same `groupId`; `groupId: null` unlinks that transaction.
+ */
+export interface LinkPayload {
+  groupId: string | null;
+}
+/** Marks a transaction as a transfer between own accounts (or not), overriding the source's hint. */
+export interface TransferPayload {
+  isTransfer: boolean;
 }
 /** `lines: null` undoes an itemisation. */
 export interface ItemisationPayload {

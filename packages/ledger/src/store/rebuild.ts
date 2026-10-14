@@ -34,6 +34,9 @@ export async function rebuildEvents(tx: Executor, workspaceId: string) {
         description: transactions.description,
         amount: transactions.amount,
         commodity: transactions.commodity,
+        role: transactions.role,
+        providerGroupRef: transactions.providerGroupRef,
+        isTransferHint: transactions.isTransferHint,
       })
       .from(transactions)
       .where(and(eq(transactions.workspaceId, workspaceId), eq(transactions.isSourceSupported, true), eq(transactions.isSuppressed, false)))
@@ -79,6 +82,7 @@ export async function rebuildEvents(tx: Executor, workspaceId: string) {
         id: e.id,
         workspaceId,
         type: e.type,
+        status: e.status,
         occurredOn: e.occurredOn,
         description: e.description,
         isInternal: e.isInternal,

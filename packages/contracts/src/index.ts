@@ -46,7 +46,7 @@ export interface ImportSummary {
 
 const decimal = z.string().regex(/^-?\d+(\.\d+)?$/, 'Must be a decimal number');
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD');
-const legKey = z.string().regex(/^(principal|line:\d+)$/);
+const legKey = z.string().regex(/^(principal|fee|line:\d+)$/);
 
 export const idInput = z.object({ id: z.uuid() });
 

@@ -1,4 +1,4 @@
-import { isPositive, type DecimalString, type IsoDate } from '@finance/shared';
+import { abs, cmp, isNegative, isPositive, type DecimalString, type IsoDate } from '@finance/shared';
 import { deterministicUuid } from '@finance/shared/node';
 import {
   currentDecisions,
@@ -6,11 +6,14 @@ import {
   type CategoryPayload,
   type DecisionRecord,
   type ItemisationPayload,
+  type LinkPayload,
   type TagsPayload,
+  type TransferPayload,
 } from './decisions';
 
-export type EventType = 'income' | 'expense' | 'refund' | 'opening_balance';
-export type LegRole = 'principal' | 'line_item';
+export type EventType = 'income' | 'expense' | 'refund' | 'internal_transfer' | 'currency_conversion' | 'opening_balance';
+export type EventStatus = 'ok' | 'unmatched_transfer';
+export type LegRole = 'principal' | 'fee' | 'line_item';
 
 export interface ActiveTransaction {
   id: string;
@@ -19,6 +22,10 @@ export interface ActiveTransaction {
   description: string;
   amount: DecimalString;
   commodity: string;
+  role: 'principal' | 'fee';
+  /** Provider reference grouping rows of one activity, e.g. `wise:BALANCE-1`. */
+  providerGroupRef: string | null;
+  isTransferHint: boolean;
 }
 
 export interface OpeningBalance {
@@ -51,6 +58,7 @@ export interface ProjectedLeg {
 export interface ProjectedEvent {
   id: string;
   type: EventType;
+  status: EventStatus;
   occurredOn: IsoDate;
   description: string;
   isInternal: boolean;
@@ -67,61 +75,120 @@ export interface ProjectionInput {
   openingBalances: readonly OpeningBalance[];
 }
 
+/** Leg identity within a transaction; category and tag decisions are keyed on it. */
+export const legKeyFor = (role: 'principal' | 'fee') => (role === 'fee' ? 'fee' : 'principal');
+
+/** Groups transactions that share a provider reference or a current link group (union-find). */
+function components(transactions: readonly ActiveTransaction[], linkGroupOf: (txId: string) => string | null) {
+  const parent = new Map(transactions.map((t) => [t.id, t.id]));
+  const find = (id: string): string => {
+    const p = parent.get(id)!;
+    if (p === id) return id;
+    const root = find(p);
+    parent.set(id, root);
+    return root;
+  };
+  const firstByKey = new Map<string, string>();
+  const join = (key: string, id: string) => {
+    const other = firstByKey.get(key);
+    if (other) parent.set(find(id), find(other));
+    else firstByKey.set(key, id);
+  };
+  for (const t of transactions) {
+    if (t.providerGroupRef) join(`ref:${t.providerGroupRef}`, t.id);
+    const group = linkGroupOf(t.id);
+    if (group) join(`link:${group}`, t.id);
+  }
+  const groups = new Map<string, ActiveTransaction[]>();
+  for (const t of transactions) groups.set(find(t.id), [...(groups.get(find(t.id)) ?? []), t]);
+  return [...groups.values()];
+}
+
 /**
  * Rebuilds events and legs from active canonical transactions plus reconciliation decisions (ADR 0006).
  * Pure and deterministic: the same input always yields the same IDs.
  *
- * Slice 1 has no transfer matching yet, so every transaction is its own income or expense event.
+ * Transactions sharing a provider reference (a Wise conversion and its fee) or a link decision (both
+ * halves of a transfer) form one event. Events moving value both into and out of owned accounts are
+ * internal: a transfer, or a conversion when commodities differ. A lone transfer whose counterpart is
+ * missing is an unmatched transfer. Internal principal legs are never categorised.
  */
 export function projectEvents(input: ProjectionInput): ProjectedEvent[] {
   const decisions = currentDecisions(input.decisions);
   const categories = new Map(input.categories.map((c) => [c.id, c]));
   const events: ProjectedEvent[] = [];
 
+  const payload = <T>(txId: string, kind: DecisionRecord['kind'], legKey = '') => decisions.get(decisionKey(txId, kind, legKey))?.payload as T | undefined;
+  const linkGroupOf = (txId: string) => payload<LinkPayload>(txId, 'link')?.groupId ?? null;
   const categoryFor = (txId: string, legKey: string) => {
-    const d = decisions.get(decisionKey(txId, 'category', legKey));
-    const id = (d?.payload as CategoryPayload | undefined)?.categoryId ?? null;
+    const id = payload<CategoryPayload>(txId, 'category', legKey)?.categoryId ?? null;
     return id && categories.has(id) ? id : null;
   };
-  const tagsFor = (txId: string, legKey: string) => {
-    const d = decisions.get(decisionKey(txId, 'tags', legKey));
-    return [...((d?.payload as TagsPayload | undefined)?.tagIds ?? [])].sort();
-  };
+  const tagsFor = (txId: string, legKey: string) => [...(payload<TagsPayload>(txId, 'tags', legKey)?.tagIds ?? [])].sort();
 
-  for (const tx of input.transactions) {
-    const eventId = deterministicUuid('event', tx.id);
-    const itemisation = decisions.get(decisionKey(tx.id, 'itemisation'));
-    const lines = (itemisation?.payload as ItemisationPayload | undefined)?.lines ?? null;
+  for (const members of components(input.transactions, linkGroupOf)) {
+    const ids = members.map((t) => t.id).sort();
+    const linkGroups = [...new Set(members.map((t) => linkGroupOf(t.id)).filter((g): g is string => !!g))].sort();
+    const eventId = deterministicUuid('event', ...ids, ...linkGroups);
 
-    const parts = lines
-      ? lines.map((line, i) => ({ legKey: `line:${i}`, role: 'line_item' as const, amount: line.amount, description: line.description || tx.description }))
-      : [{ legKey: 'principal', role: 'principal' as const, amount: tx.amount, description: tx.description }];
+    const legs = members.flatMap((tx) => {
+      const lines = tx.role === 'principal' ? (payload<ItemisationPayload>(tx.id, 'itemisation')?.lines ?? null) : null;
+      const parts = lines
+        ? lines.map((line, i) => ({ legKey: `line:${i}`, role: 'line_item' as const, amount: line.amount, description: line.description || tx.description }))
+        : [{ legKey: legKeyFor(tx.role), role: tx.role, amount: tx.amount, description: tx.description }];
+      return parts.map<ProjectedLeg>((part) => ({
+        id: deterministicUuid('leg', eventId, tx.id, part.legKey),
+        eventId,
+        accountId: tx.accountId,
+        transactionId: tx.id,
+        role: part.role,
+        legKey: part.legKey,
+        occurredOn: tx.postedOn,
+        description: part.description,
+        amount: part.amount,
+        commodity: tx.commodity,
+        categoryId: categoryFor(tx.id, part.legKey),
+        tagIds: tagsFor(tx.id, part.legKey),
+      }));
+    });
 
-    const legs = parts.map<ProjectedLeg>((part) => ({
-      id: deterministicUuid('leg', eventId, tx.id, part.legKey),
-      eventId,
-      accountId: tx.accountId,
-      transactionId: tx.id,
-      role: part.role,
-      legKey: part.legKey,
-      occurredOn: tx.postedOn,
-      description: part.description,
-      amount: part.amount,
-      commodity: tx.commodity,
-      categoryId: categoryFor(tx.id, part.legKey),
-      tagIds: tagsFor(tx.id, part.legKey),
-    }));
+    const principals = members.filter((t) => t.role === 'principal');
+    const hasIn = principals.some((t) => isPositive(t.amount));
+    const hasOut = principals.some((t) => isNegative(t.amount));
+    const single = members.length === 1 ? members[0]! : null;
+    const markedTransfer = single
+      ? (payload<TransferPayload>(single.id, 'transfer')?.isTransfer ?? single.isTransferHint) || linkGroups.length > 0
+      : false;
 
-    const inflow = isPositive(tx.amount);
-    const expenseCategorised = legs.some((l) => l.categoryId && categories.get(l.categoryId)?.kind === 'expense');
+    let type: EventType;
+    let status: EventStatus = 'ok';
+    let isInternal = false;
+    if (markedTransfer) {
+      // A lone transfer (hinted, marked, or whose linked counterpart is no longer active).
+      type = 'internal_transfer';
+      status = 'unmatched_transfer';
+      isInternal = true;
+    } else if (hasIn && hasOut) {
+      type = new Set(principals.map((t) => t.commodity)).size > 1 ? 'currency_conversion' : 'internal_transfer';
+      isInternal = true;
+    } else if (hasIn) {
+      const expenseCategorised = legs.some((l) => l.role !== 'fee' && l.categoryId && categories.get(l.categoryId)?.kind === 'expense');
+      type = expenseCategorised ? 'refund' : 'income';
+    } else {
+      type = 'expense';
+    }
+    if (isInternal) for (const leg of legs) if (leg.role !== 'fee') leg.categoryId = null;
+
+    const lead = [...(principals.length ? principals : members)].sort((a, b) => cmp(abs(b.amount), abs(a.amount)) || a.id.localeCompare(b.id))[0]!;
     events.push({
       id: eventId,
-      type: inflow ? (expenseCategorised ? 'refund' : 'income') : 'expense',
-      occurredOn: tx.postedOn,
-      description: tx.description,
-      isInternal: false,
-      governingDecisionId: null,
-      transactionIds: [tx.id],
+      type,
+      status,
+      occurredOn: members.map((t) => t.postedOn).sort()[0]!,
+      description: lead.description,
+      isInternal,
+      governingDecisionId: linkGroups[0] ?? null,
+      transactionIds: ids,
       legs,
     });
   }
@@ -131,6 +198,7 @@ export function projectEvents(input: ProjectionInput): ProjectedEvent[] {
     events.push({
       id: eventId,
       type: 'opening_balance',
+      status: 'ok',
       occurredOn: ob.on,
       description: 'Opening balance',
       isInternal: false,
@@ -161,6 +229,6 @@ export function projectEvents(input: ProjectionInput): ProjectedEvent[] {
 /** Opening-balance and internal-event principal legs never count as income or expense. */
 export function isCashFlowLeg(event: Pick<ProjectedEvent, 'type' | 'isInternal'>, leg: Pick<ProjectedLeg, 'role'>): boolean {
   if (event.type === 'opening_balance') return false;
-  if (event.isInternal) return leg.role !== 'principal' && leg.role !== 'line_item';
+  if (event.isInternal) return leg.role === 'fee';
   return true;
 }
