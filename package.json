@@ -1,6 +1,22 @@
 {
   "name": "finance-dashboard",
   "private": true,
-  "sideEffects": false,
-  "type": "module"
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "bun run --filter '@finance/web' --filter '@finance/worker' dev",
+    "dev:web": "bun run --filter '@finance/web' dev",
+    "dev:worker": "bun run --filter '@finance/worker' dev",
+    "infra:up": "docker compose -f infra/compose.yaml up -d postgres rustfs",
+    "infra:down": "docker compose -f infra/compose.yaml down",
+    "db:generate": "bun run --filter '@finance/db' generate",
+    "db:migrate": "bun run --filter '@finance/db' migrate",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test",
+    "docs:validate": "bun scripts/validate-feature-docs.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "typescript": "^7.0.2"
+  }
 }

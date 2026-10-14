@@ -1,5 +1,4 @@
 {
-  "include": ["**/*.ts", "**/*.tsx"],
   "compilerOptions": {
     "strict": true,
     "esModuleInterop": true,
@@ -7,15 +6,16 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "types": ["bun"],
     "isolatedModules": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "target": "ES2022",
     "allowJs": true,
     "forceConsistentCasingInFileNames": true,
-    "paths": {
-      "~/*": ["./src/*"]
-    },
+    "noUncheckedIndexedAccess": false,
     "noEmit": true
-  }
+  },
+  "include": ["apps/*/src/**/*", "apps/worker/**/*.ts", "packages/*/src/**/*", "packages/*/test/**/*", "scripts/**/*.ts"],
+  "exclude": ["node_modules", "**/node_modules", "apps/web/.output", "apps/web/.tanstack"]
 }

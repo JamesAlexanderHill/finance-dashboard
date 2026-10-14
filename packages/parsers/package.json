@@ -1,0 +1,12 @@
+{
+  "name": "@finance/parsers",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "unpdf": "^1.8.1"
+  }
+}

@@ -1,0 +1,69 @@
+name: finance
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: finance
+      POSTGRES_PASSWORD: finance
+      POSTGRES_DB: finance
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finance"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rustfs:
+    image: rustfs/rustfs:1.0.1
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY_ID:-finance}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_ACCESS_KEY:-finance-secret}
+      RUSTFS_CONSOLE_ENABLE: "true"
+    # Bound to localhost only: the object store is never exposed to browsers.
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - rustfs-data:/data
+
+  web:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: web
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgres://finance:finance@postgres:5432/finance
+      S3_ENDPOINT: http://rustfs:9000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+
+  worker:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: worker
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgres://finance:finance@postgres:5432/finance
+      S3_ENDPOINT: http://rustfs:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  rustfs-data:
