@@ -17,6 +17,7 @@ const NAV = [
   { to: '/transactions', label: 'Transactions' },
   { to: '/events', label: 'Events' },
   { to: '/transfers', label: 'Transfers' },
+  { to: '/prices', label: 'Prices' },
   { to: '/statements', label: 'Statements' },
   { to: '/accounts', label: 'Accounts' },
   { to: '/categories', label: 'Categories' },

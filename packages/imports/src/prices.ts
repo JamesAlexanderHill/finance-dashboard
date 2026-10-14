@@ -103,3 +103,34 @@ export async function recordPriceObservations(
 /** Live observations: active status and not from a soft-deleted file. */
 export const livePriceCondition = sql`${priceObservations.status} = 'active' and (${priceObservations.sourceFileId} is null or not exists (
   select 1 from source_files sf where sf.id = ${priceObservations.sourceFileId} and sf.deleted_at is not null))`;
+
+/**
+ * Resolves a price conflict by choosing one observation: every live observation for the same
+ * instrument, date, currency and type with the chosen price becomes active, and the rest are rejected.
+ */
+export async function resolvePriceConflict(tx: Executor, workspaceId: string, observationId: string) {
+  const [chosen] = await tx
+    .select()
+    .from(priceObservations)
+    .where(and(eq(priceObservations.id, observationId), eq(priceObservations.workspaceId, workspaceId)));
+  if (!chosen) throw new Error('Price observation not found');
+  const siblings = await tx
+    .select({ id: priceObservations.id, price: priceObservations.price })
+    .from(priceObservations)
+    .where(
+      and(
+        eq(priceObservations.workspaceId, workspaceId),
+        eq(priceObservations.instrumentId, chosen.instrumentId),
+        eq(priceObservations.observedOn, chosen.observedOn),
+        eq(priceObservations.currency, chosen.currency),
+        eq(priceObservations.priceType, chosen.priceType),
+        inArray(priceObservations.status, ['active', 'conflict', 'rejected']),
+      ),
+    );
+  for (const s of siblings) {
+    await tx
+      .update(priceObservations)
+      .set({ status: decEq(s.price, chosen.price) ? 'active' : 'rejected' })
+      .where(eq(priceObservations.id, s.id));
+  }
+}

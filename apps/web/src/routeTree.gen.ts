@@ -15,11 +15,13 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAccountsRouteImport } from './routes/_app/accounts'
 import { Route as AppCategoriesRouteImport } from './routes/_app/categories'
 import { Route as AppEventsRouteImport } from './routes/_app/events'
+import { Route as AppPricesRouteImport } from './routes/_app/prices'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppStatementsRouteImport } from './routes/_app/statements'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppTransfersRouteImport } from './routes/_app/transfers'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiPricesIndexRouteImport } from './routes/api/prices/index'
 import { Route as ApiSourceFilesIdRouteImport } from './routes/api/source-files/$id'
 import { Route as ApiStatementsIndexRouteImport } from './routes/api/statements/index'
 import { Route as ApiJobsJobIdEventsRouteImport } from './routes/api/jobs/$jobId/events'
@@ -53,6 +55,11 @@ const AppEventsRoute = AppEventsRouteImport.update({
   path: '/events',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPricesRoute = AppPricesRouteImport.update({
+  id: '/prices',
+  path: '/prices',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -78,6 +85,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPricesIndexRoute = ApiPricesIndexRouteImport.update({
+  id: '/api/prices/',
+  path: '/api/prices/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSourceFilesIdRoute = ApiSourceFilesIdRouteImport.update({
   id: '/api/source-files/$id',
   path: '/api/source-files/$id',
@@ -100,12 +112,14 @@ export interface FileRoutesByFullPath {
   '/accounts': typeof AppAccountsRoute
   '/categories': typeof AppCategoriesRoute
   '/events': typeof AppEventsRoute
+  '/prices': typeof AppPricesRoute
   '/settings': typeof AppSettingsRoute
   '/statements': typeof AppStatementsRoute
   '/transactions': typeof AppTransactionsRoute
   '/transfers': typeof AppTransfersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
+  '/api/prices/': typeof ApiPricesIndexRoute
   '/api/statements/': typeof ApiStatementsIndexRoute
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
 }
@@ -114,6 +128,7 @@ export interface FileRoutesByTo {
   '/accounts': typeof AppAccountsRoute
   '/categories': typeof AppCategoriesRoute
   '/events': typeof AppEventsRoute
+  '/prices': typeof AppPricesRoute
   '/settings': typeof AppSettingsRoute
   '/statements': typeof AppStatementsRoute
   '/transactions': typeof AppTransactionsRoute
@@ -121,6 +136,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
+  '/api/prices': typeof ApiPricesIndexRoute
   '/api/statements': typeof ApiStatementsIndexRoute
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
 }
@@ -131,6 +147,7 @@ export interface FileRoutesById {
   '/_app/accounts': typeof AppAccountsRoute
   '/_app/categories': typeof AppCategoriesRoute
   '/_app/events': typeof AppEventsRoute
+  '/_app/prices': typeof AppPricesRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/statements': typeof AppStatementsRoute
   '/_app/transactions': typeof AppTransactionsRoute
@@ -138,6 +155,7 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
+  '/api/prices/': typeof ApiPricesIndexRoute
   '/api/statements/': typeof ApiStatementsIndexRoute
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
 }
@@ -149,12 +167,14 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/categories'
     | '/events'
+    | '/prices'
     | '/settings'
     | '/statements'
     | '/transactions'
     | '/transfers'
     | '/api/auth/$'
     | '/api/source-files/$id'
+    | '/api/prices/'
     | '/api/statements/'
     | '/api/jobs/$jobId/events'
   fileRoutesByTo: FileRoutesByTo
@@ -163,6 +183,7 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/categories'
     | '/events'
+    | '/prices'
     | '/settings'
     | '/statements'
     | '/transactions'
@@ -170,6 +191,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/auth/$'
     | '/api/source-files/$id'
+    | '/api/prices'
     | '/api/statements'
     | '/api/jobs/$jobId/events'
   id:
@@ -179,6 +201,7 @@ export interface FileRouteTypes {
     | '/_app/accounts'
     | '/_app/categories'
     | '/_app/events'
+    | '/_app/prices'
     | '/_app/settings'
     | '/_app/statements'
     | '/_app/transactions'
@@ -186,6 +209,7 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/api/auth/$'
     | '/api/source-files/$id'
+    | '/api/prices/'
     | '/api/statements/'
     | '/api/jobs/$jobId/events'
   fileRoutesById: FileRoutesById
@@ -195,6 +219,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiSourceFilesIdRoute: typeof ApiSourceFilesIdRoute
+  ApiPricesIndexRoute: typeof ApiPricesIndexRoute
   ApiStatementsIndexRoute: typeof ApiStatementsIndexRoute
   ApiJobsJobIdEventsRoute: typeof ApiJobsJobIdEventsRoute
 }
@@ -243,6 +268,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppEventsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/prices': {
+      id: '/_app/prices'
+      path: '/prices'
+      fullPath: '/prices'
+      preLoaderRoute: typeof AppPricesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings': {
       id: '/_app/settings'
       path: '/settings'
@@ -278,6 +310,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/prices/': {
+      id: '/api/prices/'
+      path: '/api/prices'
+      fullPath: '/api/prices/'
+      preLoaderRoute: typeof ApiPricesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/source-files/$id': {
       id: '/api/source-files/$id'
       path: '/api/source-files/$id'
@@ -306,6 +345,7 @@ interface AppRouteChildren {
   AppAccountsRoute: typeof AppAccountsRoute
   AppCategoriesRoute: typeof AppCategoriesRoute
   AppEventsRoute: typeof AppEventsRoute
+  AppPricesRoute: typeof AppPricesRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppStatementsRoute: typeof AppStatementsRoute
   AppTransactionsRoute: typeof AppTransactionsRoute
@@ -317,6 +357,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountsRoute: AppAccountsRoute,
   AppCategoriesRoute: AppCategoriesRoute,
   AppEventsRoute: AppEventsRoute,
+  AppPricesRoute: AppPricesRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppStatementsRoute: AppStatementsRoute,
   AppTransactionsRoute: AppTransactionsRoute,
@@ -331,6 +372,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiSourceFilesIdRoute: ApiSourceFilesIdRoute,
+  ApiPricesIndexRoute: ApiPricesIndexRoute,
   ApiStatementsIndexRoute: ApiStatementsIndexRoute,
   ApiJobsJobIdEventsRoute: ApiJobsJobIdEventsRoute,
 }

@@ -7,6 +7,7 @@ import { createDb, instruments, jobs, priceObservations, user, workspaces, type 
 import {
   createPriceImportUpload,
   livePriceCondition,
+  resolvePriceConflict,
   runPriceImport,
   setPriceFileDeleted,
   startPriceImport,
@@ -99,5 +100,17 @@ describe.skipIf(!url)('price CSV import (PostgreSQL)', () => {
 
     await setPriceFileDeleted(db, workspaceId, a, true, userId);
     expect((await live()).map((o) => o.observedOn).sort()).toEqual(['2025-01-03', '2025-01-06']);
+  });
+
+  test('choosing one conflicting price activates it and rejects the others', async () => {
+    await importCsv('a.csv', 'Symbol,Date,Close\nVAS,2025-01-02,100.00\n');
+    await importCsv('b.csv', 'Symbol,Date,Close\nVAS,2025-01-02,99.00\n');
+    const [chosen] = await db.select().from(priceObservations).where(eq(priceObservations.price, '99.00000000'));
+    await db.transaction((tx) => resolvePriceConflict(tx, workspaceId, chosen!.id));
+    const all = await db.select().from(priceObservations).where(eq(priceObservations.instrumentId, vasId));
+    expect(all.map((o) => [o.price, o.status]).sort()).toEqual([
+      ['100.00000000', 'rejected'],
+      ['99.00000000', 'active'],
+    ]);
   });
 });
