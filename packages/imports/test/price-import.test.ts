@@ -13,6 +13,10 @@ import {
   runPriceImport,
   setPriceFileDeleted,
   startPriceImport,
+  listInstrumentAliases,
+  removeInstrumentAlias,
+  setInstrumentAlias,
+  unresolvedInstrumentNames,
   type ObjectStorage,
 } from '../src';
 
@@ -124,5 +128,32 @@ describe.skipIf(!url)('price CSV import (PostgreSQL)', () => {
     expect(await activePriceOverrides(db, workspaceId)).toHaveLength(1);
     await importCsv('newer.csv', 'Symbol,Date,Close\nVAS,2025-02-10,111.00\n');
     expect(await activePriceOverrides(db, workspaceId)).toHaveLength(0);
+  });
+
+  test('aliases map unknown names (and pick between listings of one symbol) before importing', async () => {
+    // The same symbol on a second exchange makes a bare "VAS" ambiguous.
+    await db.insert(instruments).values({ workspaceId, symbol: 'VAS', exchange: 'XNYS', name: 'Other listing', currency: 'USD' });
+    const { sourceFileId } = await createPriceImportUpload(db, storage, {
+      workspaceId,
+      userId,
+      fileName: 'aliases.csv',
+      bytes: new TextEncoder().encode('Symbol,Date,Close\nVAS,2025-03-03,100\nAU:VAS,2025-03-04,101\nAU:VAS,2025-03-05,102\n'),
+    });
+    const unresolved = () => unresolvedInstrumentNames(db, storage, workspaceId, sourceFileId, 'Symbol');
+    expect(await unresolved()).toEqual([
+      { name: 'AU:VAS', rows: 2 },
+      { name: 'VAS', rows: 1 },
+    ]);
+
+    await setInstrumentAlias(db, workspaceId, vasId, 'au:vas');
+    await setInstrumentAlias(db, workspaceId, vasId, 'VAS');
+    expect(await unresolved()).toEqual([]);
+    // Re-aliasing a name in another letter case moves it rather than duplicating it.
+    await setInstrumentAlias(db, workspaceId, vasId, 'AU:VAS');
+    expect((await listInstrumentAliases(db, workspaceId)).map((a) => a.alias)).toEqual(['AU:VAS', 'VAS']);
+
+    const vas = (await listInstrumentAliases(db, workspaceId)).find((a) => a.alias === 'VAS')!;
+    await removeInstrumentAlias(db, workspaceId, vas.id);
+    expect(await unresolved()).toEqual([{ name: 'VAS', rows: 1 }]);
   });
 });

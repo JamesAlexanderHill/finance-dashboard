@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { JOB_TYPES, type PriceCsvMappingInput, type PriceImportSummary } from '@finance/contracts';
 import { importResults, instrumentAliases, instruments, jobs, sourceFiles, type Database, type Executor } from '@finance/db';
 import { mapPriceRows, parseCsv, PRICE_CSV_MAPPING_VERSION, type ResolvedInstrument } from '@finance/parsers';
@@ -90,7 +90,8 @@ export async function startPriceImport(db: Database, workspaceId: string, source
 /**
  * Resolves an instrument named in a CSV: its symbol, `EXCHANGE:SYMBOL`, the `SYMBOL.AX` form for
  * ASX listings, a currency pair such as `USDAUD` for FX rates, or a recorded alias. Ambiguous symbols
- * (listed on several exchanges) do not resolve; inverse pairs such as `AUDUSD` are not inverted.
+ * (listed on several exchanges) do not resolve unless an alias names one; an alias is the user's
+ * explicit choice, so it wins over every derived name. Inverse pairs such as `AUDUSD` are not inverted.
  */
 export async function instrumentResolver(db: Executor, workspaceId: string) {
   const [all, aliases] = await Promise.all([
@@ -113,7 +114,7 @@ export async function instrumentResolver(db: Executor, workspaceId: string) {
   }
   for (const a of aliases) {
     const i = all.find((x) => x.id === a.instrumentId);
-    if (i) add(a.alias, { id: i.id, currency: i.currency });
+    if (i) names.set(a.alias.toUpperCase(), { id: i.id, currency: i.currency });
   }
   return {
     resolve: (value: string) => names.get(value.toUpperCase()) ?? null,
@@ -122,6 +123,60 @@ export async function instrumentResolver(db: Executor, workspaceId: string) {
       return i ? { id: i.id, currency: i.currency } : null;
     },
   };
+}
+
+/**
+ * Instrument names in a CSV column that do not resolve, with how many rows use each, so the user can
+ * map them to instruments (as aliases) before importing.
+ */
+export async function unresolvedInstrumentNames(
+  db: Database,
+  storage: ObjectStorage,
+  workspaceId: string,
+  sourceFileId: string,
+  column: string,
+): Promise<Array<{ name: string; rows: number }>> {
+  const file = await ownedPriceFile(db, workspaceId, sourceFileId);
+  const [header, ...body] = parseCsv(new TextDecoder().decode(await storage.getBytes(file.objectKey)));
+  const index = header?.findIndex((h) => h.trim() === column) ?? -1;
+  if (index < 0) return [];
+  const { resolve } = await instrumentResolver(db, workspaceId);
+  const counts = new Map<string, number>();
+  for (const row of body) {
+    const name = (row[index] ?? '').trim();
+    if (name && !resolve(name)) counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts].map(([name, rows]) => ({ name, rows })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listInstrumentAliases(db: Executor, workspaceId: string) {
+  return db
+    .select({ id: instrumentAliases.id, alias: instrumentAliases.alias, instrumentId: instrumentAliases.instrumentId })
+    .from(instrumentAliases)
+    .where(eq(instrumentAliases.workspaceId, workspaceId))
+    .orderBy(instrumentAliases.alias);
+}
+
+/** Records another name for an instrument. A name already aliased (in any letter case) is moved to this instrument. */
+export async function setInstrumentAlias(db: Database, workspaceId: string, instrumentId: string, alias: string) {
+  const name = alias.trim();
+  if (!name) throw new PriceImportError('Enter a name');
+  const [instrument] = await db
+    .select({ id: instruments.id })
+    .from(instruments)
+    .where(and(eq(instruments.id, instrumentId), eq(instruments.workspaceId, workspaceId)));
+  if (!instrument) throw new PriceImportError('Instrument not found');
+  return db.transaction(async (tx) => {
+    await tx
+      .delete(instrumentAliases)
+      .where(and(eq(instrumentAliases.workspaceId, workspaceId), sql`upper(${instrumentAliases.alias}) = ${name.toUpperCase()}`));
+    const [row] = await tx.insert(instrumentAliases).values({ workspaceId, instrumentId, alias: name }).returning();
+    return row!;
+  });
+}
+
+export async function removeInstrumentAlias(db: Executor, workspaceId: string, aliasId: string) {
+  await db.delete(instrumentAliases).where(and(eq(instrumentAliases.id, aliasId), eq(instrumentAliases.workspaceId, workspaceId)));
 }
 
 /** Runs a price import job: validate every row, then record valid observations atomically. */
