@@ -1,0 +1,2 @@
+ALTER TABLE "transactions" ADD COLUMN "description_key" text GENERATED ALWAYS AS (btrim(regexp_replace(lower(description), '[[:digit:][:punct:][:space:]]+', ' ', 'g'))) STORED NOT NULL;--> statement-breakpoint
+CREATE INDEX "transactions_description_key_idx" ON "transactions" USING btree ("workspace_id","description_key");

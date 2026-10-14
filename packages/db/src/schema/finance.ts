@@ -344,6 +344,13 @@ export const transactions = pgTable(
       .references(() => financialAccounts.id),
     postedOn: date('posted_on').notNull(),
     description: text('description').notNull(),
+    /**
+     * Derived: the description in lower case with digits and punctuation dropped, so "CORNER GROCER 1234"
+     * and "Corner Grocer 5678" share a key. Category suggestions match on it (feature 14).
+     */
+    descriptionKey: text('description_key')
+      .notNull()
+      .generatedAlwaysAs(sql`btrim(regexp_replace(lower(description), '[[:digit:][:punct:][:space:]]+', ' ', 'g'))`),
     amount: amount('amount').notNull(),
     commodity: text('commodity').notNull(),
     providerId: text('provider_id'),
@@ -370,6 +377,7 @@ export const transactions = pgTable(
     index('transactions_account_date_idx').on(t.accountId, t.postedOn),
     index('transactions_workspace_date_idx').on(t.workspaceId, t.postedOn),
     index('transactions_group_ref_idx').on(t.workspaceId, t.providerGroupRef),
+    index('transactions_description_key_idx').on(t.workspaceId, t.descriptionKey),
   ],
 );
 

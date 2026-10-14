@@ -57,6 +57,13 @@
       "when": 1791983191747,
       "tag": "0007_transaction_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791984324298,
+      "tag": "0008_transaction_description_key",
+      "breakpoints": true
     }
   ]
 }
