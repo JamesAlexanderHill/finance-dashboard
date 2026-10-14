@@ -17,7 +17,7 @@ Manage institutions and their single-commodity financial accounts, account types
 1. Create/edit/archive bank, credit, loan, investment, brokerage and payment-processing accounts.
 2. Group accounts under institutions; each account holds exactly one commodity (currency or instrument). Multi-currency providers have one account per currency.
 3. Auto-create unknown accounts found during import as *unconfirmed*; the user confirms or merges them.
-4. Display statements, transactions, holdings, and reliable balance source/date.
+4. Display statements, transactions, holdings, and reliable balance source/date. Each account has a page showing its current balance with the statement (or manual entry) and date it came from, every reported balance, its latest transactions, and the statements that name it or an account merged into it, including deleted ones.
 5. Merging an unconfirmed account into another account of the same institution and commodity (e.g. a reissued card) is reversible. Its statements keep naming it, but their transactions and balances belong to the target: a transaction moves with its ID and decisions, and a row the target already has joins the target's transaction. Statements imported later follow the merge. Unmerging restores the original transactions and their decisions.
 
 ## Owned contracts and data
@@ -34,6 +34,7 @@ This feature owns its corresponding domain policies and primary records as descr
 
 - Multiple accounts at one institution are distinct.
 - Unknown balances are not inferred from incomplete history.
+- An account's page names the statement or manual entry, and the date, its balance comes from; with no live statement reporting one, it says the balance is unknown.
 - Merging then unmerging an account leaves its transactions, their IDs and decisions as they were.
 
 ## Testing notes
