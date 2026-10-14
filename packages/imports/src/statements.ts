@@ -18,6 +18,7 @@ import { planMatches } from '@finance/ledger';
 import { lockWorkspace, refreshProjection, refreshTransactionSupport } from '@finance/ledger/store';
 import { parseStatement } from '@finance/parsers';
 import { sha256Hex } from '@finance/shared/node';
+import { findOrCreateInstrument, recordPriceObservations } from './prices';
 import { appendProgress, enqueueJob, type Job } from './queue';
 import { sourceFileKey, type ObjectStorage } from './storage';
 
@@ -149,6 +150,7 @@ export async function commitParsedStatement(
     linked: 0,
     restored: 0,
     transfersMatched: 0,
+    prices: 0,
     accounts: [],
     warnings: [...parsed.warnings],
   };
@@ -267,6 +269,31 @@ export async function commitParsedStatement(
     summary.restored += linkedIds.filter((id) => unsupported.has(id)).length;
   }
 
+  if (parsed.prices?.length) {
+    const observations = [];
+    for (const p of parsed.prices) {
+      const instrument = await findOrCreateInstrument(tx, workspaceId, {
+        symbol: p.symbol,
+        exchange: p.exchange,
+        name: p.symbol,
+        currency: p.currency,
+      });
+      observations.push({
+        instrumentId: instrument.id,
+        observedOn: p.on,
+        price: p.price,
+        currency: p.currency,
+        priceType: p.priceType,
+        source: 'statement' as const,
+        sourceFileId,
+        sourceRow: p.sourceRow ?? null,
+      });
+    }
+    const recorded = await recordPriceObservations(tx, workspaceId, observations);
+    summary.prices = recorded.inserted;
+    if (recorded.conflicts) summary.warnings.push(`${recorded.conflicts} price(s) conflict with existing observations and need review`);
+  }
+
   summary.transfersMatched = (await refreshProjection(tx, workspaceId)).matched;
   await tx
     .update(statements)
@@ -311,6 +338,8 @@ async function findOrCreateAccount(tx: Executor, workspaceId: string, institutio
       accountType: section.accountType,
       classification: section.classification,
       commodity: section.commodity,
+      commodityKind: section.instrument ? 'instrument' : 'currency',
+      instrumentId: section.instrument ? (await findOrCreateInstrument(tx, workspaceId, section.instrument)).id : null,
       identifier: section.identifier,
       maskedIdentifier: section.maskedIdentifier,
       status: 'unconfirmed',

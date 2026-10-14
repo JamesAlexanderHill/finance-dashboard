@@ -40,6 +40,8 @@ export interface ImportSummary {
   restored: number;
   /** Transfer pairs linked automatically by this import. */
   transfersMatched: number;
+  /** Price observations recorded from the statement (closing and trade prices). */
+  prices: number;
   accounts: Array<{ id: string; name: string; created: boolean }>;
   warnings: string[];
 }

@@ -23,6 +23,30 @@ export interface ParsedRow {
   raw: Record<string, unknown>;
 }
 
+export interface ParsedInstrument {
+  symbol: string;
+  /** ISO 10383 market identifier, e.g. `XASX`. */
+  exchange: string;
+  name: string;
+  /** Currency the instrument is priced in. */
+  currency: string;
+}
+
+/** Commodity code of a holding account: exchange-qualified so it can never collide with a currency code. */
+export const instrumentCommodity = (i: Pick<ParsedInstrument, 'exchange' | 'symbol'>) => `${i.exchange}:${i.symbol}`;
+
+/** A unit price reported by a statement: a closing price on a valuation date, or a trade's execution price. */
+export interface ParsedPrice {
+  symbol: string;
+  exchange: string;
+  on: IsoDate;
+  price: DecimalString;
+  currency: string;
+  priceType: 'daily' | 'trade';
+  /** Row index this price came from, when it belongs to a parsed row. */
+  sourceRow?: number;
+}
+
 /** A financial account section of a statement. One statement may contain several (ADR 0010). */
 export interface ParsedAccountSection {
   identifier: string;
@@ -30,7 +54,10 @@ export interface ParsedAccountSection {
   name: string;
   accountType: AccountType;
   classification: AccountClassification;
+  /** ISO currency code, or `instrumentCommodity(instrument)` for a holding account. */
   commodity: string;
+  /** Present for holding accounts: rows are quantity movements and balances are quantities. */
+  instrument?: ParsedInstrument;
   openingBalance?: { on: IsoDate; balance: DecimalString };
   closingBalance?: { on: IsoDate; balance: DecimalString };
   rows: ParsedRow[];
@@ -45,6 +72,7 @@ export interface ParsedStatement {
   periodStart: IsoDate;
   periodEnd: IsoDate;
   accounts: ParsedAccountSection[];
+  prices?: ParsedPrice[];
   warnings: string[];
 }
 

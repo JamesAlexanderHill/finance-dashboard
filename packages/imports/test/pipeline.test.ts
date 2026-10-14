@@ -5,8 +5,21 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { and, eq, sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { createDb, eventLegs, events, sourceFiles, statements, transactions, user, workspaces, type Database } from '@finance/db';
-import type { ParsedStatement } from '@finance/domain';
+import {
+  createDb,
+  eventLegs,
+  events,
+  financialAccounts,
+  instruments,
+  priceObservations,
+  sourceFiles,
+  statements,
+  transactions,
+  user,
+  workspaces,
+  type Database,
+} from '@finance/db';
+import { instrumentCommodity, type ParsedStatement } from '@finance/domain';
 import { recordDecisions } from '@finance/ledger/store';
 import { commitParsedStatement, setStatementDeleted } from '../src';
 
@@ -274,5 +287,45 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     expect(again.summary).toMatchObject({ created: 0, linked: 1 });
     const [row] = await db.select().from(transactions).where(eq(transactions.workspaceId, workspaceId));
     expect(row!.isTransferHint).toBe(true);
+  });
+
+  test('holding accounts reference a shared instrument and statement prices are recorded with conflicts flagged', async () => {
+    const vap = { symbol: 'VAP', exchange: 'XASX', name: 'Vanguard Australian Property', currency: 'AUD' };
+    const statement = (closingPrice: string): ParsedStatement => ({
+      ...parsed([]),
+      provider: 'vanguard',
+      institutionName: 'Vanguard',
+      accounts: [
+        {
+          identifier: '1:VAP',
+          maskedIdentifier: 'VAP',
+          name: 'VAP',
+          accountType: 'investment',
+          classification: 'asset',
+          commodity: instrumentCommodity(vap),
+          instrument: vap,
+          rows: [{ rowIndex: 0, postedOn: '2026-01-05', description: 'Buy VAP', amount: '12', raw: {} }],
+        },
+      ],
+      prices: [
+        { ...vap, on: '2026-01-05', price: '90.00', priceType: 'trade', sourceRow: 0 },
+        { ...vap, on: '2026-01-31', price: closingPrice, priceType: 'daily' },
+      ],
+    });
+
+    const first = await importParsed('A', statement('104.00'));
+    expect(first.summary.prices).toBe(2);
+    const [account] = await db.select().from(financialAccounts).where(eq(financialAccounts.workspaceId, workspaceId));
+    const [instrument] = await db.select().from(instruments).where(eq(instruments.workspaceId, workspaceId));
+    expect(account).toMatchObject({ commodityKind: 'instrument', instrumentId: instrument!.id, commodity: 'XASX:VAP' });
+    expect(instrument).toMatchObject({ symbol: 'VAP', exchange: 'XASX', name: 'Vanguard Australian Property' });
+
+    // Same price from another file is a duplicate; a different closing price is a conflict, not an overwrite.
+    const again = await importParsed('B', statement('104.00'));
+    expect(again.summary.warnings).toHaveLength(0);
+    const differs = await importParsed('C', statement('99.00'));
+    expect(differs.summary.warnings[0]).toContain('conflict');
+    const daily = await db.select().from(priceObservations).where(eq(priceObservations.priceType, 'daily'));
+    expect(daily.map((d) => d.status).sort()).toEqual(['conflict', 'conflict', 'conflict']);
   });
 });
