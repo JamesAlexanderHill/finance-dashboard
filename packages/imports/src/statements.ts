@@ -27,7 +27,7 @@ import { parseStatement } from '@finance/parsers';
 import { sha256Hex } from '@finance/shared/node';
 import { findOrCreateInstrument, recordPriceObservations } from './prices';
 import { appendProgress, enqueueJob, type Job } from './queue';
-import { assertNoLiveDuplicate } from './source-files';
+import { assertNoLiveDuplicate, retireFailedStatements } from './source-files';
 import { sourceFileKey, type ObjectStorage } from './storage';
 
 export interface UploadInput {
@@ -40,7 +40,8 @@ export interface UploadInput {
 
 /**
  * Stores the binary privately, records the source file and statement, and queues the import job.
- * Rejects a byte-identical file that is already live in the workspace (a failed statement's isn't).
+ * Rejects a byte-identical file that is already live in the workspace; a failed statement with the
+ * same bytes is soft-deleted and replaced instead.
  */
 export async function createStatementUpload(db: Database, storage: ObjectStorage, input: UploadInput) {
   const checksum = sha256Hex(input.bytes);
@@ -51,6 +52,7 @@ export async function createStatementUpload(db: Database, storage: ObjectStorage
   await storage.put(objectKey, input.bytes, input.contentType, checksum);
 
   return db.transaction(async (tx) => {
+    await retireFailedStatements(tx, input.workspaceId, checksum, input.userId);
     await tx.insert(sourceFiles).values({
       id: sourceFileId,
       workspaceId: input.workspaceId,

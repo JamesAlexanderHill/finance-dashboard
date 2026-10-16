@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { sourceFiles, statements, type Executor } from '@finance/db';
 
 export class DuplicateUploadError extends Error {}
@@ -29,4 +29,26 @@ export async function findLiveDuplicate(db: Executor, workspaceId: string, check
 export async function assertNoLiveDuplicate(db: Executor, workspaceId: string, checksum: string, verb = 'uploaded', exceptId?: string) {
   const duplicate = await findLiveDuplicate(db, workspaceId, checksum, exceptId);
   if (duplicate) throw new DuplicateUploadError(`This file is already ${verb} as "${duplicate.name}"`);
+}
+
+/**
+ * Soft-deletes live failed statements' files with these bytes, which a new upload of the same
+ * bytes replaces. They hold no rows, so nothing else needs refreshing.
+ */
+export async function retireFailedStatements(db: Executor, workspaceId: string, checksum: string, userId: string) {
+  const failed = db
+    .select({ id: statements.sourceFileId })
+    .from(statements)
+    .where(and(eq(statements.workspaceId, workspaceId), eq(statements.status, 'failed')));
+  await db
+    .update(sourceFiles)
+    .set({ deletedAt: sql`now()`, deletedBy: userId })
+    .where(
+      and(
+        eq(sourceFiles.workspaceId, workspaceId),
+        eq(sourceFiles.checksumSha256, checksum),
+        isNull(sourceFiles.deletedAt),
+        inArray(sourceFiles.id, failed),
+      ),
+    );
 }

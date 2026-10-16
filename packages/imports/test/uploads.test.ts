@@ -3,7 +3,7 @@
  * TEST_DATABASE_URL points at a disposable database; every table is truncated first.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
-import { eq, sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { createDb, sourceFiles, statements, user, workspaces, type Database } from '@finance/db';
 import { createPriceImportUpload, createStatementUpload, DuplicateUploadError, type ObjectStorage } from '../src';
@@ -56,6 +56,25 @@ describe.skipIf(!url)('statement uploads (PostgreSQL)', () => {
     await expect(
       createPriceImportUpload(db, storage, { workspaceId, userId, fileName: 'b.csv', bytes: bytes('statement b') }),
     ).rejects.toThrow(DuplicateUploadError);
+  });
+
+  test('re-uploading a failed statement soft-deletes the failed one', async () => {
+    const failed = await upload('a.pdf', 'statement a');
+    await finish(failed.statement.id, 'failed');
+    const other = await upload('b.pdf', 'statement b');
+    await finish(other.statement.id, 'failed');
+    const again = await upload('a-again.pdf', 'statement a');
+
+    const files = await db
+      .select({ name: sourceFiles.originalName, deletedBy: sourceFiles.deletedBy, statementId: statements.id })
+      .from(sourceFiles)
+      .innerJoin(statements, eq(statements.sourceFileId, sourceFiles.id))
+      .orderBy(asc(sourceFiles.uploadedAt));
+    expect(files).toEqual([
+      { name: 'a.pdf', deletedBy: userId, statementId: failed.statement.id },
+      { name: 'b.pdf', deletedBy: null, statementId: other.statement.id },
+      { name: 'a-again.pdf', deletedBy: null, statementId: again.statement.id },
+    ]);
   });
 
   test('a queued statement still blocks its bytes', async () => {
