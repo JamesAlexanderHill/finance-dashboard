@@ -112,15 +112,19 @@ function StatementRow({ statement: s, onChange }: { statement: Statement; onChan
   const del = useServerFn(deleteStatement);
   const restore = useServerFn(restoreStatement);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const running = !(TERMINAL_STAGES as readonly string[]).includes(s.status);
   const progress = useJobProgress(s.jobId, running, onChange);
   const stage = (progress?.stage ?? s.status) as StatementStage | 'retrying';
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
+    setError(null);
     try {
       await fn();
       onChange();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setBusy(false);
     }
@@ -156,7 +160,8 @@ function StatementRow({ statement: s, onChange }: { statement: Statement; onChan
         )}
       </td>
       <td className="px-4 py-3 text-right">
-        {s.status === 'completed' &&
+        {/* Delete once the import has finished, whatever its outcome; a deleted statement can be restored. */}
+        {(s.deletedAt || !running) &&
           (s.deletedAt ? (
             <Button disabled={busy} onClick={() => act(() => restore({ data: { id: s.id } }))}>
               Restore
@@ -166,6 +171,7 @@ function StatementRow({ statement: s, onChange }: { statement: Statement; onChan
               Delete
             </Button>
           ))}
+        {error && <div className="text-negative mt-1 text-xs">{error}</div>}
       </td>
     </tr>
   );

@@ -428,7 +428,15 @@ function PriceFileRow({ file, onMap, onChange }: { file: PriceFile; onMap: () =>
   const running = file.job?.status === 'queued' || file.job?.status === 'running';
   const progress = useJobProgress(file.job?.id, running, onChange);
   const [showErrors, setShowErrors] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const s = file.summary;
+
+  const act = (fn: () => Promise<unknown>) => {
+    setError(null);
+    fn()
+      .then(onChange)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Something went wrong'));
+  };
 
   return (
     <div className={`border-line border-b px-4 py-3 text-sm last:border-0 ${file.deletedAt ? 'opacity-60' : ''}`}>
@@ -442,14 +450,15 @@ function PriceFileRow({ file, onMap, onChange }: { file: PriceFile; onMap: () =>
         <div className="ml-auto flex gap-1">
           {!file.job && !file.deletedAt && <Button onClick={onMap}>Map &amp; import</Button>}
           {file.deletedAt ? (
-            <Button onClick={() => restore({ data: { id: file.id } }).then(onChange)}>Restore</Button>
+            <Button onClick={() => act(() => restore({ data: { id: file.id } }))}>Restore</Button>
           ) : (
-            <Button variant="ghost" onClick={() => del({ data: { id: file.id } }).then(onChange)}>
+            <Button variant="ghost" onClick={() => act(() => del({ data: { id: file.id } }))}>
               Delete
             </Button>
           )}
         </div>
       </div>
+      {error && <div className="text-negative mt-1 text-xs">{error}</div>}
       {s && (
         <div className="text-muted mt-1 text-xs">
           {s.rows} rows · {s.inserted} recorded · {s.duplicates} already known · {s.conflicts} conflicts ·{' '}
