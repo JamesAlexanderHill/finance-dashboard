@@ -53,8 +53,10 @@ services:
     environment:
       DATABASE_URL: postgres://finance:finance@postgres:5432/finance
       S3_ENDPOINT: http://rustfs:9000
+      # The container always listens on 5025; PORT in .env picks the host port.
+      PORT: 5025
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${PORT:-5025}:5025"
     depends_on:
       migrate:
         condition: service_completed_successfully

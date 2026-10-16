@@ -16,7 +16,7 @@ COPY . .
 FROM base AS web
 WORKDIR /app/apps/web
 RUN bun run build
-EXPOSE 3000
+EXPOSE 5025
 CMD ["bun", "run", "start"]
 
 FROM base AS worker

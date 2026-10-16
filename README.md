@@ -56,7 +56,7 @@ bun install
 cp .env.example .env          # then set BETTER_AUTH_SECRET (e.g. `openssl rand -hex 32`)
 bun run infra:up              # Postgres on :54329, RustFS on :9000 (console :9001)
 bun run db:migrate
-bun run dev                   # web on http://localhost:3000 and the worker
+bun run dev                   # web on http://localhost:5025 (PORT) and the worker
 ```
 
 Sign in with your email. Without Mailgun settings in `.env`, the one-time code is printed in the web server log. Add a passkey from **Settings** afterwards. Set `ALLOWED_SIGNUP_EMAILS` to stop anyone else registering.
@@ -81,10 +81,10 @@ Edit `packages/db/src/schema`, then `bun run db:generate` and `bun run db:migrat
 ## Running everything in Docker
 
 ```sh
-docker compose -f infra/compose.yaml --profile app up --build
+docker compose --env-file .env -f infra/compose.yaml --profile app up --build
 ```
 
-This runs migrations, then the web app on `127.0.0.1:3000` and the worker. Postgres and RustFS ports are bound to localhost only. A Docker volume is not a backup.
+This runs migrations, then the web app on `127.0.0.1:5025` (or `PORT` from `.env`) and the worker. Postgres and RustFS ports are bound to localhost only. A Docker volume is not a backup.
 
 ## Documentation rules
 
