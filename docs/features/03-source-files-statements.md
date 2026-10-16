@@ -18,7 +18,7 @@ Retain source PDF/CSV files in RustFS and manage their provenance and soft-delet
 2. Retain file and extracted rows on soft delete; deactivate their contribution without physical deletion.
 3. Support upload checksums, file metadata, parser version, restoration and statement list.
 4. Support source-file kinds: statement, price import (CSV) and receipt (image/PDF attached to a canonical transaction; not parsed in v1). A receipt's type is read from its bytes, and only PDF, JPEG, PNG and WebP are accepted, since files are served back inline. Removing a receipt soft-deletes its file; it stays listed on the transaction and can be restored.
-5. Reject an upload whose bytes (SHA-256) match a file that is already live in the workspace; re-uploading a soft-deleted file is allowed, and its rows re-attach to the original canonical transactions.
+5. Reject an upload whose bytes (SHA-256) match a file that is already live in the workspace; re-uploading a soft-deleted file is allowed, and its rows re-attach to the original canonical transactions. A failed statement's file is not live: it can be deleted, and uploading the same bytes again soft-deletes the failed statement. A deleted statement can't be restored while an identical file is live.
 
 ## Owned contracts and data
 
@@ -33,6 +33,7 @@ This feature owns its corresponding domain policies and primary records as descr
 ## Acceptance criteria
 
 - Soft-deleting a statement removes only unsupported active contributions.
+- Re-uploading a failed statement's file imports it and retires the failed one; re-uploading a completed statement's file is still rejected.
 - Underlying file is retained and can be inspected by authorised owners.
 - A receipt attached to a transaction can be opened, removed and restored; a file that is not a PDF or supported image is refused, whatever its name.
 

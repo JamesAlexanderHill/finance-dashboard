@@ -12,6 +12,10 @@ Build a workspace-based personal finance application that consolidates financial
 
 The product must prioritise reproducibility and provenance: imported inputs remain stored; soft deletion removes records from active calculations without physically destroying their history; reimports can restore logically identical transactions while preserving their identifiers.
 
+### Navigation
+
+The app has six sections: **Dashboard** (overview, cash flow), **Events** (events, transfers), **Accounts** (accounts and their pages, transactions, statements), **Categories**, **Assets** (holdings and their pages, prices) and **Settings**. A section's pages share tabs under the section's name.
+
 ### Goals
 
 1. Consolidate financial activity across Commbank, Vanguard, Stripe, Amex, Wise, and Interactive Brokers (IBKR).
@@ -79,6 +83,7 @@ Rows with a provider ID are matched across files by (account, provider ID) inste
 - Soft-deleting a statement makes its source rows inactive. A transaction with another active statement source remains active; one without any active sources is soft-deleted and excluded from active reports.
 - Reimporting a transaction that became inactive solely because its source statement was soft-deleted restores that **same transaction ID**. New transactions are created and duplicates linked to their new source.
 - A transaction explicitly soft-deleted by a user remains suppressed on future imports until explicitly restored, so imports cannot override deliberate user actions.
+- A failed statement holds no source rows. Its file is not live for duplicate checks, and it can be deleted. Uploading the same bytes again soft-deletes the failed statement and imports the new upload.
 - No normal user workflow physically deletes source files, statements, or transactions. Permanent account erasure, retention compliance and backup expiry must be handled separately as a future administrative/legal requirement.
 - Source rows within one file are never merged with each other, even when identical.
 - Only posted rows are imported; pending/authorised rows are ignored in v1.
