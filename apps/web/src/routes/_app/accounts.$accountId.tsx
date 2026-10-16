@@ -411,7 +411,7 @@ function CurrentBalance({ data }: { data: Detail }) {
         </div>
       </div>
       {a.instrumentId && (
-        <Link to="/holdings/$instrumentId" params={{ instrumentId: a.instrumentId }} className="text-sm underline">
+        <Link to="/assets/$instrumentId" params={{ instrumentId: a.instrumentId }} className="text-sm underline">
           Price, units and value history
         </Link>
       )}
@@ -502,7 +502,11 @@ function RecentTransactions({ accountId, commodity }: { accountId: string; commo
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <h2 className="text-muted text-sm font-medium">Recent transactions</h2>
         {data.hasMore && (
-          <Link to="/transactions" search={{ accountId, status: 'active', uncategorised: false, page: 0 }} className="text-sm underline">
+          <Link
+            to="/accounts/transactions"
+            search={{ accountId, status: 'active', uncategorised: false, page: 0 }}
+            className="text-sm underline"
+          >
             All transactions
           </Link>
         )}
@@ -512,7 +516,7 @@ function RecentTransactions({ accountId, commodity }: { accountId: string; commo
         {data.rows.map((t) => (
           <Link
             key={t.id}
-            to="/transactions"
+            to="/accounts/transactions"
             search={{ id: t.id, status: 'all', uncategorised: false, page: 0 }}
             className="border-line hover:bg-surface-2 flex items-center gap-4 border-b px-4 py-2 text-sm last:border-0"
           >

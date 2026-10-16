@@ -28,23 +28,23 @@ const SECTIONS = [
     label: 'Events',
     tabs: [
       { to: '/events', label: 'Events' },
-      { to: '/transfers', label: 'Transfers' },
+      { to: '/events/transfers', label: 'Transfers' },
     ],
   },
   {
     label: 'Accounts',
     tabs: [
       { to: '/accounts', label: 'Accounts' },
-      { to: '/transactions', label: 'Transactions' },
-      { to: '/statements', label: 'Statements' },
+      { to: '/accounts/transactions', label: 'Transactions' },
+      { to: '/accounts/statements', label: 'Statements' },
     ],
   },
   { label: 'Categories', tabs: [{ to: '/categories', label: 'Categories' }] },
   {
     label: 'Assets',
     tabs: [
-      { to: '/holdings', label: 'Holdings' },
-      { to: '/prices', label: 'Prices' },
+      { to: '/assets', label: 'Holdings' },
+      { to: '/assets/prices', label: 'Prices' },
     ],
   },
   { label: 'Settings', tabs: [{ to: '/settings', label: 'Settings' }] },

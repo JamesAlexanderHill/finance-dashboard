@@ -131,7 +131,7 @@ function CashFlowPage() {
       {(t.uncategorisedIncome !== '0' || t.uncategorisedExpense !== '0') && (
         <p className="text-warning mb-4 text-sm">
           {money(t.uncategorisedIncome)} income and {money(t.uncategorisedExpense)} spending are uncategorised.{' '}
-          <Link to="/transactions" search={{ uncategorised: true, status: 'active', page: 0, from, to }} className="underline">
+          <Link to="/accounts/transactions" search={{ uncategorised: true, status: 'active', page: 0, from, to }} className="underline">
             Categorise them
           </Link>
         </p>
@@ -141,7 +141,7 @@ function CashFlowPage() {
           {data.unconvertedLegs > 0 &&
             `${data.unconvertedLegs} foreign-currency legs have no FX rate on or before their date and are left out. `}
           {data.staleConvertedLegs > 0 && `${data.staleConvertedLegs} were converted with a stale or trade-only rate.`}{' '}
-          <Link to="/prices" className="underline">
+          <Link to="/assets/prices" className="underline">
             Add FX rates
           </Link>
         </p>
@@ -230,7 +230,7 @@ function NodeLegs({ node, from, to, tags, onClose }: { node: ChartNode; from: st
         <div key={l.id} className="border-line flex flex-wrap gap-3 border-b px-4 py-2 text-sm last:border-0">
           <span className="text-muted tabular w-24">{shortDate(l.occurredOn)}</span>
           <Link
-            to="/transactions"
+            to="/accounts/transactions"
             search={{ id: l.transactionId ?? undefined, status: 'all', uncategorised: false, page: 0 }}
             className="flex-1 hover:underline"
           >

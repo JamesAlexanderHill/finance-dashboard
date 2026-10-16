@@ -74,7 +74,7 @@ const transactionsQuery = (s: Search) =>
 const accountsQuery = queryOptions({ queryKey: ['accounts'], queryFn: () => listAccounts() });
 const categoriesQuery = queryOptions({ queryKey: ['categories'], queryFn: () => listCategories() });
 
-export const Route = createFileRoute('/_app/transactions')({
+export const Route = createFileRoute('/_app/accounts/transactions')({
   validateSearch: searchSchema,
   loaderDeps: ({ search }) => search,
   loader: ({ context, deps }) =>

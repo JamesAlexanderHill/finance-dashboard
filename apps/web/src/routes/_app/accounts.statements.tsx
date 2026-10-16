@@ -10,7 +10,7 @@ import { deleteStatement, listStatements, restoreStatement } from '../../server/
 
 const statementsQuery = queryOptions({ queryKey: ['statements'], queryFn: () => listStatements() });
 
-export const Route = createFileRoute('/_app/statements')({
+export const Route = createFileRoute('/_app/accounts/statements')({
   loader: ({ context }) => context.queryClient.ensureQueryData(statementsQuery),
   component: StatementsPage,
 });

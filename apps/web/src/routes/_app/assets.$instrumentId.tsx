@@ -11,7 +11,7 @@ import { clearOverride, getInstrumentHistory, setOverride } from '../../server/h
 const historyQuery = (id: string) =>
   queryOptions({ queryKey: ['instrument-history', id], queryFn: () => getInstrumentHistory({ data: { id } }) });
 
-export const Route = createFileRoute('/_app/holdings/$instrumentId')({
+export const Route = createFileRoute('/_app/assets/$instrumentId')({
   loader: ({ context, params }) => context.queryClient.ensureQueryData(historyQuery(params.instrumentId)),
   component: InstrumentPage,
 });
@@ -34,7 +34,7 @@ function InstrumentPage() {
         description={
           <>
             {instrument.name} ·{' '}
-            <Link to="/holdings" className="underline">
+            <Link to="/assets" className="underline">
               All holdings
             </Link>
           </>

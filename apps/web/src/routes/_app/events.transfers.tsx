@@ -8,7 +8,7 @@ import { getTransferReview, linkTransactions, setTransferMark, type TransferTxVi
 
 const reviewQuery = queryOptions({ queryKey: ['transfer-review'], queryFn: () => getTransferReview() });
 
-export const Route = createFileRoute('/_app/transfers')({
+export const Route = createFileRoute('/_app/events/transfers')({
   loader: ({ context }) => context.queryClient.ensureQueryData(reviewQuery),
   component: TransfersPage,
 });
@@ -57,7 +57,11 @@ function TxLine({ tx }: { tx: TransferTxView }) {
     <div className="flex flex-wrap items-baseline gap-x-3 text-sm">
       <span className="text-muted tabular w-24">{shortDate(tx.postedOn)}</span>
       <span className="text-muted min-w-32">{tx.accountName}</span>
-      <Link to="/transactions" search={{ id: tx.id, status: 'all', uncategorised: false, page: 0 }} className="flex-1 hover:underline">
+      <Link
+        to="/accounts/transactions"
+        search={{ id: tx.id, status: 'all', uncategorised: false, page: 0 }}
+        className="flex-1 hover:underline"
+      >
         {tx.description}
       </Link>
       <span className="tabular w-28 text-right">{money(tx.amount, tx.commodity)}</span>

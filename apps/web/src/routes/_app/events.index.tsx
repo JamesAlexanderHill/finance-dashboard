@@ -32,7 +32,7 @@ const eventsQuery = (s: Search) =>
   });
 const accountsQuery = queryOptions({ queryKey: ['accounts'], queryFn: () => listAccounts() });
 
-export const Route = createFileRoute('/_app/events')({
+export const Route = createFileRoute('/_app/events/')({
   validateSearch: searchSchema,
   loaderDeps: ({ search }) => search,
   loader: ({ context, deps }) =>
@@ -111,7 +111,7 @@ function EventsPage() {
                   </span>
                   {l.transactionId && (
                     <Link
-                      to="/transactions"
+                      to="/accounts/transactions"
                       search={{ id: l.transactionId, status: 'all', uncategorised: false, page: 0 }}
                       className="hover:underline"
                     >

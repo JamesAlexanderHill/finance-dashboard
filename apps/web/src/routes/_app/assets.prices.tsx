@@ -29,7 +29,7 @@ const conflictsQuery = queryOptions({ queryKey: ['price-conflicts'], queryFn: ()
 const fxQuery = queryOptions({ queryKey: ['fx-rates'], queryFn: () => listFxRates() });
 const aliasesQuery = queryOptions({ queryKey: ['instrument-aliases'], queryFn: () => listAliases() });
 
-export const Route = createFileRoute('/_app/prices')({
+export const Route = createFileRoute('/_app/assets/prices')({
   loader: ({ context }) =>
     Promise.all([
       context.queryClient.ensureQueryData(filesQuery),
@@ -126,7 +126,7 @@ function PricesPage() {
                   <Badge tone="negative">No rate</Badge>
                 )}
                 {r.override && <Badge>Override {Number(r.override).toFixed(4)}</Badge>}
-                <Link to="/holdings/$instrumentId" params={{ instrumentId: r.id }} className="text-accent ml-auto text-xs underline">
+                <Link to="/assets/$instrumentId" params={{ instrumentId: r.id }} className="text-accent ml-auto text-xs underline">
                   History &amp; override
                 </Link>
               </div>

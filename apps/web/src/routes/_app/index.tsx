@@ -250,7 +250,7 @@ function Summary({ data }: { data: Data }) {
         <p className="text-warning mt-2 text-xs">
           {data.fx.unconverted > 0 && `${data.fx.unconverted} foreign-currency legs have no FX rate and are left out. `}
           {data.fx.staleConverted > 0 && `${data.fx.staleConverted} used a stale or trade-only rate. `}
-          <Link to="/prices" className="underline">
+          <Link to="/assets/prices" className="underline">
             Add FX rates
           </Link>
         </p>
