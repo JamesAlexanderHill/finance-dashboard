@@ -6,7 +6,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:tes
 import { asc, eq, sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { createDb, sourceFiles, statements, user, workspaces, type Database } from '@finance/db';
-import { createPriceImportUpload, createStatementUpload, DuplicateUploadError, type ObjectStorage } from '../src';
+import {
+  createPriceImportUpload,
+  createStatementUpload,
+  DuplicateUploadError,
+  setPriceFileDeleted,
+  setStatementDeleted,
+  type ObjectStorage,
+} from '../src';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -75,6 +82,36 @@ describe.skipIf(!url)('statement uploads (PostgreSQL)', () => {
       { name: 'b.pdf', deletedBy: null, statementId: other.statement.id },
       { name: 'a-again.pdf', deletedBy: null, statementId: again.statement.id },
     ]);
+  });
+
+  test('a failed statement can be deleted and restored', async () => {
+    const failed = await upload('a.pdf', 'statement a');
+    await finish(failed.statement.id, 'failed');
+    expect(await setStatementDeleted(db, workspaceId, failed.statement.id, true, userId)).toBe(true);
+    expect(await setStatementDeleted(db, workspaceId, failed.statement.id, false, userId)).toBe(true);
+    const [file] = await db.select().from(sourceFiles);
+    expect(file!.deletedAt).toBeNull();
+  });
+
+  test('restoring is refused while an identical file is live', async () => {
+    const first = await upload('a.pdf', 'statement a');
+    await finish(first.statement.id, 'completed');
+    await setStatementDeleted(db, workspaceId, first.statement.id, true, userId);
+    const second = await upload('a-again.pdf', 'statement a');
+    await finish(second.statement.id, 'completed');
+    await expect(setStatementDeleted(db, workspaceId, first.statement.id, false, userId)).rejects.toThrow(
+      'already imported as "a-again.pdf"',
+    );
+
+    // Once the live copy is deleted, the first can come back.
+    await setStatementDeleted(db, workspaceId, second.statement.id, true, userId);
+    await setStatementDeleted(db, workspaceId, first.statement.id, false, userId);
+
+    // Price files follow the same rule.
+    const price = await createPriceImportUpload(db, storage, { workspaceId, userId, fileName: 'p.csv', bytes: bytes('date,price') });
+    await setPriceFileDeleted(db, workspaceId, price.sourceFileId, true, userId);
+    await createPriceImportUpload(db, storage, { workspaceId, userId, fileName: 'p-again.csv', bytes: bytes('date,price') });
+    await expect(setPriceFileDeleted(db, workspaceId, price.sourceFileId, false, userId)).rejects.toThrow(DuplicateUploadError);
   });
 
   test('a queued statement still blocks its bytes', async () => {

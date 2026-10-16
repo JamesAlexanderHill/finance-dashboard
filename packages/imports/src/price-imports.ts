@@ -235,9 +235,13 @@ export const priceImportJobs = (db: Executor, workspaceId: string) =>
     .from(jobs)
     .where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.type, JOB_TYPES.priceImport)));
 
-/** Soft-deletes or restores a price file; its observations leave or rejoin active use (nothing is removed). */
+/**
+ * Soft-deletes or restores a price file; its observations leave or rejoin active use (nothing is
+ * removed). Restoring is refused while an identical file is live.
+ */
 export async function setPriceFileDeleted(db: Database, workspaceId: string, sourceFileId: string, deleted: boolean, userId: string) {
-  await ownedPriceFile(db, workspaceId, sourceFileId);
+  const file = await ownedPriceFile(db, workspaceId, sourceFileId);
+  if (!deleted) await assertNoLiveDuplicate(db, workspaceId, file.checksumSha256, 'uploaded', file.id);
   await db
     .update(sourceFiles)
     .set(deleted ? { deletedAt: new Date(), deletedBy: userId } : { deletedAt: null, deletedBy: null })

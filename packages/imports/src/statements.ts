@@ -380,16 +380,19 @@ async function findOrCreateAccount(tx: Executor, workspaceId: string, institutio
 
 /**
  * Soft-deletes or restores a statement's source file. Its rows stop (or resume) supporting their
- * transactions; transactions still supported by another live file stay active.
+ * transactions; transactions still supported by another live file stay active. Restoring is refused
+ * while an identical file is live.
  */
 export async function setStatementDeleted(db: Database, workspaceId: string, statementId: string, deleted: boolean, userId: string) {
   return db.transaction(async (tx) => {
     await lockWorkspace(tx, workspaceId);
     const [row] = await tx
-      .select({ sourceFileId: statements.sourceFileId })
+      .select({ sourceFileId: statements.sourceFileId, checksum: sourceFiles.checksumSha256 })
       .from(statements)
+      .innerJoin(sourceFiles, eq(sourceFiles.id, statements.sourceFileId))
       .where(and(eq(statements.id, statementId), eq(statements.workspaceId, workspaceId)));
     if (!row) return false;
+    if (!deleted) await assertNoLiveDuplicate(tx, workspaceId, row.checksum, 'imported', row.sourceFileId);
     await tx
       .update(sourceFiles)
       .set(deleted ? { deletedAt: sql`now()`, deletedBy: userId } : { deletedAt: null, deletedBy: null })
