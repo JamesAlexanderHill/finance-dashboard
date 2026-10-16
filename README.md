@@ -25,6 +25,8 @@ All four slices of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 
 - Valuation in AUD with FX rates as priced instruments, staleness and partial totals, display-only overrides, and manual accounts (with a warning when one looks like a tracked account).
 - A dashboard with one global period control: net worth timeline, cash-flow Sankey and split bars, expenses by category with drill-down.
+- Six sections, each with its own tabs: **Dashboard** (overview, cash flow), **Events** (events, transfers), **Accounts** (accounts, transactions, statements), **Categories**, **Assets** (holdings, prices) and **Settings**.
+- A failed statement upload can be deleted, or uploaded again: the new upload replaces it rather than being refused as a duplicate.
 
 Not built yet: a Stripe parser.
 
@@ -61,7 +63,7 @@ bun run dev                   # web on http://localhost:5025 (PORT) and the work
 
 Sign in with your email. Without Mailgun settings in `.env`, the one-time code is printed in the web server log. Add a passkey from **Settings** afterwards. Set `ALLOWED_SIGNUP_EMAILS` to stop anyone else registering.
 
-Then upload statements from **Statements**. Review anything the transfer matcher could not decide on **Transfers**.
+Then upload statements from **Accounts → Statements**. Review anything the transfer matcher could not decide on **Events → Transfers**.
 
 ### Checks
 
