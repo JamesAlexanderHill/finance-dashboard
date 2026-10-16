@@ -8,7 +8,8 @@ export default defineConfig(({ mode }) => {
   Object.assign(process.env, loadEnv(mode, '../..', ''));
   return {
     envDir: '../..',
-    server: { port: 3000 },
+    // PORT is shared with the production server (serve.ts).
+    server: { port: Number(process.env.PORT ?? 5025), strictPort: true },
     plugins: [tailwindcss(), tanstackStart(), viteReact()],
   };
 });

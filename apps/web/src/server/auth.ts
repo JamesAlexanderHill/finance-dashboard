@@ -48,7 +48,7 @@ export const auth = betterAuth({
     passkey({
       rpID: process.env.PASSKEY_RP_ID ?? 'localhost',
       rpName: process.env.PASSKEY_RP_NAME ?? 'Finance',
-      origin: process.env.BETTER_AUTH_URL ?? 'http://localhost:3000',
+      origin: process.env.BETTER_AUTH_URL ?? `http://localhost:${process.env.PORT ?? 5025}`,
     }),
     tanstackStartCookies(),
   ],

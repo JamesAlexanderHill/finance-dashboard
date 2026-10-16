@@ -4,7 +4,7 @@ import { join, normalize } from 'node:path';
 import app from './dist/server/server.js';
 
 const clientDir = join(import.meta.dir, 'dist/client');
-const port = Number(process.env.PORT ?? 3000);
+const port = Number(process.env.PORT ?? 5025);
 
 Bun.serve({
   port,
