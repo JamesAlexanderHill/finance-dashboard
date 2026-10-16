@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { JOB_TYPES, type ImportSummary, type StatementStage } from '@finance/contracts';
 import {
   balanceObservations,
@@ -27,9 +27,8 @@ import { parseStatement } from '@finance/parsers';
 import { sha256Hex } from '@finance/shared/node';
 import { findOrCreateInstrument, recordPriceObservations } from './prices';
 import { appendProgress, enqueueJob, type Job } from './queue';
+import { assertNoLiveDuplicate } from './source-files';
 import { sourceFileKey, type ObjectStorage } from './storage';
-
-export class DuplicateUploadError extends Error {}
 
 export interface UploadInput {
   workspaceId: string;
@@ -41,15 +40,11 @@ export interface UploadInput {
 
 /**
  * Stores the binary privately, records the source file and statement, and queues the import job.
- * Rejects a byte-identical file that is already live in the workspace.
+ * Rejects a byte-identical file that is already live in the workspace (a failed statement's isn't).
  */
 export async function createStatementUpload(db: Database, storage: ObjectStorage, input: UploadInput) {
   const checksum = sha256Hex(input.bytes);
-  const [duplicate] = await db
-    .select({ id: sourceFiles.id, name: sourceFiles.originalName })
-    .from(sourceFiles)
-    .where(and(eq(sourceFiles.workspaceId, input.workspaceId), eq(sourceFiles.checksumSha256, checksum), isNull(sourceFiles.deletedAt)));
-  if (duplicate) throw new DuplicateUploadError(`This file is already imported as "${duplicate.name}"`);
+  await assertNoLiveDuplicate(db, input.workspaceId, checksum, 'imported');
 
   const sourceFileId = crypto.randomUUID();
   const objectKey = sourceFileKey(input.workspaceId, sourceFileId);

@@ -1,11 +1,11 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { JOB_TYPES, type PriceCsvMappingInput, type PriceImportSummary } from '@finance/contracts';
 import { importResults, instrumentAliases, instruments, jobs, sourceFiles, type Database, type Executor } from '@finance/db';
 import { mapPriceRows, parseCsv, PRICE_CSV_MAPPING_VERSION, type ResolvedInstrument } from '@finance/parsers';
 import { sha256Hex } from '@finance/shared/node';
 import { recordPriceObservations } from './prices';
 import { appendProgress, enqueueJob, type Job } from './queue';
-import { DuplicateUploadError } from './statements';
+import { assertNoLiveDuplicate } from './source-files';
 import { sourceFileKey, type ObjectStorage } from './storage';
 
 export class PriceImportError extends Error {}
@@ -20,11 +20,7 @@ export async function createPriceImportUpload(
   input: { workspaceId: string; userId: string; fileName: string; bytes: Uint8Array },
 ) {
   const checksum = sha256Hex(input.bytes);
-  const [duplicate] = await db
-    .select({ name: sourceFiles.originalName })
-    .from(sourceFiles)
-    .where(and(eq(sourceFiles.workspaceId, input.workspaceId), eq(sourceFiles.checksumSha256, checksum), isNull(sourceFiles.deletedAt)));
-  if (duplicate) throw new DuplicateUploadError(`This file is already uploaded as "${duplicate.name}"`);
+  await assertNoLiveDuplicate(db, input.workspaceId, checksum);
 
   const id = crypto.randomUUID();
   const objectKey = sourceFileKey(input.workspaceId, id);

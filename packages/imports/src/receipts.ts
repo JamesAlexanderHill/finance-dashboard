@@ -1,7 +1,7 @@
-import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { sourceFiles, transactionReceipts, transactions, type Database } from '@finance/db';
 import { sha256Hex } from '@finance/shared/node';
-import { DuplicateUploadError } from './statements';
+import { assertNoLiveDuplicate } from './source-files';
 import { sourceFileKey, type ObjectStorage } from './storage';
 
 export class ReceiptError extends Error {}
@@ -21,21 +21,6 @@ export function receiptContentType(bytes: Uint8Array): string | null {
   return null;
 }
 
-async function liveDuplicate(db: Database, workspaceId: string, checksum: string, exceptId?: string) {
-  const [duplicate] = await db
-    .select({ name: sourceFiles.originalName })
-    .from(sourceFiles)
-    .where(
-      and(
-        eq(sourceFiles.workspaceId, workspaceId),
-        eq(sourceFiles.checksumSha256, checksum),
-        isNull(sourceFiles.deletedAt),
-        exceptId ? ne(sourceFiles.id, exceptId) : undefined,
-      ),
-    );
-  return duplicate;
-}
-
 /**
  * Stores a receipt (feature 03) and attaches it to a canonical transaction. Receipts are evidence,
  * not parsed. Like any source file, bytes already live in the workspace are rejected.
@@ -53,8 +38,7 @@ export async function attachReceipt(
   const contentType = receiptContentType(input.bytes);
   if (!contentType) throw new ReceiptError('Receipts must be PDF, JPEG, PNG or WebP files');
   const checksum = sha256Hex(input.bytes);
-  const duplicate = await liveDuplicate(db, input.workspaceId, checksum);
-  if (duplicate) throw new DuplicateUploadError(`This file is already uploaded as "${duplicate.name}"`);
+  await assertNoLiveDuplicate(db, input.workspaceId, checksum);
 
   const sourceFileId = crypto.randomUUID();
   const objectKey = sourceFileKey(input.workspaceId, sourceFileId);
@@ -103,8 +87,7 @@ export async function setReceiptRemoved(db: Database, workspaceId: string, sourc
     .where(and(eq(transactionReceipts.workspaceId, workspaceId), eq(transactionReceipts.sourceFileId, sourceFileId)));
   if (!file) throw new ReceiptError('Receipt not found');
   if (!removed) {
-    const duplicate = await liveDuplicate(db, workspaceId, file.checksum, file.id);
-    if (duplicate) throw new DuplicateUploadError(`This file is already uploaded as "${duplicate.name}"`);
+    await assertNoLiveDuplicate(db, workspaceId, file.checksum, 'uploaded', file.id);
   }
   await db
     .update(sourceFiles)
