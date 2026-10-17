@@ -71,7 +71,7 @@ function SankeyPage() {
           {data.unconvertedLegs > 0 &&
             `${data.unconvertedLegs} foreign-currency legs have no FX rate on or before their date and are left out. `}
           {data.staleConvertedLegs > 0 && `${data.staleConvertedLegs} were converted with a stale or trade-only rate.`}{' '}
-          <Link to="/assets/prices" className="underline">
+          <Link to="/accounts/assets/prices" className="underline">
             Add FX rates
           </Link>
         </p>

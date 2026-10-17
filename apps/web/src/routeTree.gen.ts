@@ -11,32 +11,36 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as CashFlowRouteImport } from './routes/cash-flow'
+import { Route as CategoriesRouteImport } from './routes/categories'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PricesRouteImport } from './routes/prices'
 import { Route as StatementsRouteImport } from './routes/statements'
 import { Route as TransactionsRouteImport } from './routes/transactions'
 import { Route as TransfersRouteImport } from './routes/transfers'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
-import { Route as AppCategoriesRouteImport } from './routes/_app/categories'
 import { Route as AppExpensesRouteImport } from './routes/_app/expenses'
 import { Route as AppSankeyRouteImport } from './routes/_app/sankey'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AssetsIndexRouteImport } from './routes/assets.index'
+import { Route as AssetsInstrumentIdRouteImport } from './routes/assets.$instrumentId'
+import { Route as AssetsPricesRouteImport } from './routes/assets.prices'
 import { Route as HoldingsIndexRouteImport } from './routes/holdings.index'
 import { Route as HoldingsInstrumentIdRouteImport } from './routes/holdings.$instrumentId'
 import { Route as AppAccountsIndexRouteImport } from './routes/_app/accounts.index'
 import { Route as AppAccountsAccountIdRouteImport } from './routes/_app/accounts.$accountId'
 import { Route as AppAccountsStatementsRouteImport } from './routes/_app/accounts.statements'
 import { Route as AppAccountsTransactionsRouteImport } from './routes/_app/accounts.transactions'
-import { Route as AppAssetsIndexRouteImport } from './routes/_app/assets.index'
-import { Route as AppAssetsInstrumentIdRouteImport } from './routes/_app/assets.$instrumentId'
-import { Route as AppAssetsPricesRouteImport } from './routes/_app/assets.prices'
 import { Route as AppEventsIndexRouteImport } from './routes/_app/events.index'
+import { Route as AppEventsCategoriesRouteImport } from './routes/_app/events.categories'
 import { Route as AppEventsTransfersRouteImport } from './routes/_app/events.transfers'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiPricesIndexRouteImport } from './routes/api/prices/index'
 import { Route as ApiReceiptsIndexRouteImport } from './routes/api/receipts/index'
 import { Route as ApiSourceFilesIdRouteImport } from './routes/api/source-files/$id'
 import { Route as ApiStatementsIndexRouteImport } from './routes/api/statements/index'
+import { Route as AppAccountsAssetsIndexRouteImport } from './routes/_app/accounts.assets.index'
+import { Route as AppAccountsAssetsInstrumentIdRouteImport } from './routes/_app/accounts.assets.$instrumentId'
+import { Route as AppAccountsAssetsPricesRouteImport } from './routes/_app/accounts.assets.prices'
 import { Route as ApiJobsJobIdEventsRouteImport } from './routes/api/jobs/$jobId/events'
 
 const AppRoute = AppRouteImport.update({
@@ -46,6 +50,11 @@ const AppRoute = AppRouteImport.update({
 const CashFlowRoute = CashFlowRouteImport.update({
   id: '/cash-flow',
   path: '/cash-flow',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CategoriesRoute = CategoriesRouteImport.update({
+  id: '/categories',
+  path: '/categories',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -78,11 +87,6 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppCategoriesRoute = AppCategoriesRouteImport.update({
-  id: '/categories',
-  path: '/categories',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppExpensesRoute = AppExpensesRouteImport.update({
   id: '/expenses',
   path: '/expenses',
@@ -97,6 +101,21 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => AppRoute,
+} as any)
+const AssetsIndexRoute = AssetsIndexRouteImport.update({
+  id: '/assets/',
+  path: '/assets/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AssetsInstrumentIdRoute = AssetsInstrumentIdRouteImport.update({
+  id: '/assets/$instrumentId',
+  path: '/assets/$instrumentId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AssetsPricesRoute = AssetsPricesRouteImport.update({
+  id: '/assets/prices',
+  path: '/assets/prices',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const HoldingsIndexRoute = HoldingsIndexRouteImport.update({
   id: '/holdings/',
@@ -128,24 +147,14 @@ const AppAccountsTransactionsRoute = AppAccountsTransactionsRouteImport.update({
   path: '/accounts/transactions',
   getParentRoute: () => AppRoute,
 } as any)
-const AppAssetsIndexRoute = AppAssetsIndexRouteImport.update({
-  id: '/assets/',
-  path: '/assets/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppAssetsInstrumentIdRoute = AppAssetsInstrumentIdRouteImport.update({
-  id: '/assets/$instrumentId',
-  path: '/assets/$instrumentId',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppAssetsPricesRoute = AppAssetsPricesRouteImport.update({
-  id: '/assets/prices',
-  path: '/assets/prices',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppEventsIndexRoute = AppEventsIndexRouteImport.update({
   id: '/events/',
   path: '/events/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEventsCategoriesRoute = AppEventsCategoriesRouteImport.update({
+  id: '/events/categories',
+  path: '/events/categories',
   getParentRoute: () => AppRoute,
 } as any)
 const AppEventsTransfersRoute = AppEventsTransfersRouteImport.update({
@@ -178,6 +187,22 @@ const ApiStatementsIndexRoute = ApiStatementsIndexRouteImport.update({
   path: '/api/statements/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppAccountsAssetsIndexRoute = AppAccountsAssetsIndexRouteImport.update({
+  id: '/accounts/assets/',
+  path: '/accounts/assets/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAccountsAssetsInstrumentIdRoute =
+  AppAccountsAssetsInstrumentIdRouteImport.update({
+    id: '/accounts/assets/$instrumentId',
+    path: '/accounts/assets/$instrumentId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAccountsAssetsPricesRoute = AppAccountsAssetsPricesRouteImport.update({
+  id: '/accounts/assets/prices',
+  path: '/accounts/assets/prices',
+  getParentRoute: () => AppRoute,
+} as any)
 const ApiJobsJobIdEventsRoute = ApiJobsJobIdEventsRouteImport.update({
   id: '/api/jobs/$jobId/events',
   path: '/api/jobs/$jobId/events',
@@ -187,198 +212,226 @@ const ApiJobsJobIdEventsRoute = ApiJobsJobIdEventsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/cash-flow': typeof CashFlowRoute
+  '/categories': typeof CategoriesRoute
   '/login': typeof LoginRoute
   '/prices': typeof PricesRoute
   '/statements': typeof StatementsRoute
   '/transactions': typeof TransactionsRoute
   '/transfers': typeof TransfersRoute
-  '/categories': typeof AppCategoriesRoute
   '/expenses': typeof AppExpensesRoute
   '/sankey': typeof AppSankeyRoute
   '/settings': typeof AppSettingsRoute
+  '/assets/$instrumentId': typeof AssetsInstrumentIdRoute
+  '/assets/prices': typeof AssetsPricesRoute
   '/holdings/$instrumentId': typeof HoldingsInstrumentIdRoute
+  '/assets/': typeof AssetsIndexRoute
   '/holdings/': typeof HoldingsIndexRoute
   '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/accounts/statements': typeof AppAccountsStatementsRoute
   '/accounts/transactions': typeof AppAccountsTransactionsRoute
-  '/assets/$instrumentId': typeof AppAssetsInstrumentIdRoute
-  '/assets/prices': typeof AppAssetsPricesRoute
+  '/events/categories': typeof AppEventsCategoriesRoute
   '/events/transfers': typeof AppEventsTransfersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
   '/accounts/': typeof AppAccountsIndexRoute
-  '/assets/': typeof AppAssetsIndexRoute
   '/events/': typeof AppEventsIndexRoute
   '/api/prices/': typeof ApiPricesIndexRoute
   '/api/receipts/': typeof ApiReceiptsIndexRoute
   '/api/statements/': typeof ApiStatementsIndexRoute
+  '/accounts/assets/$instrumentId': typeof AppAccountsAssetsInstrumentIdRoute
+  '/accounts/assets/prices': typeof AppAccountsAssetsPricesRoute
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
+  '/accounts/assets/': typeof AppAccountsAssetsIndexRoute
 }
 export interface FileRoutesByTo {
   '/cash-flow': typeof CashFlowRoute
+  '/categories': typeof CategoriesRoute
   '/login': typeof LoginRoute
   '/prices': typeof PricesRoute
   '/statements': typeof StatementsRoute
   '/transactions': typeof TransactionsRoute
   '/transfers': typeof TransfersRoute
-  '/categories': typeof AppCategoriesRoute
   '/expenses': typeof AppExpensesRoute
   '/sankey': typeof AppSankeyRoute
   '/settings': typeof AppSettingsRoute
+  '/assets/$instrumentId': typeof AssetsInstrumentIdRoute
+  '/assets/prices': typeof AssetsPricesRoute
   '/holdings/$instrumentId': typeof HoldingsInstrumentIdRoute
   '/': typeof AppIndexRoute
+  '/assets': typeof AssetsIndexRoute
   '/holdings': typeof HoldingsIndexRoute
   '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/accounts/statements': typeof AppAccountsStatementsRoute
   '/accounts/transactions': typeof AppAccountsTransactionsRoute
-  '/assets/$instrumentId': typeof AppAssetsInstrumentIdRoute
-  '/assets/prices': typeof AppAssetsPricesRoute
+  '/events/categories': typeof AppEventsCategoriesRoute
   '/events/transfers': typeof AppEventsTransfersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
   '/accounts': typeof AppAccountsIndexRoute
-  '/assets': typeof AppAssetsIndexRoute
   '/events': typeof AppEventsIndexRoute
   '/api/prices': typeof ApiPricesIndexRoute
   '/api/receipts': typeof ApiReceiptsIndexRoute
   '/api/statements': typeof ApiStatementsIndexRoute
+  '/accounts/assets/$instrumentId': typeof AppAccountsAssetsInstrumentIdRoute
+  '/accounts/assets/prices': typeof AppAccountsAssetsPricesRoute
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
+  '/accounts/assets': typeof AppAccountsAssetsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/cash-flow': typeof CashFlowRoute
+  '/categories': typeof CategoriesRoute
   '/login': typeof LoginRoute
   '/prices': typeof PricesRoute
   '/statements': typeof StatementsRoute
   '/transactions': typeof TransactionsRoute
   '/transfers': typeof TransfersRoute
-  '/_app/categories': typeof AppCategoriesRoute
   '/_app/expenses': typeof AppExpensesRoute
   '/_app/sankey': typeof AppSankeyRoute
   '/_app/settings': typeof AppSettingsRoute
+  '/assets/$instrumentId': typeof AssetsInstrumentIdRoute
+  '/assets/prices': typeof AssetsPricesRoute
   '/holdings/$instrumentId': typeof HoldingsInstrumentIdRoute
   '/_app/': typeof AppIndexRoute
+  '/assets/': typeof AssetsIndexRoute
   '/holdings/': typeof HoldingsIndexRoute
   '/_app/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/_app/accounts/statements': typeof AppAccountsStatementsRoute
   '/_app/accounts/transactions': typeof AppAccountsTransactionsRoute
-  '/_app/assets/$instrumentId': typeof AppAssetsInstrumentIdRoute
-  '/_app/assets/prices': typeof AppAssetsPricesRoute
+  '/_app/events/categories': typeof AppEventsCategoriesRoute
   '/_app/events/transfers': typeof AppEventsTransfersRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/source-files/$id': typeof ApiSourceFilesIdRoute
   '/_app/accounts/': typeof AppAccountsIndexRoute
-  '/_app/assets/': typeof AppAssetsIndexRoute
   '/_app/events/': typeof AppEventsIndexRoute
   '/api/prices/': typeof ApiPricesIndexRoute
   '/api/receipts/': typeof ApiReceiptsIndexRoute
   '/api/statements/': typeof ApiStatementsIndexRoute
+  '/_app/accounts/assets/$instrumentId': typeof AppAccountsAssetsInstrumentIdRoute
+  '/_app/accounts/assets/prices': typeof AppAccountsAssetsPricesRoute
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
+  '/_app/accounts/assets/': typeof AppAccountsAssetsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/cash-flow'
+    | '/categories'
     | '/login'
     | '/prices'
     | '/statements'
     | '/transactions'
     | '/transfers'
-    | '/categories'
     | '/expenses'
     | '/sankey'
     | '/settings'
+    | '/assets/$instrumentId'
+    | '/assets/prices'
     | '/holdings/$instrumentId'
+    | '/assets/'
     | '/holdings/'
     | '/accounts/$accountId'
     | '/accounts/statements'
     | '/accounts/transactions'
-    | '/assets/$instrumentId'
-    | '/assets/prices'
+    | '/events/categories'
     | '/events/transfers'
     | '/api/auth/$'
     | '/api/source-files/$id'
     | '/accounts/'
-    | '/assets/'
     | '/events/'
     | '/api/prices/'
     | '/api/receipts/'
     | '/api/statements/'
+    | '/accounts/assets/$instrumentId'
+    | '/accounts/assets/prices'
     | '/api/jobs/$jobId/events'
+    | '/accounts/assets/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/cash-flow'
+    | '/categories'
     | '/login'
     | '/prices'
     | '/statements'
     | '/transactions'
     | '/transfers'
-    | '/categories'
     | '/expenses'
     | '/sankey'
     | '/settings'
+    | '/assets/$instrumentId'
+    | '/assets/prices'
     | '/holdings/$instrumentId'
     | '/'
+    | '/assets'
     | '/holdings'
     | '/accounts/$accountId'
     | '/accounts/statements'
     | '/accounts/transactions'
-    | '/assets/$instrumentId'
-    | '/assets/prices'
+    | '/events/categories'
     | '/events/transfers'
     | '/api/auth/$'
     | '/api/source-files/$id'
     | '/accounts'
-    | '/assets'
     | '/events'
     | '/api/prices'
     | '/api/receipts'
     | '/api/statements'
+    | '/accounts/assets/$instrumentId'
+    | '/accounts/assets/prices'
     | '/api/jobs/$jobId/events'
+    | '/accounts/assets'
   id:
     | '__root__'
     | '/_app'
     | '/cash-flow'
+    | '/categories'
     | '/login'
     | '/prices'
     | '/statements'
     | '/transactions'
     | '/transfers'
-    | '/_app/categories'
     | '/_app/expenses'
     | '/_app/sankey'
     | '/_app/settings'
+    | '/assets/$instrumentId'
+    | '/assets/prices'
     | '/holdings/$instrumentId'
     | '/_app/'
+    | '/assets/'
     | '/holdings/'
     | '/_app/accounts/$accountId'
     | '/_app/accounts/statements'
     | '/_app/accounts/transactions'
-    | '/_app/assets/$instrumentId'
-    | '/_app/assets/prices'
+    | '/_app/events/categories'
     | '/_app/events/transfers'
     | '/api/auth/$'
     | '/api/source-files/$id'
     | '/_app/accounts/'
-    | '/_app/assets/'
     | '/_app/events/'
     | '/api/prices/'
     | '/api/receipts/'
     | '/api/statements/'
+    | '/_app/accounts/assets/$instrumentId'
+    | '/_app/accounts/assets/prices'
     | '/api/jobs/$jobId/events'
+    | '/_app/accounts/assets/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   CashFlowRoute: typeof CashFlowRoute
+  CategoriesRoute: typeof CategoriesRoute
   LoginRoute: typeof LoginRoute
   PricesRoute: typeof PricesRoute
   StatementsRoute: typeof StatementsRoute
   TransactionsRoute: typeof TransactionsRoute
   TransfersRoute: typeof TransfersRoute
+  AssetsInstrumentIdRoute: typeof AssetsInstrumentIdRoute
+  AssetsPricesRoute: typeof AssetsPricesRoute
   HoldingsInstrumentIdRoute: typeof HoldingsInstrumentIdRoute
+  AssetsIndexRoute: typeof AssetsIndexRoute
   HoldingsIndexRoute: typeof HoldingsIndexRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiSourceFilesIdRoute: typeof ApiSourceFilesIdRoute
@@ -402,6 +455,13 @@ declare module '@tanstack/react-router' {
       path: '/cash-flow'
       fullPath: '/cash-flow'
       preLoaderRoute: typeof CashFlowRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/categories': {
+      id: '/categories'
+      path: '/categories'
+      fullPath: '/categories'
+      preLoaderRoute: typeof CategoriesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -446,13 +506,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/categories': {
-      id: '/_app/categories'
-      path: '/categories'
-      fullPath: '/categories'
-      preLoaderRoute: typeof AppCategoriesRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/expenses': {
       id: '/_app/expenses'
       path: '/expenses'
@@ -473,6 +526,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/assets/': {
+      id: '/assets/'
+      path: '/assets'
+      fullPath: '/assets/'
+      preLoaderRoute: typeof AssetsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/assets/$instrumentId': {
+      id: '/assets/$instrumentId'
+      path: '/assets/$instrumentId'
+      fullPath: '/assets/$instrumentId'
+      preLoaderRoute: typeof AssetsInstrumentIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/assets/prices': {
+      id: '/assets/prices'
+      path: '/assets/prices'
+      fullPath: '/assets/prices'
+      preLoaderRoute: typeof AssetsPricesRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/holdings/': {
       id: '/holdings/'
@@ -516,32 +590,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountsTransactionsRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/assets/': {
-      id: '/_app/assets/'
-      path: '/assets'
-      fullPath: '/assets/'
-      preLoaderRoute: typeof AppAssetsIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/assets/$instrumentId': {
-      id: '/_app/assets/$instrumentId'
-      path: '/assets/$instrumentId'
-      fullPath: '/assets/$instrumentId'
-      preLoaderRoute: typeof AppAssetsInstrumentIdRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/assets/prices': {
-      id: '/_app/assets/prices'
-      path: '/assets/prices'
-      fullPath: '/assets/prices'
-      preLoaderRoute: typeof AppAssetsPricesRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/events/': {
       id: '/_app/events/'
       path: '/events'
       fullPath: '/events/'
       preLoaderRoute: typeof AppEventsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/events/categories': {
+      id: '/_app/events/categories'
+      path: '/events/categories'
+      fullPath: '/events/categories'
+      preLoaderRoute: typeof AppEventsCategoriesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/events/transfers': {
@@ -586,6 +646,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiStatementsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/accounts/assets/': {
+      id: '/_app/accounts/assets/'
+      path: '/accounts/assets'
+      fullPath: '/accounts/assets/'
+      preLoaderRoute: typeof AppAccountsAssetsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/accounts/assets/$instrumentId': {
+      id: '/_app/accounts/assets/$instrumentId'
+      path: '/accounts/assets/$instrumentId'
+      fullPath: '/accounts/assets/$instrumentId'
+      preLoaderRoute: typeof AppAccountsAssetsInstrumentIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/accounts/assets/prices': {
+      id: '/_app/accounts/assets/prices'
+      path: '/accounts/assets/prices'
+      fullPath: '/accounts/assets/prices'
+      preLoaderRoute: typeof AppAccountsAssetsPricesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/api/jobs/$jobId/events': {
       id: '/api/jobs/$jobId/events'
       path: '/api/jobs/$jobId/events'
@@ -597,7 +678,6 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
-  AppCategoriesRoute: typeof AppCategoriesRoute
   AppExpensesRoute: typeof AppExpensesRoute
   AppSankeyRoute: typeof AppSankeyRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -605,16 +685,16 @@ interface AppRouteChildren {
   AppAccountsAccountIdRoute: typeof AppAccountsAccountIdRoute
   AppAccountsStatementsRoute: typeof AppAccountsStatementsRoute
   AppAccountsTransactionsRoute: typeof AppAccountsTransactionsRoute
-  AppAssetsInstrumentIdRoute: typeof AppAssetsInstrumentIdRoute
-  AppAssetsPricesRoute: typeof AppAssetsPricesRoute
+  AppEventsCategoriesRoute: typeof AppEventsCategoriesRoute
   AppEventsTransfersRoute: typeof AppEventsTransfersRoute
   AppAccountsIndexRoute: typeof AppAccountsIndexRoute
-  AppAssetsIndexRoute: typeof AppAssetsIndexRoute
   AppEventsIndexRoute: typeof AppEventsIndexRoute
+  AppAccountsAssetsInstrumentIdRoute: typeof AppAccountsAssetsInstrumentIdRoute
+  AppAccountsAssetsPricesRoute: typeof AppAccountsAssetsPricesRoute
+  AppAccountsAssetsIndexRoute: typeof AppAccountsAssetsIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppCategoriesRoute: AppCategoriesRoute,
   AppExpensesRoute: AppExpensesRoute,
   AppSankeyRoute: AppSankeyRoute,
   AppSettingsRoute: AppSettingsRoute,
@@ -622,12 +702,13 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountsAccountIdRoute: AppAccountsAccountIdRoute,
   AppAccountsStatementsRoute: AppAccountsStatementsRoute,
   AppAccountsTransactionsRoute: AppAccountsTransactionsRoute,
-  AppAssetsInstrumentIdRoute: AppAssetsInstrumentIdRoute,
-  AppAssetsPricesRoute: AppAssetsPricesRoute,
+  AppEventsCategoriesRoute: AppEventsCategoriesRoute,
   AppEventsTransfersRoute: AppEventsTransfersRoute,
   AppAccountsIndexRoute: AppAccountsIndexRoute,
-  AppAssetsIndexRoute: AppAssetsIndexRoute,
   AppEventsIndexRoute: AppEventsIndexRoute,
+  AppAccountsAssetsInstrumentIdRoute: AppAccountsAssetsInstrumentIdRoute,
+  AppAccountsAssetsPricesRoute: AppAccountsAssetsPricesRoute,
+  AppAccountsAssetsIndexRoute: AppAccountsAssetsIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
@@ -635,12 +716,16 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   CashFlowRoute: CashFlowRoute,
+  CategoriesRoute: CategoriesRoute,
   LoginRoute: LoginRoute,
   PricesRoute: PricesRoute,
   StatementsRoute: StatementsRoute,
   TransactionsRoute: TransactionsRoute,
   TransfersRoute: TransfersRoute,
+  AssetsInstrumentIdRoute: AssetsInstrumentIdRoute,
+  AssetsPricesRoute: AssetsPricesRoute,
   HoldingsInstrumentIdRoute: HoldingsInstrumentIdRoute,
+  AssetsIndexRoute: AssetsIndexRoute,
   HoldingsIndexRoute: HoldingsIndexRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiSourceFilesIdRoute: ApiSourceFilesIdRoute,

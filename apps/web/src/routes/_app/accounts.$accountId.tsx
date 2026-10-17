@@ -411,7 +411,7 @@ function CurrentBalance({ data }: { data: Detail }) {
         </div>
       </div>
       {a.instrumentId && (
-        <Link to="/assets/$instrumentId" params={{ instrumentId: a.instrumentId }} className="text-sm underline">
+        <Link to="/accounts/assets/$instrumentId" params={{ instrumentId: a.instrumentId }} className="text-sm underline">
           Price, units and value history
         </Link>
       )}

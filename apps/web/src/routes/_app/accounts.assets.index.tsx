@@ -7,7 +7,7 @@ import { listHoldings } from '../../server/holdings.functions';
 
 const holdingsQuery = queryOptions({ queryKey: ['holdings'], queryFn: () => listHoldings() });
 
-export const Route = createFileRoute('/_app/assets/')({
+export const Route = createFileRoute('/_app/accounts/assets/')({
   loader: ({ context }) => context.queryClient.ensureQueryData(holdingsQuery),
   component: HoldingsPage,
 });
@@ -40,7 +40,7 @@ function HoldingsPage() {
         {data.map((h) => (
           <div key={h.id} className="border-line border-b px-4 py-3 last:border-0">
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <Link to="/assets/$instrumentId" params={{ instrumentId: h.id }} className="min-w-48 flex-1 hover:underline">
+              <Link to="/accounts/assets/$instrumentId" params={{ instrumentId: h.id }} className="min-w-48 flex-1 hover:underline">
                 <span className="font-medium">{h.symbol}</span> <span className="text-muted text-sm">{h.name}</span>
               </Link>
               <span className="tabular text-sm">{units(h.units)} units</span>

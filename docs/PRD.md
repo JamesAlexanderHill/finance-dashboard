@@ -14,7 +14,7 @@ The product must prioritise reproducibility and provenance: imported inputs rema
 
 ### Navigation
 
-The app has six sections: **Dashboard** (overview, expenses, Sankey), **Events** (events, transfers), **Accounts** (accounts and their pages, transactions, statements), **Categories**, **Assets** (holdings and their pages, prices) and **Settings**. A section's pages share tabs under the section's name.
+The app has four sections: **Dashboard** (overview, expenses, Sankey), **Events** (events, transfers, categories), **Accounts** (accounts and their pages, transactions, statements, assets and their pages, prices) and **Settings**. A section's pages share tabs under the section's name.
 
 ### Goals
 

@@ -13,7 +13,7 @@ export const Route = createFileRoute('/_app')({
 });
 
 /**
- * The six sections and their tabs. A tab is active on its own path and the paths under it, unless a
+ * The four sections and their tabs. A tab is active on its own path and the paths under it, unless a
  * longer tab matches; a section is active when one of its tabs is.
  */
 const SECTIONS = [
@@ -30,6 +30,7 @@ const SECTIONS = [
     tabs: [
       { to: '/events', label: 'Events' },
       { to: '/events/transfers', label: 'Transfers' },
+      { to: '/events/categories', label: 'Categories' },
     ],
   },
   {
@@ -38,14 +39,8 @@ const SECTIONS = [
       { to: '/accounts', label: 'Accounts' },
       { to: '/accounts/transactions', label: 'Transactions' },
       { to: '/accounts/statements', label: 'Statements' },
-    ],
-  },
-  { label: 'Categories', tabs: [{ to: '/categories', label: 'Categories' }] },
-  {
-    label: 'Assets',
-    tabs: [
-      { to: '/assets', label: 'Holdings' },
-      { to: '/assets/prices', label: 'Prices' },
+      { to: '/accounts/assets', label: 'Assets' },
+      { to: '/accounts/assets/prices', label: 'Prices' },
     ],
   },
   { label: 'Settings', tabs: [{ to: '/settings', label: 'Settings' }] },

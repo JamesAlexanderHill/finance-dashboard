@@ -8,7 +8,7 @@ import { createCategory, deleteCategory, listCategories, renameCategory } from '
 
 export const categoriesQuery = queryOptions({ queryKey: ['categories'], queryFn: () => listCategories() });
 
-export const Route = createFileRoute('/_app/categories')({
+export const Route = createFileRoute('/_app/events/categories')({
   loader: ({ context }) => context.queryClient.ensureQueryData(categoriesQuery),
   component: CategoriesPage,
 });
