@@ -181,13 +181,16 @@ function AccountRow({
   );
 }
 
-/** The whole span of imported statements across the listed accounts, which every coverage bar is drawn against. */
+/**
+ * The span every coverage bar is drawn against: from the earliest statement of the listed accounts to today,
+ * so an account whose statements stop short of today shows how far behind it is.
+ */
 function importRange(accounts: Account[]): Period | null {
   const periods = accounts.flatMap((a) => a.statementPeriods);
   if (periods.length === 0) return null;
   return {
     start: periods.reduce((min, p) => (p.start < min ? p.start : min), periods[0]!.start),
-    end: periods.reduce((max, p) => (p.end > max ? p.end : max), periods[0]!.end),
+    end: periods.reduce((max, p) => (p.end > max ? p.end : max), todayIso()),
   };
 }
 
