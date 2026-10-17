@@ -406,7 +406,6 @@ function LegEditor(props: {
   const queryClient = useQueryClient();
   const setCategory = useServerFn(setLegCategory);
   const findSimilar = useServerFn(findSimilarTransactions);
-  const accept = useServerFn(acceptCategorySuggestions);
   const setTags = useServerFn(setLegTags);
   const suggestion = !leg.categoryId && leg.suggestedCategoryId ? categories.find((c) => c.id === leg.suggestedCategoryId) : undefined;
   const currentTags = leg.tagIds
@@ -473,7 +472,8 @@ function LegEditor(props: {
             Suggested: {suggestion.path}{' '}
             <button
               className="hover:text-ink underline"
-              onClick={() => accept({ data: { legs: [{ transactionId, legKey: leg.legKey }] } }).then(refresh)}
+              // Accepting is choosing the suggested category, so it offers similar transactions too.
+              onClick={() => choose(suggestion.id)}
             >
               Accept
             </button>
