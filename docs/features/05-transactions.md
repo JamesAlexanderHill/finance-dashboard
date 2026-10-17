@@ -19,6 +19,8 @@ Canonical normalised transaction identity, source occurrences, soft-delete and r
 3. Statement-sourced inactivity and explicit user suppression are distinct states.
 4. Restore original ID when a source-deactivated transaction reappears; preserve manual suppression unless explicitly restored.
 5. Keep source hints on the transaction (provider reference, principal/fee role, transfer hint); a reimport refreshes them without changing identity.
+6. Transactions are data from statements. The only thing a user adds to one is its **line items** (ADR 0014): two or more non-zero parts with the transaction's sign that sum exactly to its amount (otherwise the save is rejected). Each line item has a stable ID, so editing, adding or removing lines never changes another line's identity. Removing all line items returns the transaction to a single leg.
+7. Categories and tags are not set on transactions; the Transactions page shows its legs' categories read-only and links to its event, where they are set.
 
 ## Owned contracts and data
 
@@ -34,6 +36,7 @@ This feature owns its corresponding domain policies and primary records as descr
 
 - A/B overlapping import produces unique logical transactions.
 - Deletion/restoration updates active projections without hard delete.
+- Line items that do not sum exactly to the transaction amount are rejected; saved ones become the transaction's legs, and a line keeps its category when other lines change.
 
 ## Testing notes
 
@@ -59,7 +62,7 @@ This feature owns its corresponding domain policies and primary records as descr
 | [Valuation and FX](11-valuation-fx.md) | Integration | Transaction amounts and balance-affecting events can inform dated balances, never missing market prices. |
 | [Manual Accounts](12-manual-accounts.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Financial Dashboard](13-dashboard.md) | Integration | Exposes transaction traceability and account drilldowns for reported amounts. |
-| [Categories and Sankey](14-categories.md) | Integration | Category and itemisation decisions are keyed on canonical transaction IDs (plus line index). |
+| [Categories and Sankey](14-categories.md) | Integration | Line items on a transaction become its legs; category and tag assignments name a leg by transaction ID plus leg key (`line:<line item id>` for line items). |
 
 ## Changes requiring reciprocal documentation
 

@@ -1,15 +1,17 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   categories,
   eventLegs,
   events,
   eventTransactionLinks,
   financialAccounts,
+  legAssignments,
   reconciliationDecisions,
+  transactionLineItems,
   transactions,
   type Executor,
 } from '@finance/db';
-import { projectEvents, type DecisionRecord } from '../index';
+import { projectEvents, type AssignmentRecord, type DecisionRecord } from '../index';
 import { lockWorkspace } from './lock';
 
 const CHUNK = 1000;
@@ -25,7 +27,7 @@ async function insertChunked<T>(rows: T[], insert: (chunk: T[]) => Promise<unkno
 export async function rebuildEvents(tx: Executor, workspaceId: string) {
   await lockWorkspace(tx, workspaceId);
 
-  const [active, decisions, cats, openings] = await Promise.all([
+  const [active, decisions, lineItems, assignments, cats, openings] = await Promise.all([
     tx
       .select({
         id: transactions.id,
@@ -53,7 +55,33 @@ export async function rebuildEvents(tx: Executor, workspaceId: string) {
         payload: reconciliationDecisions.payload,
       })
       .from(reconciliationDecisions)
-      .where(eq(reconciliationDecisions.workspaceId, workspaceId)),
+      .where(
+        and(
+          eq(reconciliationDecisions.workspaceId, workspaceId),
+          inArray(reconciliationDecisions.kind, ['suppression', 'link', 'transfer']),
+        ),
+      ),
+    tx
+      .select({
+        id: transactionLineItems.id,
+        transactionId: transactionLineItems.transactionId,
+        position: transactionLineItems.position,
+        amount: transactionLineItems.amount,
+        description: transactionLineItems.description,
+      })
+      .from(transactionLineItems)
+      .where(eq(transactionLineItems.workspaceId, workspaceId)),
+    tx
+      .select({
+        id: legAssignments.id,
+        seq: legAssignments.seq,
+        transactionId: legAssignments.transactionId,
+        legKey: legAssignments.legKey,
+        kind: legAssignments.kind,
+        payload: legAssignments.payload,
+      })
+      .from(legAssignments)
+      .where(eq(legAssignments.workspaceId, workspaceId)),
     tx
       .select({ id: categories.id, kind: categories.kind })
       .from(categories)
@@ -75,6 +103,8 @@ export async function rebuildEvents(tx: Executor, workspaceId: string) {
   const projected = projectEvents({
     transactions: active,
     decisions: decisions as DecisionRecord[],
+    lineItems,
+    assignments: assignments as AssignmentRecord[],
     categories: cats,
     openingBalances: [...openings].map((o) => ({ accountId: o.account_id, on: o.observed_on, balance: o.balance, commodity: o.commodity })),
   });

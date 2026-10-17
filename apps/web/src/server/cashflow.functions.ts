@@ -55,6 +55,7 @@ export const getNodeLegs = createServerFn({ method: 'GET' })
     return getDb()
       .select({
         id: eventLegs.id,
+        eventId: eventLegs.eventId,
         transactionId: eventLegs.transactionId,
         occurredOn: eventLegs.occurredOn,
         description: eventLegs.description,

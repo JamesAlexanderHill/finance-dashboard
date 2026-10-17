@@ -94,32 +94,31 @@ export interface ImportSummary {
 
 const decimal = z.string().regex(/^-?\d+(\.\d+)?$/, 'Must be a decimal number');
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD');
-const legKey = z.string().regex(/^(principal|fee|line:\d+)$/);
 
 export const idInput = z.object({ id: z.uuid() });
 
-export const setCategoryInput = z.object({ transactionId: z.uuid(), legKey, categoryId: z.uuid().nullable() });
-const legRefs = z
-  .array(z.object({ transactionId: z.uuid(), legKey }))
-  .min(1)
-  .max(500);
+// Categories and tags are assigned to event legs (ADR 0014), addressed by the leg's current ID.
+export const setLegCategoryInput = z.object({ legId: z.uuid(), categoryId: z.uuid().nullable() });
+const legIds = z.array(z.uuid()).min(1).max(500);
 /** One category for many legs at once (a manual bulk action, not a rule). */
-export const setCategoryForLegsInput = z.object({ legs: legRefs, categoryId: z.uuid().nullable() });
+export const setCategoryForLegsInput = z.object({ legIds, categoryId: z.uuid().nullable() });
 /** Accepts the current category suggestions for these legs. */
-export const acceptSuggestionsInput = z.object({ legs: legRefs });
+export const acceptSuggestionsInput = z.object({ legIds });
 /** Finds legs like this one, offered for the same category when it is categorised. */
-export const similarLegsInput = z.object({ transactionId: z.uuid(), legKey, categoryId: z.uuid() });
-export const setTagsInput = z.object({ transactionId: z.uuid(), legKey, tagNames: z.array(z.string().trim().min(1).max(60)).max(20) });
+export const similarLegsInput = z.object({ legId: z.uuid(), categoryId: z.uuid() });
+export const setLegTagsInput = z.object({ legId: z.uuid(), tagNames: z.array(z.string().trim().min(1).max(60)).max(20) });
 export const linkTransactionsInput = z.object({ transactionIds: z.array(z.uuid()).min(2).max(20) });
 export const unlinkTransactionInput = z.object({ transactionId: z.uuid() });
 export const setTransferMarkInput = z.object({ transactionId: z.uuid(), isTransfer: z.boolean() });
 export const setSuppressionInput = z.object({ transactionId: z.uuid(), suppressed: z.boolean() });
 export const setReceiptRemovedInput = z.object({ sourceFileId: z.uuid(), removed: z.boolean() });
-export const itemiseInput = z.object({
+/** A transaction's line items; a line sent with its `id` keeps its leg (and category). `null` removes them. */
+export const setLineItemsInput = z.object({
   transactionId: z.uuid(),
   lines: z
-    .array(z.object({ amount: decimal, description: z.string().max(200) }))
+    .array(z.object({ id: z.uuid().optional(), amount: decimal, description: z.string().max(200) }))
     .min(2)
+    .max(100)
     .nullable(),
 });
 
@@ -158,12 +157,25 @@ export const transactionFilter = z.object({
   from: isoDate.optional(),
   to: isoDate.optional(),
   status: z.enum(['active', 'inactive', 'all']).default('active'),
-  uncategorisedOnly: z.boolean().default(false),
   search: z.string().max(100).optional(),
   limit: z.number().int().min(1).max(500).default(200),
   offset: z.number().int().min(0).default(0),
 });
 export type TransactionFilter = z.infer<typeof transactionFilter>;
+
+export const eventFilter = z.object({
+  id: z.uuid().optional(),
+  accountId: z.uuid().optional(),
+  type: z.string().max(40).optional(),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  search: z.string().max(100).optional(),
+  /** Only events with a leg that needs a category and has none. */
+  uncategorisedOnly: z.boolean().default(false),
+  limit: z.number().int().min(1).max(500).default(100),
+  offset: z.number().int().min(0).default(0),
+});
+export type EventFilter = z.infer<typeof eventFilter>;
 
 export const cashFlowQuery = z.object({
   from: isoDate,

@@ -3,6 +3,8 @@ import type { Executor } from '@finance/db';
 import type { LegRef } from './categorise';
 
 export interface SimilarLeg extends LegRef {
+  /** The leg in the current projection; it changes when events are rebuilt. */
+  legId: string;
   postedOn: string;
   description: string;
   amount: string;
@@ -44,6 +46,7 @@ export async function findSimilarLegs(
   const rows = await tx.execute<{
     transaction_id: string;
     leg_key: string;
+    leg_id: string;
     posted_on: string;
     description: string;
     amount: string;
@@ -58,7 +61,7 @@ export async function findSimilarLegs(
       from transactions where id = ${leg.transactionId} and workspace_id = ${workspaceId} and description_key <> ''
     ),
     matches as (
-      select t.id as transaction_id, l.leg_key, t.posted_on::text, t.description, l.amount::text, t.commodity,
+      select t.id as transaction_id, l.leg_key, l.id as leg_id, t.posted_on::text, t.description, l.amount::text, t.commodity,
         a.name as account_name, l.category_id,
         case when l.category_id is not null then 'categorised'
           when ${exactKey(sql.raw('t.description'))} = s.exact then 'identical'
@@ -90,6 +93,7 @@ export async function findSimilarLegs(
     section.push({
       transactionId: r.transaction_id,
       legKey: r.leg_key,
+      legId: r.leg_id,
       postedOn: r.posted_on,
       description: r.description,
       amount: r.amount,

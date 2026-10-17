@@ -1,29 +1,20 @@
 import { queryOptions, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
 import { useRef, useState } from 'react';
 import { z } from 'zod';
 import { add, eq } from '@finance/shared';
-import { CategoryOptions } from '../../components/category-options';
 import { Badge, Button, Card, Empty, PageHeader } from '../../components/ui';
-import { flattenTree } from '../../lib/category-tree';
 import { money, shortDate } from '../../lib/format';
 import { listAccounts } from '../../server/accounts.functions';
-import { listCategories } from '../../server/categories.functions';
 import { findLinkCandidates, linkTransactions, setTransferMark, unlinkTransaction } from '../../server/transfers.functions';
 import {
-  acceptCategorySuggestions,
-  findSimilarTransactions,
   getTransactionDetail,
-  itemiseTransaction,
   listTransactions,
-  setCategoryForLegs,
-  setLegCategory,
-  setLegTags,
+  saveLineItems,
   setReceiptRemoval,
   setSuppression,
   type EventView,
-  type LegView,
 } from '../../server/transactions.functions';
 
 const EVENT_LABELS: Record<string, string> = {
@@ -47,7 +38,6 @@ const searchSchema = z.object({
   id: z.uuid().optional(),
   accountId: z.uuid().optional(),
   status: z.enum(['active', 'inactive', 'all']).default('active'),
-  uncategorised: z.boolean().default(false),
   q: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
@@ -64,7 +54,6 @@ const transactionsQuery = (s: Search) =>
           id: s.id,
           accountId: s.accountId,
           status: s.status,
-          uncategorisedOnly: s.uncategorised,
           search: s.q,
           from: s.from,
           to: s.to,
@@ -74,55 +63,28 @@ const transactionsQuery = (s: Search) =>
       }),
   });
 const accountsQuery = queryOptions({ queryKey: ['accounts'], queryFn: () => listAccounts() });
-const categoriesQuery = queryOptions({ queryKey: ['categories'], queryFn: () => listCategories() });
 
 export const Route = createFileRoute('/_app/accounts/transactions')({
   validateSearch: searchSchema,
   loaderDeps: ({ search }) => search,
   loader: ({ context, deps }) =>
-    Promise.all([
-      context.queryClient.ensureQueryData(transactionsQuery(deps)),
-      context.queryClient.ensureQueryData(accountsQuery),
-      context.queryClient.ensureQueryData(categoriesQuery),
-    ]),
+    Promise.all([context.queryClient.ensureQueryData(transactionsQuery(deps)), context.queryClient.ensureQueryData(accountsQuery)]),
   component: TransactionsPage,
 });
 
 type Row = Awaited<ReturnType<typeof listTransactions>>['rows'][number];
-type Category = ReturnType<typeof flattenTree<Awaited<ReturnType<typeof listCategories>>['categories'][number]>>[number];
-
-/** Legs that can carry a category: everything except the principal legs of internal events. */
-const categorisable = (row: Row) => row.legs.filter((l) => !row.event?.isInternal || l.role === 'fee');
-/** Itemised rows are left out of bulk selection: their lines usually need different categories. */
-const selectable = (row: Row) => row.isSourceSupported && !row.isSuppressed && row.legs.length === 1 && categorisable(row).length > 0;
-/** Uncategorised legs with a suggestion (feature 14); suggestions are derived from earlier decisions, never stored. */
-const suggested = (row: Row) => categorisable(row).filter((l) => !l.categoryId && l.suggestedCategoryId);
-
 function TransactionsPage() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const { data } = useSuspenseQuery(transactionsQuery(search));
   const { data: accounts } = useSuspenseQuery(accountsQuery);
-  const { data: cats } = useSuspenseQuery(categoriesQuery);
-  const categories = flattenTree(cats.categories);
-  const tagNames = new Map(cats.tags.map((t) => [t.id, t.name]));
   const set = (patch: Partial<Search>) => navigate({ search: (prev) => ({ ...prev, id: undefined, page: 0, ...patch }) });
-  // The selection belongs to one page of one filter; changing either starts a new one.
-  const selectionKey = JSON.stringify(search);
-  const [selection, setSelection] = useState<{ key: string; ids: Set<string>; notice?: string }>({ key: selectionKey, ids: new Set() });
-  const current = selection.key === selectionKey;
-  const selected = current ? selection.ids : new Set<string>();
-  const toggle = (ids: string[], on: boolean) => {
-    const next = new Set(selected);
-    for (const id of ids) on ? next.add(id) : next.delete(id);
-    setSelection({ key: selectionKey, ids: next });
-  };
 
   return (
     <>
       <PageHeader
         title="Transactions"
-        description="Canonical transactions across all statements. Categorise each leg (and tick identical or similar transactions to give them the same category), accept a suggested category, or select several and categorise them together; nothing is categorised until you choose."
+        description="Canonical transactions exactly as your statements report them. Add line items to split one into parts; categories are given to the legs of its event on the Events page."
       />
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         <select
@@ -170,38 +132,12 @@ function TransactionsPage() {
           onKeyDown={(e) => e.key === 'Enter' && set({ q: e.currentTarget.value || undefined })}
           className="border-line bg-surface min-w-48 flex-1 rounded border px-2 py-1.5"
         />
-        <label className="flex items-center gap-1.5">
-          <input type="checkbox" checked={search.uncategorised} onChange={(e) => set({ uncategorised: e.target.checked })} />
-          Uncategorised only
-        </label>
       </div>
 
-      {/* Outside the card: categorised rows can leave the list, taking the bulk bar with them. */}
-      {current && selection.notice && (
-        <p className="text-muted mb-2 text-sm" role="status">
-          {selection.notice}
-        </p>
-      )}
       <Card>
         {data.rows.length === 0 && <Empty>No transactions match.</Empty>}
-        {data.rows.length > 0 && (
-          <BulkCategorise
-            rows={data.rows}
-            selected={selected}
-            categories={categories}
-            onToggleAll={toggle}
-            onDone={(notice) => setSelection({ key: selectionKey, ids: new Set(), notice })}
-          />
-        )}
         {data.rows.map((row) => (
-          <TransactionRow
-            key={row.id}
-            row={row}
-            categories={categories}
-            tagNames={tagNames}
-            selected={selected.has(row.id)}
-            onSelect={(on) => toggle([row.id], on)}
-          />
+          <TransactionRow key={row.id} row={row} />
         ))}
       </Card>
 
@@ -217,89 +153,7 @@ function TransactionsPage() {
   );
 }
 
-/** Gives the selected transactions one category in a single step. It is manual: nothing applies to later imports. */
-function BulkCategorise(props: {
-  rows: Row[];
-  selected: Set<string>;
-  categories: Category[];
-  onToggleAll: (ids: string[], on: boolean) => void;
-  onDone: (notice?: string) => void;
-}) {
-  const { rows, selected } = props;
-  const queryClient = useQueryClient();
-  const apply = useServerFn(setCategoryForLegs);
-  const accept = useServerFn(acceptCategorySuggestions);
-  const [categoryId, setCategoryId] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const ids = rows.filter(selectable).map((r) => r.id);
-  const allOn = ids.length > 0 && ids.every((id) => selected.has(id));
-  const chosen = rows.filter((r) => selected.has(r.id));
-  const suggestions = chosen.flatMap((r) => suggested(r).map((l) => ({ transactionId: r.id, legKey: l.legKey })));
-
-  const run = async (fn: () => Promise<{ categorised: number }>) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const { categorised } = await fn();
-      await queryClient.invalidateQueries();
-      props.onDone(`Categorised ${categorised} ${categorised === 1 ? 'leg' : 'legs'}.`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not categorise');
-    } finally {
-      setBusy(false);
-    }
-  };
-  const save = () =>
-    run(() => {
-      const legs = chosen.flatMap((r) => categorisable(r).map((l) => ({ transactionId: r.id, legKey: l.legKey })));
-      return apply({ data: { legs, categoryId: categoryId === 'none' ? null : categoryId } });
-    });
-
-  return (
-    <div className="border-line bg-surface sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-t-lg border-b px-4 py-2 text-sm">
-      <label className="flex items-center gap-2">
-        <input type="checkbox" checked={allOn} disabled={ids.length === 0} onChange={(e) => props.onToggleAll(ids, e.target.checked)} />
-        {selected.size > 0 ? `${selected.size} selected` : 'Select all on this page'}
-      </label>
-      {selected.size > 0 && (
-        <>
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="border-line bg-surface min-w-0 rounded border px-2 py-1"
-            aria-label="Category for selected"
-          >
-            <option value="">Choose a category…</option>
-            <option value="none">Uncategorised</option>
-            <CategoryOptions categories={props.categories} />
-          </select>
-          <Button variant="primary" disabled={!categoryId || busy} onClick={save}>
-            Categorise {selected.size}
-          </Button>
-          {suggestions.length > 0 && (
-            <Button disabled={busy} onClick={() => run(() => accept({ data: { legs: suggestions } }))}>
-              Accept {suggestions.length} {suggestions.length === 1 ? 'suggestion' : 'suggestions'}
-            </Button>
-          )}
-          <Button variant="ghost" onClick={() => props.onDone()}>
-            Clear
-          </Button>
-        </>
-      )}
-      {error && <span className="text-negative text-xs">{error}</span>}
-    </div>
-  );
-}
-
-function TransactionRow(props: {
-  row: Row;
-  categories: Category[];
-  tagNames: Map<string, string>;
-  selected: boolean;
-  onSelect: (on: boolean) => void;
-}) {
-  const { row, categories, tagNames } = props;
+function TransactionRow({ row }: { row: Row }) {
   const queryClient = useQueryClient();
   const suppress = useServerFn(setSuppression);
   const unlink = useServerFn(unlinkTransaction);
@@ -321,16 +175,6 @@ function TransactionRow(props: {
   return (
     <div className={`border-line border-b last:border-0 ${active ? '' : 'opacity-60'}`}>
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3">
-        <span className="w-4 shrink-0 pt-0.5">
-          {selectable(row) && (
-            <input
-              type="checkbox"
-              checked={props.selected}
-              onChange={(e) => props.onSelect(e.target.checked)}
-              aria-label={`Select ${row.description}`}
-            />
-          )}
-        </span>
         <div className="text-muted tabular w-24 shrink-0 text-sm">{shortDate(row.postedOn)}</div>
         <div className="min-w-56 flex-1">
           <button className="text-left text-sm font-medium hover:underline" onClick={() => setOpen((o) => !o)}>
@@ -349,19 +193,7 @@ function TransactionRow(props: {
           {money(row.amount, row.commodity)}
         </div>
       </div>
-      {active &&
-        row.legs.map((leg) => (
-          <LegEditor
-            key={leg.id}
-            transactionId={row.id}
-            leg={leg}
-            itemised={row.legs.length > 1}
-            internal={!!row.event?.isInternal}
-            commodity={row.commodity}
-            categories={categories}
-            tagNames={tagNames}
-          />
-        ))}
+      {active && row.event && <LegSummary row={row} />}
       {open && (
         <div className="bg-surface-2 px-4 py-3">
           <TransactionDetail row={row} onChange={refresh} />
@@ -389,244 +221,28 @@ function TransactionRow(props: {
   );
 }
 
-function LegEditor(props: {
-  transactionId: string;
-  leg: LegView;
-  itemised: boolean;
-  internal: boolean;
-  commodity: string;
-  categories: Category[];
-  tagNames: Map<string, string>;
-}) {
-  const { transactionId, leg, categories, tagNames } = props;
-  const queryClient = useQueryClient();
-  const setCategory = useServerFn(setLegCategory);
-  const findSimilar = useServerFn(findSimilarTransactions);
-  const setTags = useServerFn(setLegTags);
-  const suggestion = !leg.categoryId && leg.suggestedCategoryId ? categories.find((c) => c.id === leg.suggestedCategoryId) : undefined;
-  const currentTags = leg.tagIds
-    .map((id) => tagNames.get(id))
-    .filter(Boolean)
-    .join(', ');
-  const [tags, setTagsText] = useState(currentTags);
-  /** A chosen category waiting on the similar-transactions panel; nothing is saved until it is applied. */
-  const [pending, setPending] = useState<{ categoryId: string; matches: Matches } | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const refresh = () => queryClient.invalidateQueries();
-
-  const choose = async (categoryId: string | null) => {
-    setPending(null);
-    setNotice(null);
-    setError(null);
-    try {
-      // Line items and Uncategorised save at once; otherwise offer transactions like this one first.
-      if (categoryId && !leg.legKey.startsWith('line:')) {
-        const matches = await findSimilar({ data: { transactionId, legKey: leg.legKey, categoryId } });
-        if (matches.identical.length + matches.similar.length + matches.categorised.length > 0) {
-          setPending({ categoryId, matches });
-          return;
-        }
-      }
-      await setCategory({ data: { transactionId, legKey: leg.legKey, categoryId } });
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not categorise');
-    }
-  };
-
+/** The legs this transaction gives its event, read-only: categories are set on the Events page. */
+function LegSummary({ row }: { row: Row }) {
+  const internal = !!row.event?.isInternal;
   return (
-    <>
-      <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pl-40 text-sm">
-        {props.itemised && (
-          <span className="text-muted min-w-40">
-            {leg.description} · <span className="tabular">{money(leg.amount, props.commodity)}</span>
+    <ul className="text-muted space-y-0.5 px-4 pb-3 pl-32 text-xs">
+      {row.legs.map((leg) => (
+        <li key={leg.id} className="flex flex-wrap gap-x-3">
+          {leg.role === 'line_item' && (
+            <span className="min-w-40">
+              {leg.description} · <span className="tabular">{money(leg.amount, row.commodity)}</span>
+            </span>
+          )}
+          {leg.role === 'fee' && <span>Fee</span>}
+          <span className={leg.categoryName || (internal && leg.role !== 'fee') ? '' : 'text-warning'}>
+            {internal && leg.role !== 'fee' ? 'Moves money between your accounts' : (leg.categoryName ?? 'Uncategorised')}
           </span>
-        )}
-        {leg.role === 'fee' && <span className="text-muted">Fee</span>}
-        {props.internal && leg.role !== 'fee' ? (
-          <span className="text-muted">Moves money between your accounts; not categorised</span>
-        ) : (
-          <select
-            value={pending?.categoryId ?? leg.categoryId ?? ''}
-            onChange={(e) => choose(e.target.value || null)}
-            className={`border-line bg-surface rounded border px-2 py-1 ${leg.categoryId && !pending ? '' : 'text-warning'}`}
-            aria-label="Category"
-          >
-            <option value="">Uncategorised</option>
-            <CategoryOptions categories={categories} />
-          </select>
-        )}
-        {pending && <span className="text-warning text-xs">Not saved yet</span>}
-        {suggestion && !pending && (
-          <span className="text-muted text-xs">
-            Suggested: {suggestion.path}{' '}
-            <button
-              className="hover:text-ink underline"
-              // Accepting is choosing the suggested category, so it offers similar transactions too.
-              onClick={() => choose(suggestion.id)}
-            >
-              Accept
-            </button>
-          </span>
-        )}
-        <input
-          value={tags}
-          onChange={(e) => setTagsText(e.target.value)}
-          onBlur={() => {
-            if (tags === currentTags) return;
-            const tagNames = tags
-              .split(',')
-              .map((t) => t.trim())
-              .filter(Boolean);
-            void setTags({ data: { transactionId, legKey: leg.legKey, tagNames } }).then(refresh);
-          }}
-          placeholder="Tags, comma separated"
-          className="border-line bg-surface min-w-40 rounded border px-2 py-1"
-          aria-label="Tags"
-        />
-        {notice && (
-          <span className="text-muted text-xs" role="status">
-            {notice}
-          </span>
-        )}
-        {error && <span className="text-negative text-xs">{error}</span>}
-      </div>
-      {pending && (
-        <SimilarTransactions
-          leg={{ transactionId, legKey: leg.legKey }}
-          categoryId={pending.categoryId}
-          matches={pending.matches}
-          categories={categories}
-          onCancel={() => setPending(null)}
-          onDone={(message) => {
-            setPending(null);
-            setNotice(message);
-          }}
-        />
-      )}
-    </>
-  );
-}
-
-type Matches = Awaited<ReturnType<typeof findSimilarTransactions>>;
-type Match = Matches['identical'][number];
-
-const SIMILAR_SECTIONS = [
-  { key: 'identical', title: 'Identical', hint: 'Same description' },
-  { key: 'similar', title: 'Similar', hint: 'Same merchant, different details' },
-  { key: 'categorised', title: 'Already categorised', hint: 'Currently in another category' },
-] as const;
-
-const legId = (l: { transactionId: string; legKey: string }) => `${l.transactionId}:${l.legKey}`;
-
-/**
- * Offers transactions like the one just categorised, so ticked ones get the same category in one step.
- * Identical ones start ticked; similar and already-categorised ones must be ticked deliberately. Each
- * leg still gets its own decision and no rule is stored (feature 14).
- */
-function SimilarTransactions(props: {
-  leg: { transactionId: string; legKey: string };
-  categoryId: string;
-  matches: Matches;
-  categories: Category[];
-  onCancel: () => void;
-  onDone: (notice: string) => void;
-}) {
-  const { matches, categories } = props;
-  const queryClient = useQueryClient();
-  const apply = useServerFn(setCategoryForLegs);
-  const [ticked, setTicked] = useState(() => new Set(matches.identical.map(legId)));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const pathOf = (id: string | null) => categories.find((c) => c.id === id)?.path;
-  const toggle = (rows: Match[], on: boolean) => {
-    const next = new Set(ticked);
-    for (const r of rows) on ? next.add(legId(r)) : next.delete(legId(r));
-    setTicked(next);
-  };
-
-  const save = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const legs = [props.leg, ...SIMILAR_SECTIONS.flatMap((s) => matches[s.key]).filter((m) => ticked.has(legId(m)))].map(
-        ({ transactionId, legKey }) => ({ transactionId, legKey }),
-      );
-      const { categorised } = await apply({ data: { legs, categoryId: props.categoryId } });
-      await queryClient.invalidateQueries();
-      props.onDone(`Categorised ${categorised} ${categorised === 1 ? 'leg' : 'legs'} as ${pathOf(props.categoryId) ?? 'chosen'}.`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not categorise');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="border-line bg-surface-2 mx-4 mb-3 rounded border px-4 py-3 text-sm sm:ml-40">
-      <p className="mb-2">
-        Also give <span className="font-medium">{pathOf(props.categoryId)}</span> to these transactions?
-      </p>
-      {/* The list scrolls inside a capped height, so the question and Apply stay in view. */}
-      <div className="border-line -mx-4 mb-3 max-h-64 overflow-y-auto overscroll-contain border-y px-4 pb-2">
-        {SIMILAR_SECTIONS.map(({ key, title, hint }) => {
-          const rows = matches[key];
-          if (rows.length === 0) return null;
-          const on = rows.filter((r) => ticked.has(legId(r))).length;
-          return (
-            <div key={key}>
-              <label className="bg-surface-2 sticky top-0 flex items-center gap-2 pt-2 pb-1 font-medium">
-                <input
-                  type="checkbox"
-                  checked={on === rows.length}
-                  ref={(el) => {
-                    if (el) el.indeterminate = on > 0 && on < rows.length;
-                  }}
-                  onChange={(e) => toggle(rows, e.target.checked)}
-                />
-                {title}{' '}
-                <span className="text-muted text-xs font-normal">
-                  · {hint} · {rows.length}
-                </span>
-              </label>
-              <ul className="space-y-1">
-                {rows.map((r) => (
-                  <li key={legId(r)}>
-                    <label className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 pl-6">
-                      <input
-                        type="checkbox"
-                        className="-ml-6 self-center"
-                        checked={ticked.has(legId(r))}
-                        onChange={(e) => toggle([r], e.target.checked)}
-                      />
-                      <span className="text-muted tabular w-24 shrink-0">{shortDate(r.postedOn)}</span>
-                      <span className="min-w-40 flex-1">
-                        {r.description} <span className="text-muted text-xs">· {r.accountName}</span>
-                        {r.categoryId && <span className="text-muted text-xs"> · now {pathOf(r.categoryId) ?? 'another category'}</span>}
-                      </span>
-                      <span className={`tabular w-28 text-right ${r.amount.startsWith('-') ? '' : 'text-positive'}`}>
-                        {money(r.amount, r.commodity)}
-                      </span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })}
-        {matches.truncated && <p className="text-muted pt-2 text-xs">Showing the most recent matches only.</p>}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" disabled={busy} onClick={save}>
-          Apply category to {ticked.size + 1}
-        </Button>
-        <Button variant="ghost" disabled={busy} onClick={props.onCancel}>
-          Cancel
-        </Button>
-        {error && <span className="text-negative text-xs">{error}</span>}
-      </div>
-    </div>
+          <Link to="/events" search={{ id: row.event!.id, uncategorised: false, page: 0 }} className="hover:text-ink underline">
+            {internal && leg.role !== 'fee' ? 'view event' : 'categorise in event'}
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -651,13 +267,13 @@ function TransactionDetail({ row, onChange }: { row: Row; onChange: () => void }
         </ul>
         <Receipts transactionId={row.id} receipts={detail.data?.receipts} onChange={onChange} />
         {row.isSourceSupported && !row.isSuppressed && !row.event?.isInternal && row.legs[0]?.role !== 'fee' && (
-          <Itemiser row={row} onChange={onChange} />
+          <LineItems row={row} onChange={onChange} />
         )}
         {row.isSourceSupported && !row.isSuppressed && <LinkPicker row={row} onChange={onChange} />}
       </div>
       <div>
-        <h3 className="mb-1 font-medium">Decision history</h3>
-        {detail.data?.history.length === 0 && <p className="text-muted text-xs">No decisions yet.</p>}
+        <h3 className="mb-1 font-medium">History</h3>
+        {detail.data?.history.length === 0 && <p className="text-muted text-xs">No decisions or categories yet.</p>}
         <ul className="text-muted space-y-1 text-xs">
           {detail.data?.history.map((h) => (
             <li key={h.id}>
@@ -797,39 +413,56 @@ function LinkPicker({ row, onChange }: { row: Row; onChange: () => void }) {
   );
 }
 
-function Itemiser({ row, onChange }: { row: Row; onChange: () => void }) {
-  const itemise = useServerFn(itemiseTransaction);
-  const itemised = row.legs.length > 1;
+/**
+ * The transaction's line items (feature 05). They must sum exactly to its amount; each becomes its own
+ * leg. Lines keep their identity when edited, so a line's category survives changes to the others.
+ */
+function LineItems({ row, onChange }: { row: Row; onChange: () => void }) {
+  const save = useServerFn(saveLineItems);
+  const itemised = row.lineItems.length > 0;
   const sign = row.amount.startsWith('-') ? '-' : '';
-  const [lines, setLines] = useState(() =>
+  const [lines, setLines] = useState<Array<{ id?: string; amount: string; description: string }>>(() =>
     itemised
-      ? row.legs.map((l) => ({ amount: l.amount.replace(/^-/, ''), description: l.description }))
+      ? row.lineItems.map((l) => ({
+          id: l.id,
+          amount: l.amount
+            .replace(/^-/, '')
+            .replace(/(\.\d*?)0+$/, '$1')
+            .replace(/\.$/, ''),
+          description: l.description,
+        }))
       : [
           { amount: '', description: '' },
           { amount: '', description: '' },
         ],
   );
   const [error, setError] = useState<string | null>(null);
-  const valid = lines.every((l) => /^\d+(\.\d{1,2})?$/.test(l.amount));
+  const valid = lines.length >= 2 && lines.every((l) => /^\d+(\.\d{1,2})?$/.test(l.amount));
   const total = valid ? add(...lines.map((l) => `${sign}${l.amount}`)) : null;
 
-  const save = async (value: typeof lines | null) => {
+  const submit = async (value: typeof lines | null) => {
     setError(null);
     try {
-      await itemise({
-        data: { transactionId: row.id, lines: value && value.map((l) => ({ amount: `${sign}${l.amount}`, description: l.description })) },
+      await save({
+        data: {
+          transactionId: row.id,
+          lines: value && value.map((l) => ({ id: l.id, amount: `${sign}${l.amount}`, description: l.description })),
+        },
       });
       onChange();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not itemise');
+      setError(err instanceof Error ? err.message : 'Could not save line items');
     }
   };
 
   return (
     <div className="mt-4">
-      <h3 className="mb-1 font-medium">Itemise</h3>
+      <h3 className="mb-1 font-medium">Line items</h3>
+      <p className="text-muted mb-2 text-xs">
+        Split the transaction into parts, e.g. from a receipt. Each part becomes its own leg to categorise.
+      </p>
       {lines.map((line, i) => (
-        <div key={i} className="mb-1 flex gap-2">
+        <div key={line.id ?? `new-${i}`} className="mb-1 flex gap-2">
           <input
             value={line.description}
             onChange={(e) => setLines(lines.map((l, j) => (j === i ? { ...l, description: e.target.value } : l)))}
@@ -843,6 +476,14 @@ function Itemiser({ row, onChange }: { row: Row; onChange: () => void }) {
             inputMode="decimal"
             className="border-line bg-surface tabular w-24 rounded border px-2 py-1 text-right"
           />
+          <Button
+            variant="ghost"
+            disabled={lines.length <= 2}
+            onClick={() => setLines(lines.filter((_, j) => j !== i))}
+            aria-label="Remove line"
+          >
+            ×
+          </Button>
         </div>
       ))}
       <div className="text-muted mb-2 text-xs">
@@ -850,10 +491,10 @@ function Itemiser({ row, onChange }: { row: Row; onChange: () => void }) {
       </div>
       <div className="flex gap-2">
         <Button onClick={() => setLines([...lines, { amount: '', description: '' }])}>Add line</Button>
-        <Button variant="primary" disabled={!total || !eq(total, row.amount)} onClick={() => save(lines)}>
-          Save itemisation
+        <Button variant="primary" disabled={!total || !eq(total, row.amount)} onClick={() => submit(lines)}>
+          Save line items
         </Button>
-        {itemised && <Button onClick={() => save(null)}>Undo itemisation</Button>}
+        {itemised && <Button onClick={() => submit(null)}>Remove line items</Button>}
       </div>
       {error && <p className="text-negative mt-1 text-xs">{error}</p>}
     </div>

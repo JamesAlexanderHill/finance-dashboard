@@ -59,7 +59,7 @@ This feature owns its corresponding domain policies and primary records as descr
 | [Valuation and FX](11-valuation-fx.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Manual Accounts](12-manual-accounts.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Financial Dashboard](13-dashboard.md) | Integration | Surfaces unresolved matches that limit accurate event and cash-flow totals. |
-| [Categories and Sankey](14-categories.md) | Integration | Refund-to-purchase links supply the refund's default category; category decisions share the decision store. |
+| [Categories and Sankey](14-categories.md) | Integration | Refund-to-purchase links supply the refund's default category; categories are leg assignments, kept apart from reconciliation decisions (ADR 0014). |
 
 ## Changes requiring reciprocal documentation
 

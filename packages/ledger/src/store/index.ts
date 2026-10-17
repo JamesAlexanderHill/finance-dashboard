@@ -3,6 +3,8 @@ export { refreshTransactionSupport } from './support';
 export { rebuildEvents } from './rebuild';
 export { appendDecision, recordDecisions, type NewDecision } from './decisions';
 export { refreshProjection } from './refresh';
+export { appendAssignment, recordAssignments, type NewAssignment } from './assignments';
+export { setLineItems, type LineItemChange } from './line-items';
 export { autoMatchTransfers, transferCandidates } from './transfers';
 export { CategoriseError, categoriseLegs, type LegRef } from './categorise';
 export { acceptSuggestions, suggestCategories, type CategorySuggestion } from './suggestions';
