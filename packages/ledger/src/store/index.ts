@@ -6,3 +6,4 @@ export { refreshProjection } from './refresh';
 export { autoMatchTransfers, transferCandidates } from './transfers';
 export { CategoriseError, categoriseLegs, type LegRef } from './categorise';
 export { acceptSuggestions, suggestCategories, type CategorySuggestion } from './suggestions';
+export { findSimilarLegs, type SimilarLeg, type SimilarLegs } from './similar';

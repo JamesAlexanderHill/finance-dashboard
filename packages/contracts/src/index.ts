@@ -107,6 +107,8 @@ const legRefs = z
 export const setCategoryForLegsInput = z.object({ legs: legRefs, categoryId: z.uuid().nullable() });
 /** Accepts the current category suggestions for these legs. */
 export const acceptSuggestionsInput = z.object({ legs: legRefs });
+/** Finds legs like this one, offered for the same category when it is categorised. */
+export const similarLegsInput = z.object({ transactionId: z.uuid(), legKey, categoryId: z.uuid() });
 export const setTagsInput = z.object({ transactionId: z.uuid(), legKey, tagNames: z.array(z.string().trim().min(1).max(60)).max(20) });
 export const linkTransactionsInput = z.object({ transactionIds: z.array(z.uuid()).min(2).max(20) });
 export const unlinkTransactionInput = z.object({ transactionId: z.uuid() });

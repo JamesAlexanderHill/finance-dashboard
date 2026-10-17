@@ -9,6 +9,7 @@ import {
   setReceiptRemovedInput,
   setSuppressionInput,
   setTagsInput,
+  similarLegsInput,
   transactionFilter,
 } from '@finance/contracts';
 import {
@@ -24,7 +25,7 @@ import {
 } from '@finance/db';
 import { listReceipts, setReceiptRemoved } from '@finance/imports';
 import { validateItemisation } from '@finance/ledger';
-import { acceptSuggestions, categoriseLegs, recordDecisions, suggestCategories } from '@finance/ledger/store';
+import { acceptSuggestions, categoriseLegs, findSimilarLegs, recordDecisions, suggestCategories } from '@finance/ledger/store';
 import { workspaceMiddleware } from './session';
 
 export class TransactionError extends Error {}
@@ -203,6 +204,18 @@ export const setCategoryForLegs = createServerFn({ method: 'POST' })
   .handler(({ context, data }) =>
     getDb().transaction((tx) => categoriseLegs(tx, context.workspaceId, data.legs, data.categoryId, context.userId)),
   );
+
+/**
+ * Transactions like the one being categorised, in three sections (identical, similar, already in another
+ * category), so the user can tick which also get the category. Applying goes through `setCategoryForLegs`.
+ */
+export const findSimilarTransactions = createServerFn({ method: 'GET' })
+  .middleware([workspaceMiddleware])
+  .validator(similarLegsInput)
+  .handler(async ({ context, data }) => {
+    await ownedTransaction(context.workspaceId, data.transactionId);
+    return findSimilarLegs(getDb(), context.workspaceId, data);
+  });
 
 /** Accepts the suggested category of each given leg; each gets an ordinary category decision. */
 export const acceptCategorySuggestions = createServerFn({ method: 'POST' })
