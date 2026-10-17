@@ -177,6 +177,9 @@ export const dashboardRange = z
     from: isoDate,
     to: isoDate,
     tagIds: z.array(z.uuid()).default([]),
+    /** The period compared against; defaults to the one before (see `previousRange`). */
+    compareFrom: isoDate.optional(),
+    compareTo: isoDate.optional(),
   })
   .refine((r) => r.from <= r.to, 'from must not be after to');
 export type DashboardRange = z.infer<typeof dashboardRange>;
@@ -190,6 +193,8 @@ export const dashboardSeriesQuery = z
     to: isoDate,
     tagIds: z.array(z.uuid()).default([]),
     resolution: chartResolution,
+    compareFrom: isoDate.optional(),
+    compareTo: isoDate.optional(),
     /** Expense category to drill into for the stacked expense bars. */
     expenseFocus: z.uuid().nullable().default(null),
   })

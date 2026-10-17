@@ -18,6 +18,7 @@ import { Route as TransactionsRouteImport } from './routes/transactions'
 import { Route as TransfersRouteImport } from './routes/transfers'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppCategoriesRouteImport } from './routes/_app/categories'
+import { Route as AppExpensesRouteImport } from './routes/_app/expenses'
 import { Route as AppSankeyRouteImport } from './routes/_app/sankey'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as HoldingsIndexRouteImport } from './routes/holdings.index'
@@ -80,6 +81,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppCategoriesRoute = AppCategoriesRouteImport.update({
   id: '/categories',
   path: '/categories',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppExpensesRoute = AppExpensesRouteImport.update({
+  id: '/expenses',
+  path: '/expenses',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSankeyRoute = AppSankeyRouteImport.update({
@@ -187,6 +193,7 @@ export interface FileRoutesByFullPath {
   '/transactions': typeof TransactionsRoute
   '/transfers': typeof TransfersRoute
   '/categories': typeof AppCategoriesRoute
+  '/expenses': typeof AppExpensesRoute
   '/sankey': typeof AppSankeyRoute
   '/settings': typeof AppSettingsRoute
   '/holdings/$instrumentId': typeof HoldingsInstrumentIdRoute
@@ -215,6 +222,7 @@ export interface FileRoutesByTo {
   '/transactions': typeof TransactionsRoute
   '/transfers': typeof TransfersRoute
   '/categories': typeof AppCategoriesRoute
+  '/expenses': typeof AppExpensesRoute
   '/sankey': typeof AppSankeyRoute
   '/settings': typeof AppSettingsRoute
   '/holdings/$instrumentId': typeof HoldingsInstrumentIdRoute
@@ -246,6 +254,7 @@ export interface FileRoutesById {
   '/transactions': typeof TransactionsRoute
   '/transfers': typeof TransfersRoute
   '/_app/categories': typeof AppCategoriesRoute
+  '/_app/expenses': typeof AppExpensesRoute
   '/_app/sankey': typeof AppSankeyRoute
   '/_app/settings': typeof AppSettingsRoute
   '/holdings/$instrumentId': typeof HoldingsInstrumentIdRoute
@@ -278,6 +287,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/transfers'
     | '/categories'
+    | '/expenses'
     | '/sankey'
     | '/settings'
     | '/holdings/$instrumentId'
@@ -306,6 +316,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/transfers'
     | '/categories'
+    | '/expenses'
     | '/sankey'
     | '/settings'
     | '/holdings/$instrumentId'
@@ -336,6 +347,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/transfers'
     | '/_app/categories'
+    | '/_app/expenses'
     | '/_app/sankey'
     | '/_app/settings'
     | '/holdings/$instrumentId'
@@ -439,6 +451,13 @@ declare module '@tanstack/react-router' {
       path: '/categories'
       fullPath: '/categories'
       preLoaderRoute: typeof AppCategoriesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/expenses': {
+      id: '/_app/expenses'
+      path: '/expenses'
+      fullPath: '/expenses'
+      preLoaderRoute: typeof AppExpensesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/sankey': {
@@ -579,6 +598,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppCategoriesRoute: typeof AppCategoriesRoute
+  AppExpensesRoute: typeof AppExpensesRoute
   AppSankeyRoute: typeof AppSankeyRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -595,6 +615,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppCategoriesRoute: AppCategoriesRoute,
+  AppExpensesRoute: AppExpensesRoute,
   AppSankeyRoute: AppSankeyRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,

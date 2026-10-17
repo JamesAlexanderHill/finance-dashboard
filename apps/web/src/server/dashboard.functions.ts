@@ -39,7 +39,7 @@ export const getDashboardSummary = createServerFn({ method: 'GET' })
     const { workspaceId } = context;
     const today = todayIso();
     const range: DateRange = { from: data.from, to: data.to };
-    const previous = previousRange(range);
+    const previous = compareRangeOf(data);
     const [valuation, cashLegs, cats] = await Promise.all([
       loadValuationInputs(workspaceId),
       loadCashFlowLegs(workspaceId, { from: previous.from, to: range.to, tagIds: data.tagIds }),
@@ -97,19 +97,13 @@ export const getDashboardSummary = createServerFn({ method: 'GET' })
     };
   });
 
-/** Both periods bucketed at the same resolution; previous buckets line up with current ones by index. */
-function bucketPair(range: DateRange, resolution: Parameters<typeof bucketsIn>[1]) {
-  const current = bucketsIn(range, resolution);
-  return {
-    resolution: current.resolution,
-    current: current.buckets,
-    previous: bucketsIn(previousRange(range), current.resolution).buckets,
-  };
-}
+/** The period compared against: the one the client asked for, or the one before the page period. */
+const compareRangeOf = (data: { from: string; to: string; compareFrom?: string; compareTo?: string }): DateRange =>
+  data.compareFrom && data.compareTo && data.compareFrom <= data.compareTo
+    ? { from: data.compareFrom, to: data.compareTo }
+    : previousRange({ from: data.from, to: data.to });
 
-/** Account groups the net worth chart stacks, in drawing order; liabilities stack below the line. */
-export const ASSET_GROUPS = ['Cash', 'Investments', 'Property & other'] as const;
-export const LIABILITY_GROUPS = ['Loans', 'Credit cards', 'Other liabilities'] as const;
+/** The account group the net worth chart stacks an account under. */
 function groupOf(a: { classification: 'asset' | 'liability'; kind: string; accountType: string }): string {
   if (a.classification === 'liability')
     return a.accountType === 'loan' ? 'Loans' : a.accountType === 'credit_card' ? 'Credit cards' : 'Other liabilities';
@@ -117,7 +111,7 @@ function groupOf(a: { classification: 'asset' | 'liability'; kind: string; accou
   return a.accountType === 'bank' || a.accountType === 'payment_processor' ? 'Cash' : 'Property & other';
 }
 
-/** Net worth, split by account group, at the end of each bucket of the page period and of the previous period. */
+/** Net worth, split by account group, at the end of each bucket of the page period. */
 export const getNetWorthSeries = createServerFn({ method: 'GET' })
   .middleware([workspaceMiddleware])
   .validator(dashboardSeriesQuery)
@@ -126,9 +120,11 @@ export const getNetWorthSeries = createServerFn({ method: 'GET' })
     const range: DateRange = { from: data.from, to: data.to };
     const valuation = await loadValuationInputs(context.workspaceId);
     const groupById = new Map(valuation.accounts.map((a) => [a.id, groupOf(a)]));
-    const { resolution, current, previous } = bucketPair(range, data.resolution);
-    const series = (buckets: Period[]) =>
-      buckets.map((b) => {
+    const { resolution, buckets } = bucketsIn(range, data.resolution);
+    return {
+      resolution,
+      range: describe(range),
+      current: buckets.map((b) => {
         // Buckets that start after today have no value yet.
         if (b.from > today) return { label: b.label, on: b.to, value: null };
         const p = netWorthAt(valuation.accounts, b.to < today ? b.to : today, valuation.prices, valuation.fx);
@@ -151,17 +147,14 @@ export const getNetWorthSeries = createServerFn({ method: 'GET' })
             notes: p.accounts.filter((a) => a.notes.length).map((a) => `${a.name}: ${a.notes.join('; ')}`),
           },
         };
-      });
-    return {
-      resolution,
-      range: describe(range),
-      previous: describe(previousRange(range)),
-      current: series(current),
-      prior: series(previous),
+      }),
     };
   });
 
-/** Income, expenses and expenses by category per bucket of the page period and of the previous period. */
+/**
+ * Income, expenses and expenses by category per bucket of the page period, and the compared period
+ * bucketed at the same resolution (its buckets line up with the page period's by index).
+ */
 export const getFlowSeries = createServerFn({ method: 'GET' })
   .middleware([workspaceMiddleware])
   .validator(dashboardSeriesQuery)
@@ -169,9 +162,15 @@ export const getFlowSeries = createServerFn({ method: 'GET' })
     const { workspaceId } = context;
     const today = todayIso();
     const range: DateRange = { from: data.from, to: data.to };
-    const { resolution, current, previous } = bucketPair(range, data.resolution);
+    const compared = compareRangeOf(data);
+    const { resolution, buckets: current } = bucketsIn(range, data.resolution);
+    const previous = bucketsIn(compared, resolution).buckets;
     const [cashLegs, cats] = await Promise.all([
-      loadCashFlowLegs(workspaceId, { from: previous[0]!.from, to: range.to, tagIds: data.tagIds }),
+      loadCashFlowLegs(workspaceId, {
+        from: compared.from < range.from ? compared.from : range.from,
+        to: compared.to > range.to ? compared.to : range.to,
+        tagIds: data.tagIds,
+      }),
       loadCategories(workspaceId),
     ]);
     const { byId, root, name } = categoryNames(cats);
@@ -194,11 +193,11 @@ export const getFlowSeries = createServerFn({ method: 'GET' })
     const prior = series(previous);
 
     const order = (id: string) => (id === UNCATEGORISED ? 1e9 : cats.findIndex((c) => c.id === id));
-    const segmentIds = [...new Set([...now, ...prior].flatMap((b) => Object.keys(b.segments)))].sort((a, b) => order(a) - order(b));
+    const segmentIds = [...new Set(now.flatMap((b) => Object.keys(b.segments)))].sort((a, b) => order(a) - order(b));
     return {
       resolution,
       range: describe(range),
-      previous: describe(previousRange(range)),
+      previous: describe(compared),
       current: now,
       prior,
       focus: focus ? { id: focus, name: name(focus) } : null,

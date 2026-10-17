@@ -44,27 +44,7 @@ function useWidth() {
   return { ref, width };
 }
 
-/** `$1,200.00 (prev $1,000.00, +20%)` when a previous-period value is given. */
-function withPrevious(amount: string, previous: string | undefined) {
-  if (previous === undefined) return `${money(amount)} (none in previous period)`;
-  const before = Number(previous);
-  const change =
-    before === 0 ? '' : `, ${Number(amount) >= before ? '+' : ''}${Math.round(((Number(amount) - before) / Math.abs(before)) * 100)}%`;
-  return `${money(amount)} (prev ${money(previous)}${change})`;
-}
-
-export function SankeyChart({
-  nodes,
-  links,
-  onSelect,
-  previous,
-}: {
-  nodes: ChartNode[];
-  links: ChartLink[];
-  onSelect: (node: ChartNode) => void;
-  /** Previous-period value per node ID: when given, node tooltips compare with it. */
-  previous?: Record<string, string>;
-}) {
+export function SankeyChart({ nodes, links, onSelect }: { nodes: ChartNode[]; links: ChartLink[]; onSelect: (node: ChartNode) => void }) {
   const { ref, width } = useWidth();
   const [hover, setHover] = useState<{ x: number; y: number; text: string } | null>(null);
   const height = Math.max(320, Math.min(720, nodes.length * 34));
@@ -134,7 +114,7 @@ export function SankeyChart({
                   onMouseMove={(e) =>
                     show(
                       e,
-                      `${n.label}: ${previous ? withPrevious(n.amount, previous[n.id]) : money(n.amount)}${n.drillable ? ' · click to drill in' : clickable ? ' · click to list legs' : ''}`,
+                      `${n.label}: ${money(n.amount)}${n.drillable ? ' · click to drill in' : clickable ? ' · click to list legs' : ''}`,
                     )
                   }
                   onMouseLeave={() => setHover(null)}

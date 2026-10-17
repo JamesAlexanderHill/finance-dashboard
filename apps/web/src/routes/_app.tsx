@@ -20,7 +20,8 @@ const SECTIONS = [
   {
     label: 'Dashboard',
     tabs: [
-      { to: '/', label: 'Overview' },
+      { to: '/', label: 'Overview', keepsPeriod: true },
+      { to: '/expenses', label: 'Expenses', keepsPeriod: true },
       { to: '/sankey', label: 'Sankey' },
     ],
   },
@@ -58,6 +59,8 @@ function activeTab(pathname: string): Tab | undefined {
     .filter((t) => matches(t.to))
     .sort((a, b) => b.to.length - a.to.length)[0];
 }
+
+const keepPeriod = (prev: Record<string, unknown>) => ({ preset: prev.preset, from: prev.from, to: prev.to, tags: prev.tags });
 
 function AppLayout() {
   const router = useRouter();
@@ -100,6 +103,8 @@ function AppLayout() {
               <Link
                 key={t.to}
                 to={t.to}
+                // Overview and Expenses share the page period, so moving between them keeps it.
+                search={'keepsPeriod' in t ? (keepPeriod as never) : undefined}
                 className={`-mb-px border-b-2 py-2 whitespace-nowrap ${
                   t === tab ? 'border-accent text-ink font-medium' : 'text-muted hover:text-ink border-transparent'
                 }`}
