@@ -4,6 +4,7 @@ import { useServerFn } from '@tanstack/react-start';
 import { useRef, useState } from 'react';
 import { z } from 'zod';
 import { add, eq } from '@finance/shared';
+import { CategoryOptions } from '../../components/category-options';
 import { Badge, Button, Card, Empty, PageHeader } from '../../components/ui';
 import { flattenTree } from '../../lib/category-tree';
 import { money, shortDate } from '../../lib/format';
@@ -271,12 +272,7 @@ function BulkCategorise(props: {
           >
             <option value="">Choose a category…</option>
             <option value="none">Uncategorised</option>
-            {props.categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {'  '.repeat(c.depth)}
-                {c.name}
-              </option>
-            ))}
+            <CategoryOptions categories={props.categories} />
           </select>
           <Button variant="primary" disabled={!categoryId || busy} onClick={save}>
             Categorise {selected.size}
@@ -458,12 +454,7 @@ function LegEditor(props: {
             aria-label="Category"
           >
             <option value="">Uncategorised</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {'  '.repeat(c.depth)}
-                {c.name}
-              </option>
-            ))}
+            <CategoryOptions categories={categories} />
           </select>
         )}
         {pending && <span className="text-warning text-xs">Not saved yet</span>}
@@ -577,52 +568,55 @@ function SimilarTransactions(props: {
       <p className="mb-2">
         Also give <span className="font-medium">{pathOf(props.categoryId)}</span> to these transactions?
       </p>
-      {SIMILAR_SECTIONS.map(({ key, title, hint }) => {
-        const rows = matches[key];
-        if (rows.length === 0) return null;
-        const on = rows.filter((r) => ticked.has(legId(r))).length;
-        return (
-          <div key={key} className="mb-3">
-            <label className="mb-1 flex items-center gap-2 font-medium">
-              <input
-                type="checkbox"
-                checked={on === rows.length}
-                ref={(el) => {
-                  if (el) el.indeterminate = on > 0 && on < rows.length;
-                }}
-                onChange={(e) => toggle(rows, e.target.checked)}
-              />
-              {title}{' '}
-              <span className="text-muted text-xs font-normal">
-                · {hint} · {rows.length}
-              </span>
-            </label>
-            <ul className="space-y-1">
-              {rows.map((r) => (
-                <li key={legId(r)}>
-                  <label className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 pl-6">
-                    <input
-                      type="checkbox"
-                      className="-ml-6 self-center"
-                      checked={ticked.has(legId(r))}
-                      onChange={(e) => toggle([r], e.target.checked)}
-                    />
-                    <span className="text-muted tabular w-24 shrink-0">{shortDate(r.postedOn)}</span>
-                    <span className="min-w-40 flex-1">
-                      {r.description} <span className="text-muted text-xs">· {r.accountName}</span>
-                      {r.categoryId && <span className="text-muted text-xs"> · now {pathOf(r.categoryId) ?? 'another category'}</span>}
-                    </span>
-                    <span className={`tabular w-28 text-right ${r.amount.startsWith('-') ? '' : 'text-positive'}`}>
-                      {money(r.amount, r.commodity)}
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })}
-      {matches.truncated && <p className="text-muted mb-2 text-xs">Showing the most recent matches only.</p>}
+      {/* The list scrolls inside a capped height, so the question and Apply stay in view. */}
+      <div className="border-line -mx-4 mb-3 max-h-64 overflow-y-auto overscroll-contain border-y px-4 pb-2">
+        {SIMILAR_SECTIONS.map(({ key, title, hint }) => {
+          const rows = matches[key];
+          if (rows.length === 0) return null;
+          const on = rows.filter((r) => ticked.has(legId(r))).length;
+          return (
+            <div key={key}>
+              <label className="bg-surface-2 sticky top-0 flex items-center gap-2 pt-2 pb-1 font-medium">
+                <input
+                  type="checkbox"
+                  checked={on === rows.length}
+                  ref={(el) => {
+                    if (el) el.indeterminate = on > 0 && on < rows.length;
+                  }}
+                  onChange={(e) => toggle(rows, e.target.checked)}
+                />
+                {title}{' '}
+                <span className="text-muted text-xs font-normal">
+                  · {hint} · {rows.length}
+                </span>
+              </label>
+              <ul className="space-y-1">
+                {rows.map((r) => (
+                  <li key={legId(r)}>
+                    <label className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 pl-6">
+                      <input
+                        type="checkbox"
+                        className="-ml-6 self-center"
+                        checked={ticked.has(legId(r))}
+                        onChange={(e) => toggle([r], e.target.checked)}
+                      />
+                      <span className="text-muted tabular w-24 shrink-0">{shortDate(r.postedOn)}</span>
+                      <span className="min-w-40 flex-1">
+                        {r.description} <span className="text-muted text-xs">· {r.accountName}</span>
+                        {r.categoryId && <span className="text-muted text-xs"> · now {pathOf(r.categoryId) ?? 'another category'}</span>}
+                      </span>
+                      <span className={`tabular w-28 text-right ${r.amount.startsWith('-') ? '' : 'text-positive'}`}>
+                        {money(r.amount, r.commodity)}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+        {matches.truncated && <p className="text-muted pt-2 text-xs">Showing the most recent matches only.</p>}
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="primary" disabled={busy} onClick={save}>
           Apply category to {ticked.size + 1}
