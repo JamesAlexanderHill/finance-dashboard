@@ -185,19 +185,35 @@ export const cashFlowQuery = z.object({
 });
 export type CashFlowQuery = z.infer<typeof cashFlowQuery>;
 
-export const dashboardQuery = z.object({
-  granularity: z.enum(['week', 'month', 'quarter', 'year', 'custom']).default('month'),
-  /** Number of previous periods to compare against. */
-  n: z.number().int().min(1).max(24).default(6),
-  /** Any date in the selected period (default today); ignored for custom. */
-  date: isoDate.optional(),
-  from: isoDate.optional(),
-  to: isoDate.optional(),
-  tagIds: z.array(z.uuid()).default([]),
-  /** Expense category to drill into for the stacked expense bars. */
-  expenseFocus: z.uuid().nullable().default(null),
-});
-export type DashboardQuery = z.infer<typeof dashboardQuery>;
+/** The dashboard's page period; everything on the page is for this range and compares with the one before it. */
+export const dashboardRange = z
+  .object({
+    from: isoDate,
+    to: isoDate,
+    tagIds: z.array(z.uuid()).default([]),
+    /** The period compared against; defaults to the one before (see `previousRange`). */
+    compareFrom: isoDate.optional(),
+    compareTo: isoDate.optional(),
+  })
+  .refine((r) => r.from <= r.to, 'from must not be after to');
+export type DashboardRange = z.infer<typeof dashboardRange>;
+
+export const chartResolution = z.enum(['day', 'week', 'month', 'quarter', 'year']);
+
+/** One dashboard chart: the page period bucketed at the chart's own resolution. */
+export const dashboardSeriesQuery = z
+  .object({
+    from: isoDate,
+    to: isoDate,
+    tagIds: z.array(z.uuid()).default([]),
+    resolution: chartResolution,
+    compareFrom: isoDate.optional(),
+    compareTo: isoDate.optional(),
+    /** Expense category to drill into for the stacked expense bars. */
+    expenseFocus: z.uuid().nullable().default(null),
+  })
+  .refine((r) => r.from <= r.to, 'from must not be after to');
+export type DashboardSeriesQuery = z.infer<typeof dashboardSeriesQuery>;
 
 export const legsQuery = z.object({
   from: isoDate,

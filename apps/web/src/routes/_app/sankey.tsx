@@ -3,67 +3,43 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
 import { useState } from 'react';
 import { z } from 'zod';
-import { addMonths, endOfMonth, startOfMonth, todayIso } from '@finance/shared';
+import { rangeLabel } from '@finance/shared';
+import { categoriesQuery, DashboardHeader, pageRange, periodSearch } from '../../components/dashboard';
 import { SankeyChart, type ChartNode } from '../../components/sankey-chart';
-import { Button, Card, Empty, PageHeader } from '../../components/ui';
-import { money, monthYear, shortDate } from '../../lib/format';
-import { listCategories } from '../../server/categories.functions';
+import { Button, Card, Empty } from '../../components/ui';
+import { money, shortDate } from '../../lib/format';
 import { getCashFlow, getNodeLegs } from '../../server/cashflow.functions';
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const searchSchema = z.object({
-  from: isoDate.optional(),
-  to: isoDate.optional(),
-  tags: z.array(z.uuid()).optional(),
-  focus: z.uuid().optional(),
-});
+// The same page period as the Overview and Expenses tabs.
+const searchSchema = z.object({ ...periodSearch, focus: z.uuid().optional() });
 type Search = z.infer<typeof searchSchema>;
 
-/** Defaults to the current calendar month. */
-function period(s: Search) {
-  const from = s.from ?? startOfMonth(todayIso());
-  return { from, to: s.to ?? endOfMonth(from) };
-}
-
 const cashFlowQuery = (s: Search) => {
-  const { from, to } = period(s);
+  const { from, to } = pageRange(s);
   return queryOptions({
     queryKey: ['cashflow', from, to, s.tags ?? [], s.focus ?? null],
     queryFn: () => getCashFlow({ data: { from, to, tagIds: s.tags ?? [], focusId: s.focus ?? null } }),
   });
 };
-const categoriesQuery = queryOptions({ queryKey: ['categories'], queryFn: () => listCategories() });
 
-export const Route = createFileRoute('/_app/cash-flow')({
+export const Route = createFileRoute('/_app/sankey')({
   validateSearch: searchSchema,
   loaderDeps: ({ search }) => search,
   loader: ({ context, deps }) =>
     Promise.all([context.queryClient.ensureQueryData(cashFlowQuery(deps)), context.queryClient.ensureQueryData(categoriesQuery)]),
-  component: CashFlowPage,
+  component: SankeyPage,
 });
 
-function CashFlowPage() {
+function SankeyPage() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const { data } = useSuspenseQuery(cashFlowQuery(search));
-  const { data: cats } = useSuspenseQuery(categoriesQuery);
   const [selected, setSelected] = useState<ChartNode | null>(null);
-  const { from, to } = period(search);
-  const isMonth = from === startOfMonth(from) && to === endOfMonth(from);
+  const { from, to } = pageRange(search);
 
   const set = (patch: Partial<Search>) => {
     setSelected(null);
     void navigate({ search: (prev) => ({ ...prev, ...patch }) });
-  };
-  const shiftMonth = (n: number) => {
-    const start = addMonths(from, n);
-    set({ from: start, to: endOfMonth(start) });
-  };
-  const toggleTag = (id: string) => {
-    const tags = new Set(search.tags ?? []);
-    if (tags.has(id)) tags.delete(id);
-    else tags.add(id);
-    set({ tags: tags.size ? [...tags] : undefined });
   };
   const onSelect = (node: ChartNode) => {
     if (node.drillable && node.id !== search.focus) set({ focus: node.id });
@@ -73,53 +49,7 @@ function CashFlowPage() {
   const t = data.totals;
   return (
     <>
-      <PageHeader
-        title="Cash flow"
-        description={isMonth ? monthYear(from) : `${shortDate(from)} – ${shortDate(to)}`}
-        actions={
-          <>
-            <Button onClick={() => shiftMonth(-1)} aria-label="Previous month">
-              ←
-            </Button>
-            <Button onClick={() => set({ from: undefined, to: undefined })}>This month</Button>
-            <Button onClick={() => shiftMonth(1)} aria-label="Next month">
-              →
-            </Button>
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => e.target.value && set({ from: e.target.value })}
-              className="border-line bg-surface rounded border px-2 py-1 text-sm"
-              aria-label="From"
-            />
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => e.target.value && set({ to: e.target.value })}
-              className="border-line bg-surface rounded border px-2 py-1 text-sm"
-              aria-label="To"
-            />
-          </>
-        }
-      />
-
-      {cats.tags.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-muted">Tags</span>
-          {cats.tags.map((tag) => {
-            const on = search.tags?.includes(tag.id);
-            return (
-              <button
-                key={tag.id}
-                onClick={() => toggleTag(tag.id)}
-                className={`rounded-full border px-2.5 py-0.5 ${on ? 'border-accent bg-accent text-accent-ink' : 'border-line bg-surface'}`}
-              >
-                {tag.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <DashboardHeader title="Sankey" description={rangeLabel({ from, to })} search={search} set={set} reset={{}} />
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Income" value={t.income} />

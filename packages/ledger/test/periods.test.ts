@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { cashFlowByPeriod, expensesByPeriod, periodSeries, type SankeyCategory } from '../src';
+import { bucketsIn, cashFlowByPeriod, expensesByPeriod, periodSeries, type SankeyCategory } from '../src';
 
 describe('periods', () => {
   test('month, quarter, year and Monday-start weeks with N previous periods', () => {
@@ -18,6 +18,23 @@ describe('periods', () => {
       ['2026-10-01', '2026-10-10'],
       ['2026-10-11', '2026-10-20'],
     ]);
+  });
+
+  test('buckets split a range at a resolution, clipping the ends', () => {
+    expect(bucketsIn({ from: '2026-10-08', to: '2026-10-20' }, 'week').buckets.map((p) => [p.from, p.to])).toEqual([
+      ['2026-10-08', '2026-10-11'],
+      ['2026-10-12', '2026-10-18'],
+      ['2026-10-19', '2026-10-20'],
+    ]);
+    expect(bucketsIn({ from: '2026-01-01', to: '2026-12-31' }, 'quarter').buckets.map((p) => p.label)).toEqual([
+      'Q1 2026',
+      'Q2 2026',
+      'Q3 2026',
+      'Q4 2026',
+    ]);
+    expect(bucketsIn({ from: '2026-10-01', to: '2026-10-03' }, 'day').buckets.map((p) => p.label)).toEqual(['1 Oct', '2 Oct', '3 Oct']);
+    const long = bucketsIn({ from: '2020-01-01', to: '2026-12-31' }, 'day');
+    expect([long.resolution, long.buckets.length]).toEqual(['week', 366]);
   });
 });
 

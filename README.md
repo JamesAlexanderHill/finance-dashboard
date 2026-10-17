@@ -24,8 +24,8 @@ All four slices of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 - Daily price CSV import with column mapping, conflict review, manual prices and instrument aliases; holdings with separate price, units and value charts.
 
 - Valuation in AUD with FX rates as priced instruments, staleness and partial totals, display-only overrides, and manual accounts (with a warning when one looks like a tracked account).
-- A dashboard with one global period control: net worth timeline, cash-flow Sankey and split bars, expenses by category with drill-down.
-- Six sections, each with its own tabs: **Dashboard** (overview, cash flow), **Events** (events, transfers), **Accounts** (accounts, transactions, statements), **Categories**, **Assets** (holdings, prices) and **Settings**.
+- A dashboard driven by a period picker beside the title (a menu of relative ranges such as month to date, quarter to date or last year, and a two-month calendar for exact dates). **Overview**: summary cards, net worth as a stacked area (assets by group above the line and liabilities below, or net worth alone), expenses by category with drill-down, and paired income/expense bars. **Expenses**: expenses to date as a stepped line that can overlay the compared period. Each chart has its own resolution (day to year). **Sankey**: the cash-flow Sankey. All three tabs share the period.
+- Six sections, each with its own tabs: **Dashboard** (overview, expenses, Sankey), **Events** (events, transfers), **Accounts** (accounts, transactions, statements), **Categories**, **Assets** (holdings, prices) and **Settings**.
 - A failed statement upload can be deleted, or uploaded again: the new upload replaces it rather than being refused as a duplicate.
 
 Not built yet: a Stripe parser.
