@@ -1,53 +1,92 @@
-import { queryOptions, useSuspenseQuery } from '@tanstack/react-query';
+import { keepPreviousData, queryOptions, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import type { ReactNode } from 'react';
 import { z } from 'zod';
-import { add, addDays, todayIso } from '@finance/shared';
+import { daysBetween, presetRange, RANGE_PRESETS, shiftRange, todayIso, type DateRange } from '@finance/shared';
 import { PeriodChart, type PeriodSeries } from '../../components/period-chart';
 import { SankeyChart } from '../../components/sankey-chart';
 import { Badge, Button, Card, Empty, PageHeader } from '../../components/ui';
 import { money, shortDate } from '../../lib/format';
 import { listCategories } from '../../server/categories.functions';
-import { getDashboard } from '../../server/dashboard.functions';
+import { getDashboardSummary, getFlowSeries, getNetWorthSeries } from '../../server/dashboard.functions';
+
+const RESOLUTIONS = ['day', 'week', 'month', 'quarter', 'year'] as const;
+type Resolution = (typeof RESOLUTIONS)[number];
+const resolution = z.enum(RESOLUTIONS).optional();
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const searchSchema = z.object({
-  granularity: z.enum(['week', 'month', 'quarter', 'year', 'custom']).optional(),
-  n: z.number().int().min(1).max(24).optional(),
-  date: isoDate.optional(),
+  /** The page period: a preset relative to today, or `custom` with from/to. */
+  preset: z.enum(['custom', ...RANGE_PRESETS.map((p) => p.id)] as ['custom', ...Preset[]]).optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
   tags: z.array(z.uuid()).optional(),
+  // Each chart keeps its own resolution and compare toggle.
+  nwRes: resolution,
+  nwCmp: z.boolean().optional(),
+  nwMode: z.enum(['split', 'net']).optional(),
+  cumRes: resolution,
+  cumCmp: z.boolean().optional(),
+  sankeyCmp: z.boolean().optional(),
+  catRes: resolution,
+  catCmp: z.boolean().optional(),
   focus: z.uuid().optional(),
+  flowRes: resolution,
+  flowCmp: z.boolean().optional(),
 });
 type Search = z.infer<typeof searchSchema>;
+type Preset = (typeof RANGE_PRESETS)[number]['id'];
 
-const dashboardQuery = (s: Search) =>
+/** The page period the search names; defaults to this month. */
+function pageRange(s: Search): DateRange {
+  if (s.preset === 'custom' && s.from && s.to) return s.from <= s.to ? { from: s.from, to: s.to } : { from: s.to, to: s.from };
+  return presetRange(s.preset && s.preset !== 'custom' ? s.preset : 'this-month', todayIso());
+}
+
+/** Approximate days per bucket, to pick a default resolution and rule out ones with too many buckets. */
+const BUCKET_DAYS: Record<Resolution, number> = { day: 1, week: 7, month: 30.4, quarter: 91, year: 365 };
+const MAX_BUCKETS = 400;
+const span = (r: DateRange) => daysBetween(r.from, r.to) + 1;
+function defaultResolution(r: DateRange): Resolution {
+  const days = span(r);
+  return days <= 31 ? 'day' : days <= 120 ? 'week' : days <= 1100 ? 'month' : days <= 3000 ? 'quarter' : 'year';
+}
+
+const summaryQuery = (r: DateRange, tagIds: string[]) =>
   queryOptions({
-    queryKey: ['dashboard', s],
-    queryFn: () =>
-      getDashboard({
-        data: {
-          granularity: s.granularity ?? 'month',
-          n: s.n ?? 6,
-          date: s.date,
-          from: s.from,
-          to: s.to,
-          tagIds: s.tags ?? [],
-          expenseFocus: s.focus ?? null,
-        },
-      }),
+    queryKey: ['dashboard', 'summary', r, tagIds],
+    queryFn: () => getDashboardSummary({ data: { ...r, tagIds } }),
+  });
+const netWorthQuery = (r: DateRange, res: Resolution) =>
+  queryOptions({
+    queryKey: ['dashboard', 'net-worth', r, res],
+    queryFn: () => getNetWorthSeries({ data: { ...r, resolution: res, tagIds: [], expenseFocus: null } }),
+  });
+const flowQuery = (r: DateRange, res: Resolution, tagIds: string[], focus: string | null) =>
+  queryOptions({
+    queryKey: ['dashboard', 'flows', r, res, tagIds, focus],
+    queryFn: () => getFlowSeries({ data: { ...r, resolution: res, tagIds, expenseFocus: focus } }),
   });
 const categoriesQuery = queryOptions({ queryKey: ['categories'], queryFn: () => listCategories() });
 
 export const Route = createFileRoute('/_app/')({
   validateSearch: searchSchema,
   loaderDeps: ({ search }) => search,
-  loader: ({ context, deps }) =>
-    Promise.all([context.queryClient.ensureQueryData(dashboardQuery(deps)), context.queryClient.ensureQueryData(categoriesQuery)]),
+  loader: ({ context: { queryClient }, deps }) => {
+    const r = pageRange(deps);
+    const res = (key?: Resolution) => key ?? defaultResolution(r);
+    const tags = deps.tags ?? [];
+    return Promise.all([
+      queryClient.ensureQueryData(categoriesQuery),
+      queryClient.ensureQueryData(summaryQuery(r, tags)),
+      queryClient.ensureQueryData(netWorthQuery(r, res(deps.nwRes))),
+      queryClient.ensureQueryData(flowQuery(r, res(deps.cumRes), tags, null)),
+      queryClient.ensureQueryData(flowQuery(r, res(deps.catRes), tags, deps.focus ?? null)),
+      queryClient.ensureQueryData(flowQuery(r, res(deps.flowRes), tags, null)),
+    ]);
+  },
   component: Dashboard,
 });
-
-type Data = Awaited<ReturnType<typeof getDashboard>>;
 
 const compact = (n: number) => {
   const abs = Math.abs(n);
@@ -57,129 +96,149 @@ const compact = (n: number) => {
   return `${sign}$${abs.toFixed(0)}`;
 };
 const moneyNumber = (n: number) => money(n.toFixed(2));
-const toNumber = (v: string | null | undefined) => (v == null ? null : Number(v));
+const num = (v: string | null | undefined) => (v == null ? null : Number(v));
 
 /** Top-level categories keep the colours the Sankey uses; drilled-in children take slots in order. */
 const ROOT_COLORS: Record<string, string> = { Savings: 'var(--series-2)', Essentials: 'var(--series-3)', Lifestyle: 'var(--series-4)' };
 const SLOTS = [1, 2, 3, 4, 5, 6, 7, 8].map((i) => `var(--series-${i})`);
 
+/** Chart resolutions reset when the page period changes, so each falls back to a sensible default. */
+const RESET_RESOLUTIONS = { nwRes: undefined, cumRes: undefined, catRes: undefined, flowRes: undefined } as const;
+
 function Dashboard() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
-  const { data } = useSuspenseQuery(dashboardQuery(search));
+  const set = (patch: Partial<Search>) => navigate({ search: (prev) => ({ ...prev, ...patch }), resetScroll: false });
+  const range = pageRange(search);
+  const tags = search.tags ?? [];
+  const { data: summary } = useSuspenseQuery(summaryQuery(range, tags));
   const { data: cats } = useSuspenseQuery(categoriesQuery);
-  const set = (patch: Partial<Search>) => navigate({ search: (prev) => ({ ...prev, ...patch }) });
-
-  const granularity = search.granularity ?? 'month';
-  const step = (direction: -1 | 1) => {
-    if (granularity === 'custom') return;
-    const anchor = direction < 0 ? addDays(data.selected.from, -1) : addDays(data.selected.to, 1);
-    set({ date: anchor > todayIso() ? undefined : anchor });
-  };
+  const res = (key?: Resolution) => key ?? defaultResolution(range);
+  const setRange = (r: DateRange) => set({ preset: 'custom', from: r.from, to: r.to, ...RESET_RESOLUTIONS });
 
   return (
     <>
-      <PageHeader
-        title="Dashboard"
-        description={`${data.selected.label} compared with the previous ${data.periods.length - 1} ${granularity === 'custom' ? 'periods' : `${granularity}s`}`}
-      />
+      <PageHeader title="Dashboard" description={`${summary.range.label}, compared with ${summary.previous.label}`} />
 
-      {/* One global control drives every view below. */}
-      <Card className="mb-6 flex flex-wrap items-center gap-2 p-3 text-sm">
-        <div
-          className="flex overflow-hidden rounded-md border"
-          style={{ borderColor: 'var(--border)' }}
-          role="group"
-          aria-label="Granularity"
-        >
-          {(['week', 'month', 'quarter', 'year', 'custom'] as const).map((g) => (
-            <button
-              key={g}
-              onClick={() =>
-                set(
-                  g === 'custom'
-                    ? { granularity: g, from: data.selected.from, to: data.selected.to }
-                    : { granularity: g, from: undefined, to: undefined },
-                )
-              }
-              className={`px-2.5 py-1 capitalize ${granularity === g ? 'bg-accent text-accent-ink' : 'bg-surface'}`}
-            >
-              {g}
-            </button>
-          ))}
+      {/* The page period drives every section below. */}
+      <Card className="mb-6 flex flex-col gap-3 p-3 text-sm">
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Period">
+          {RANGE_PRESETS.map((p) => {
+            const on = (search.preset ?? 'this-month') === p.id;
+            return (
+              <button
+                key={p.id}
+                onClick={() => set({ preset: p.id, from: undefined, to: undefined, ...RESET_RESOLUTIONS })}
+                className={`rounded-full border px-2.5 py-0.5 text-xs ${on ? 'border-accent bg-accent text-accent-ink' : 'border-line bg-surface'}`}
+                aria-pressed={on}
+              >
+                {p.label}
+              </button>
+            );
+          })}
         </div>
-        {granularity === 'custom' ? (
-          <>
-            <input
-              type="date"
-              value={search.from ?? data.selected.from}
-              onChange={(e) => e.target.value && set({ from: e.target.value })}
-              className="border-line bg-surface rounded border px-2 py-1"
-              aria-label="From"
-            />
-            <input
-              type="date"
-              value={search.to ?? data.selected.to}
-              onChange={(e) => e.target.value && set({ to: e.target.value })}
-              className="border-line bg-surface rounded border px-2 py-1"
-              aria-label="To"
-            />
-          </>
-        ) : (
-          <>
-            <Button onClick={() => step(-1)} aria-label="Previous period">
-              ←
-            </Button>
-            <span className="min-w-24 text-center font-medium">{data.selected.label}</span>
-            <Button onClick={() => step(1)} disabled={data.selected.to >= todayIso()} aria-label="Next period">
-              →
-            </Button>
-          </>
-        )}
-        <label className="ml-2 flex items-center gap-1.5">
-          Compare with
-          <select
-            value={search.n ?? 6}
-            onChange={(e) => set({ n: Number(e.target.value) })}
-            className="border-line bg-surface rounded border px-1.5 py-1"
-          >
-            {[1, 2, 3, 4, 6, 8, 12, 24].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-          previous
-        </label>
-        {cats.tags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
-            <span className="text-muted">Tags</span>
-            {cats.tags.map((tag) => {
-              const on = search.tags?.includes(tag.id);
-              const next = on ? (search.tags ?? []).filter((t) => t !== tag.id) : [...(search.tags ?? []), tag.id];
-              return (
-                <button
-                  key={tag.id}
-                  onClick={() => set({ tags: next.length ? next : undefined })}
-                  className={`rounded-full border px-2 py-0.5 text-xs ${on ? 'border-accent bg-accent text-accent-ink' : 'border-line bg-surface'}`}
-                >
-                  {tag.name}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => setRange(shiftRange(range, -1))} aria-label="Previous period">
+            ←
+          </Button>
+          <input
+            type="date"
+            value={range.from}
+            max={range.to}
+            onChange={(e) => e.target.value && setRange({ from: e.target.value, to: range.to })}
+            className="border-line bg-surface rounded border px-2 py-1"
+            aria-label="From"
+          />
+          <span className="text-muted">to</span>
+          <input
+            type="date"
+            value={range.to}
+            min={range.from}
+            onChange={(e) => e.target.value && setRange({ from: range.from, to: e.target.value })}
+            className="border-line bg-surface rounded border px-2 py-1"
+            aria-label="To"
+          />
+          <Button onClick={() => setRange(shiftRange(range, 1))} disabled={shiftRange(range, 1).from > todayIso()} aria-label="Next period">
+            →
+          </Button>
+          <span className="text-muted text-xs">Compare: {summary.previous.label}</span>
+          {cats.tags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
+              <span className="text-muted">Tags</span>
+              {cats.tags.map((tag) => {
+                const on = tags.includes(tag.id);
+                const next = on ? tags.filter((t) => t !== tag.id) : [...tags, tag.id];
+                return (
+                  <button
+                    key={tag.id}
+                    onClick={() => set({ tags: next.length ? next : undefined })}
+                    className={`rounded-full border px-2 py-0.5 text-xs ${on ? 'border-accent bg-accent text-accent-ink' : 'border-line bg-surface'}`}
+                    aria-pressed={on}
+                  >
+                    {tag.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </Card>
 
-      <Summary data={data} />
-      <NetWorthSection data={data} />
-      <CashFlowSection data={data} />
-      <ExpensesSection data={data} onFocus={(focus) => set({ focus })} />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <AccountsSection data={data} />
-        <RecentEvents data={data} />
-      </div>
+      <Summary data={summary} />
+      <NetWorthSection
+        range={range}
+        resolution={res(search.nwRes)}
+        compare={search.nwCmp ?? false}
+        mode={search.nwMode ?? 'split'}
+        onChange={(p) => set({ nwRes: p.resolution, nwCmp: p.compare, nwMode: p.mode })}
+      />
+      <CumulativeExpensesSection
+        range={range}
+        tags={tags}
+        resolution={res(search.cumRes)}
+        compare={search.cumCmp ?? false}
+        onChange={(p) => set({ cumRes: p.resolution, cumCmp: p.compare })}
+      />
+      <SankeySection
+        data={summary}
+        tags={tags}
+        compare={search.sankeyCmp ?? false}
+        onCompare={(sankeyCmp) => set({ sankeyCmp: sankeyCmp || undefined })}
+      />
+      <CategorySection
+        range={range}
+        tags={tags}
+        resolution={res(search.catRes)}
+        compare={search.catCmp ?? false}
+        focus={search.focus ?? null}
+        onChange={(p) => set({ catRes: p.resolution, catCmp: p.compare, focus: p.focus })}
+      />
+      <IncomeExpensesSection
+        range={range}
+        tags={tags}
+        resolution={res(search.flowRes)}
+        compare={search.flowCmp ?? false}
+        onChange={(p) => set({ flowRes: p.resolution, flowCmp: p.compare })}
+      />
     </>
+  );
+}
+
+// ---- Summary ----
+
+type SummaryData = Awaited<ReturnType<typeof getDashboardSummary>>;
+
+/** A change between two amounts, as an arrow, amount and percentage; `good` says which direction reads well. */
+function Change({ now, before, good, suffix }: { now: number; before: number; good: 'up' | 'down'; suffix: string }) {
+  const diff = now - before;
+  if (Math.abs(diff) < 0.005) return <span className="text-muted">No change {suffix}</span>;
+  const up = diff > 0;
+  const pct = before !== 0 ? ` (${up ? '+' : ''}${Math.round((diff / Math.abs(before)) * 100)}%)` : '';
+  return (
+    <span className={up === (good === 'up') ? 'text-positive' : 'text-negative'}>
+      {up ? '▲' : '▼'} {moneyNumber(Math.abs(diff))}
+      {pct} <span className="text-muted">{suffix}</span>
+    </span>
   );
 }
 
@@ -187,22 +246,22 @@ function Tile({
   label,
   value,
   sub,
-  tone,
   badge,
+  negative,
 }: {
   label: string;
   value: string;
-  sub?: string;
-  tone?: 'negative';
-  badge?: React.ReactNode;
+  sub?: ReactNode;
+  badge?: ReactNode;
+  negative?: boolean;
 }) {
   return (
     <Card className="p-3">
       <div className="text-muted flex items-center gap-2 text-xs">
         {label} {badge}
       </div>
-      <div className={`tabular text-lg font-semibold ${tone === 'negative' ? 'text-negative' : ''}`}>{value}</div>
-      {sub && <div className="text-muted text-xs">{sub}</div>}
+      <div className={`tabular text-lg font-semibold ${negative ? 'text-negative' : ''}`}>{value}</div>
+      {sub && <div className="text-xs">{sub}</div>}
     </Card>
   );
 }
@@ -210,40 +269,72 @@ function Tile({
 const QualityBadge = ({ partial, stale }: { partial: boolean; stale: boolean }) =>
   partial ? <Badge tone="warning">Partial</Badge> : stale ? <Badge tone="warning">Stale</Badge> : null;
 
-function Summary({ data }: { data: Data }) {
-  const sumGroup = (group: string) => add('0', ...data.current.accounts.filter((a) => a.group === group && a.aud).map((a) => a.aud!));
-  const previous = data.flows.slice(0, -1);
-  const average = (key: 'income' | 'outflow' | 'net') =>
-    previous.length ? previous.reduce((s, f) => s + Number(f[key]), 0) / previous.length : null;
-  const vs = (key: 'income' | 'outflow' | 'net') => {
-    const avg = average(key);
-    return avg === null ? undefined : `avg ${moneyNumber(avg)} over previous ${previous.length}`;
-  };
-  const t = data.totals;
+function Summary({ data }: { data: SummaryData }) {
+  const { start, end } = data.netWorth;
+  const now = data.flows.current;
+  const before = data.flows.previous;
+  const vsPrev = `vs ${data.previous.label}`;
+  const rate = (f: typeof now) => (Number(f.income) > 0 ? (Number(f.net) / Number(f.income)) * 100 : null);
+  const [rateNow, ratePrev] = [rate(now), rate(before)];
   return (
-    <section className="mb-6">
-      <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Tile
-          label="Net worth"
-          value={money(data.current.netWorth)}
-          tone={data.current.netWorth.startsWith('-') ? 'negative' : undefined}
-          badge={<QualityBadge partial={data.current.partial} stale={data.current.stale} />}
-          sub={`today, ${shortDate(data.current.on)}`}
-        />
-        <Tile label="Assets" value={money(data.current.assets)} />
-        <Tile label="Liabilities" value={money(data.current.liabilities)} />
-        <Tile label="Cash" value={money(sumGroup('Cash'))} />
-        <Tile label="Investments" value={money(sumGroup('Investments'))} />
-      </div>
+    <section className="mb-6" aria-label="Summary">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Tile label={`Income · ${data.selected.label}`} value={money(t.income)} sub={vs('income')} />
-        <Tile label="Spending" value={money(t.spending)} sub="Essentials + Lifestyle" />
-        <Tile label="Saved" value={money(t.saved)} sub="Savings legs" />
+        <Tile
+          label={`Net worth · ${shortDate(end.on)}`}
+          value={money(end.netWorth)}
+          negative={end.netWorth.startsWith('-')}
+          badge={<QualityBadge partial={end.partial} stale={end.stale} />}
+          sub={<Change now={Number(end.netWorth)} before={Number(start.netWorth)} good="up" suffix="this period" />}
+        />
+        <Tile
+          label="Assets"
+          value={money(end.assets)}
+          sub={<Change now={Number(end.assets)} before={Number(start.assets)} good="up" suffix="this period" />}
+        />
+        <Tile
+          label="Liabilities"
+          value={money(end.liabilities)}
+          sub={<Change now={Number(end.liabilities)} before={Number(start.liabilities)} good="down" suffix="this period" />}
+        />
+        <Tile
+          label="Top spending category"
+          value={data.topCategory ? data.topCategory.name : '—'}
+          sub={
+            data.topCategory ? (
+              <span>
+                <span className="tabular">{money(data.topCategory.amount)}</span>{' '}
+                <Change now={Number(data.topCategory.amount)} before={Number(data.topCategory.previous)} good="down" suffix="" />
+              </span>
+            ) : (
+              <span className="text-muted">No spending</span>
+            )
+          }
+        />
+        <Tile
+          label="Income"
+          value={money(now.income)}
+          sub={<Change now={Number(now.income)} before={Number(before.income)} good="up" suffix={vsPrev} />}
+        />
+        <Tile
+          label="Expenses"
+          value={money(now.expenses)}
+          sub={<Change now={Number(now.expenses)} before={Number(before.expenses)} good="down" suffix={vsPrev} />}
+        />
         <Tile
           label="Net cash flow"
-          value={money(t.netCashFlow)}
-          tone={t.netCashFlow.startsWith('-') ? 'negative' : undefined}
-          sub={vs('net')}
+          value={money(now.net)}
+          negative={now.net.startsWith('-')}
+          sub={<Change now={Number(now.net)} before={Number(before.net)} good="up" suffix={vsPrev} />}
+        />
+        <Tile
+          label="Savings rate"
+          value={rateNow === null ? '—' : `${rateNow.toFixed(0)}%`}
+          negative={rateNow !== null && rateNow < 0}
+          sub={
+            <span className="text-muted">
+              {ratePrev === null ? 'No income' : `${ratePrev.toFixed(0)}%`} {vsPrev} · spending {money(now.spending)}
+            </span>
+          }
         />
       </div>
       {(data.fx.unconverted > 0 || data.fx.staleConverted > 0) && (
@@ -259,190 +350,478 @@ function Summary({ data }: { data: Data }) {
   );
 }
 
-function NetWorthSection({ data }: { data: Data }) {
-  const flags = data.netWorth.map((p) => p.partial || p.stale);
-  const series: PeriodSeries[] = [
-    {
-      key: 'netWorth',
-      label: 'Net worth',
-      color: 'var(--series-1)',
-      type: 'line',
-      values: data.netWorth.map((p) => Number(p.netWorth)),
-      hollow: flags,
-    },
-    {
-      key: 'assets',
-      label: 'Assets',
-      color: 'var(--series-2)',
-      type: 'line',
-      values: data.netWorth.map((p) => Number(p.assets)),
-      hollow: flags,
-    },
-    {
-      key: 'liabilities',
-      label: 'Liabilities',
-      color: 'var(--series-3)',
-      type: 'line',
-      values: data.netWorth.map((p) => Number(p.liabilities)),
-      hollow: flags,
-    },
-  ];
-  return (
-    <Card className="mb-6 p-4">
-      <h2 className="mb-1 text-sm font-medium">Net worth</h2>
-      <p className="text-muted mb-3 text-xs">At the end of each period. Open markers are partial or stale: hover for why.</p>
-      <PeriodChart
-        ariaLabel="Net worth, assets and liabilities by period"
-        labels={data.netWorth.map((p) => p.label)}
-        series={series}
-        formatAxis={compact}
-        formatValue={moneyNumber}
-        notes={data.netWorth.map((p) => [
-          ...(p.partial ? ['Partial: some values unavailable'] : []),
-          ...(p.stale ? ['Stale values included'] : []),
-          ...p.notes.slice(0, 4),
-        ])}
-      />
-    </Card>
-  );
-}
+// ---- Chart frame ----
 
-function CashFlowSection({ data }: { data: Data }) {
-  const series: PeriodSeries[] = [
-    { key: 'income', label: 'Income', color: 'var(--series-1)', type: 'bar', values: data.flows.map((f) => Number(f.income)) },
-    { key: 'outflow', label: 'Outflows', color: 'var(--series-2)', type: 'bar', values: data.flows.map((f) => Number(f.outflow)) },
-    { key: 'net', label: 'Net cash flow', color: 'var(--series-3)', type: 'line', values: data.flows.map((f) => Number(f.net)) },
-  ];
+function Segmented<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  options: readonly T[];
+  value: T;
+  onChange: (v: T) => void;
+  disabled?: (v: T) => boolean;
+}) {
   return (
-    <div className="mb-6 flex flex-col gap-6">
-      <Card className="p-4">
-        <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-sm font-medium">Cash flow · {data.selected.label}</h2>
-          <Link to="/cash-flow" search={{ from: data.selected.from, to: data.selected.to }} className="text-accent text-xs underline">
-            Open
-          </Link>
-        </div>
-        {data.sankey.links.length ? (
-          <SankeyChart nodes={data.sankey.nodes} links={data.sankey.links} onSelect={() => {}} />
-        ) : (
-          <Empty>No cash flow in this period.</Empty>
-        )}
-      </Card>
-      <Card className="p-4">
-        <h2 className="mb-3 text-sm font-medium">Income and outflows by period</h2>
-        <PeriodChart
-          ariaLabel="Income and outflows by period with net cash flow"
-          labels={data.flows.map((f) => f.label)}
-          series={series}
-          formatAxis={compact}
-          formatValue={moneyNumber}
-        />
-      </Card>
+    <div className="border-line flex overflow-hidden rounded-md border text-xs" role="group" aria-label={label}>
+      {options.map((o) => (
+        <button
+          key={o}
+          onClick={() => onChange(o)}
+          disabled={disabled?.(o)}
+          aria-pressed={value === o}
+          className={`px-2 py-0.5 capitalize disabled:opacity-40 ${value === o ? 'bg-accent text-accent-ink' : 'bg-surface'}`}
+        >
+          {o}
+        </button>
+      ))}
     </div>
   );
 }
 
-function ExpensesSection({ data, onFocus }: { data: Data; onFocus: (focus: string | undefined) => void }) {
-  const { segments, periods, focus } = data.expenses;
-  const series: PeriodSeries[] = segments.slice(0, 8).map((s, i) => ({
-    key: s.id,
-    label: s.name,
-    color: s.id === 'uncategorised' ? 'var(--series-neutral)' : focus ? SLOTS[i]! : (ROOT_COLORS[s.name] ?? SLOTS[i]!),
-    type: 'bar',
-    stack: 'spending',
-    values: periods.map((p) => toNumber(p.segments[s.id]) ?? 0),
-  }));
-  // More than eight segments fold into "Other" rather than generating new colours.
-  if (segments.length > 8) {
-    series.push({
-      key: 'other',
-      label: 'Other',
-      color: 'var(--series-neutral)',
-      type: 'bar',
-      stack: 'spending',
-      values: periods.map((p) => segments.slice(8).reduce((sum, s) => sum + (toNumber(p.segments[s.id]) ?? 0), 0)),
-    });
-  }
+function CompareToggle({ on, onChange, label }: { on: boolean; onChange: (on: boolean) => void; label: string }) {
+  return (
+    <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+      <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked)} />
+      Compare with {label}
+    </label>
+  );
+}
+
+/** A dashboard chart card: title, its own controls and a body that dims while new data loads. */
+function ChartCard({
+  title,
+  description,
+  controls,
+  loading,
+  children,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  controls?: ReactNode;
+  loading?: boolean;
+  children: ReactNode;
+}) {
   return (
     <Card className="mb-6 p-4">
-      <div className="mb-3 flex flex-wrap items-baseline gap-2">
-        <h2 className="text-sm font-medium">Expenses by category</h2>
-        {focus && (
-          <span className="text-xs">
-            <button className="text-accent underline" onClick={() => onFocus(undefined)}>
-              All expenses
-            </button>
-            <span className="text-muted"> › {focus.name}</span>
-          </span>
-        )}
-        <span className="text-muted text-xs">Click a category to drill in.</span>
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-medium">{title}</h2>
+          {description && <p className="text-muted text-xs">{description}</p>}
+        </div>
+        {controls && <div className="flex flex-wrap items-center gap-3">{controls}</div>}
       </div>
-      {series.length === 0 ? (
-        <Empty>No spending in these periods.</Empty>
+      <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>{children}</div>
+    </Card>
+  );
+}
+
+/** Resolution and compare controls shared by every time-series chart. */
+function SeriesControls({
+  range,
+  resolution,
+  compare,
+  previousLabel,
+  onChange,
+  children,
+}: {
+  range: DateRange;
+  resolution: Resolution;
+  compare: boolean;
+  previousLabel: string;
+  onChange: (p: { resolution: Resolution; compare: boolean | undefined }) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <>
+      {children}
+      <Segmented
+        label="Resolution"
+        options={RESOLUTIONS}
+        value={resolution}
+        disabled={(r) => span(range) / BUCKET_DAYS[r] > MAX_BUCKETS}
+        onChange={(r) => onChange({ resolution: r, compare: compare || undefined })}
+      />
+      <CompareToggle on={compare} label={previousLabel} onChange={(c) => onChange({ resolution, compare: c || undefined })} />
+    </>
+  );
+}
+
+const Loading = () => <Empty>Loading…</Empty>;
+
+// ---- Net worth ----
+
+function NetWorthSection(props: {
+  range: DateRange;
+  resolution: Resolution;
+  compare: boolean;
+  mode: 'split' | 'net';
+  onChange: (p: { resolution: Resolution; compare: boolean | undefined; mode: 'split' | 'net' | undefined }) => void;
+}) {
+  const { data, isPlaceholderData } = useQuery({ ...netWorthQuery(props.range, props.resolution), placeholderData: keepPreviousData });
+  const mode = props.mode;
+  const change = (p: Partial<{ resolution: Resolution; compare: boolean | undefined; mode: 'split' | 'net' }>) =>
+    props.onChange({
+      resolution: p.resolution ?? props.resolution,
+      compare: 'compare' in p ? p.compare : props.compare || undefined,
+      mode: (p.mode ?? mode) === 'split' ? undefined : 'net',
+    });
+
+  let body: ReactNode = <Loading />;
+  if (data) {
+    const points = data.current.map((p) => p.value);
+    const flags = points.map((v) => !!v && (v.partial || v.stale));
+    const series: PeriodSeries[] = [];
+    if (mode === 'split') {
+      series.push(
+        { key: 'assets', label: 'Assets', color: 'var(--series-3)', type: 'bar', stack: 'nw', values: points.map((v) => num(v?.assets)) },
+        {
+          key: 'liabilities',
+          label: 'Liabilities',
+          color: 'var(--series-2)',
+          type: 'bar',
+          stack: 'nw',
+          // Owed amounts sit below the line.
+          values: points.map((v) => (v ? -Number(v.liabilities) : null)),
+        },
+      );
+    }
+    series.push({
+      key: 'netWorth',
+      label: 'Net worth',
+      color: 'var(--series-1)',
+      type: 'line',
+      values: points.map((v) => num(v?.netWorth)),
+      hollow: flags,
+    });
+    if (props.compare) {
+      series.push({
+        key: 'prevNetWorth',
+        label: `Net worth · ${data.previous.label}`,
+        color: 'var(--series-1)',
+        type: 'line',
+        dashed: true,
+        values: data.current.map((_, i) => num(data.prior[i]?.value?.netWorth)),
+      });
+    }
+    body = (
+      <PeriodChart
+        ariaLabel="Net worth by period"
+        labels={data.current.map((p) => p.label)}
+        compareLabels={props.compare ? data.current.map((_, i) => data.prior[i]?.label) : undefined}
+        series={series}
+        formatAxis={compact}
+        formatValue={moneyNumber}
+        notes={points.map((v) =>
+          v
+            ? [
+                ...(v.partial ? ['Partial: some values unavailable'] : []),
+                ...(v.stale ? ['Stale values included'] : []),
+                ...v.notes.slice(0, 4),
+              ]
+            : [],
+        )}
+      />
+    );
+  }
+  return (
+    <ChartCard
+      title="Net worth"
+      description={`At the end of each ${data?.resolution ?? props.resolution}. Open markers are partial or stale: hover for why.`}
+      loading={isPlaceholderData}
+      controls={
+        <SeriesControls
+          range={props.range}
+          resolution={data?.resolution ?? props.resolution}
+          compare={props.compare}
+          previousLabel={data?.previous.label ?? 'previous period'}
+          onChange={(p) => change(p)}
+        >
+          <Segmented label="View" options={['split', 'net'] as const} value={mode} onChange={(m) => change({ mode: m })} />
+        </SeriesControls>
+      }
+    >
+      {body}
+    </ChartCard>
+  );
+}
+
+// ---- Flow-based charts ----
+
+type FlowData = Awaited<ReturnType<typeof getFlowSeries>>;
+
+function useFlows(range: DateRange, resolution: Resolution, tags: string[], focus: string | null = null) {
+  return useQuery({ ...flowQuery(range, resolution, tags, focus), placeholderData: keepPreviousData });
+}
+
+const compareLabels = (data: FlowData, compare: boolean) => (compare ? data.current.map((_, i) => data.prior[i]?.label) : undefined);
+
+/** Running totals, stopping at buckets that have not started yet. */
+function cumulative(buckets: FlowData['current'], key: 'expenses' | 'income') {
+  let total = 0;
+  return buckets.map((b) => (b.future ? null : (total += Number(b[key]))));
+}
+
+function CumulativeExpensesSection(props: {
+  range: DateRange;
+  tags: string[];
+  resolution: Resolution;
+  compare: boolean;
+  onChange: (p: { resolution: Resolution; compare: boolean | undefined }) => void;
+}) {
+  const { data, isPlaceholderData } = useFlows(props.range, props.resolution, props.tags);
+  let body: ReactNode = <Loading />;
+  if (data) {
+    const series: PeriodSeries[] = [
+      { key: 'expenses', label: 'Expenses to date', color: 'var(--series-2)', type: 'line', values: cumulative(data.current, 'expenses') },
+    ];
+    if (props.compare) {
+      const prior = cumulative(data.prior, 'expenses');
+      series.push({
+        key: 'prevExpenses',
+        label: `Expenses to date · ${data.previous.label}`,
+        color: 'var(--series-2)',
+        type: 'line',
+        dashed: true,
+        values: data.current.map((_, i) => prior[i] ?? null),
+      });
+    }
+    body = (
+      <PeriodChart
+        ariaLabel="Cumulative expenses"
+        labels={data.current.map((b) => b.label)}
+        compareLabels={compareLabels(data, props.compare)}
+        series={series}
+        formatAxis={compact}
+        formatValue={moneyNumber}
+      />
+    );
+  }
+  return (
+    <ChartCard
+      title="Expenses over the period"
+      description="Running total of every outflow, refunds netted off."
+      loading={isPlaceholderData}
+      controls={
+        <SeriesControls
+          range={props.range}
+          resolution={data?.resolution ?? props.resolution}
+          compare={props.compare}
+          previousLabel={data?.previous.label ?? 'previous period'}
+          onChange={props.onChange}
+        />
+      }
+    >
+      {body}
+    </ChartCard>
+  );
+}
+
+function SankeySection({
+  data,
+  tags,
+  compare,
+  onCompare,
+}: {
+  data: SummaryData;
+  tags: string[];
+  compare: boolean;
+  onCompare: (on: boolean) => void;
+}) {
+  const navigate = useNavigate();
+  const toCashFlow = { from: data.range.from, to: data.range.to, tags: tags.length ? tags : undefined };
+  return (
+    <ChartCard
+      title={`Cash flow · ${data.range.label}`}
+      description="Income through to where it went. Click a category to open it on the Cash flow page."
+      controls={
+        <>
+          <CompareToggle on={compare} label={data.previous.label} onChange={onCompare} />
+          <Link to="/cash-flow" search={toCashFlow} className="text-accent text-xs underline">
+            Open
+          </Link>
+        </>
+      }
+    >
+      {data.sankey.links.length ? (
+        <SankeyChart
+          nodes={data.sankey.nodes}
+          links={data.sankey.links}
+          previous={compare ? data.sankey.previous : undefined}
+          onSelect={(node) => {
+            const categoryId = data.sankey.nodes.find((n) => n.id === node.id)?.categoryId;
+            void navigate({ to: '/cash-flow', search: { ...toCashFlow, focus: node.drillable && categoryId ? categoryId : undefined } });
+          }}
+        />
+      ) : (
+        <Empty>No cash flow in this period.</Empty>
+      )}
+    </ChartCard>
+  );
+}
+
+function CategorySection(props: {
+  range: DateRange;
+  tags: string[];
+  resolution: Resolution;
+  compare: boolean;
+  focus: string | null;
+  onChange: (p: { resolution: Resolution; compare: boolean | undefined; focus: string | undefined }) => void;
+}) {
+  const { data, isPlaceholderData } = useFlows(props.range, props.resolution, props.tags, props.focus);
+  const change = (p: Partial<{ resolution: Resolution; compare: boolean | undefined; focus: string | undefined }>) =>
+    props.onChange({
+      resolution: p.resolution ?? props.resolution,
+      compare: 'compare' in p ? p.compare : props.compare || undefined,
+      focus: 'focus' in p ? p.focus : (props.focus ?? undefined),
+    });
+
+  let body: ReactNode = <Loading />;
+  if (data) {
+    const { segments, current, focus } = data;
+    const value = (b: FlowData['current'][number], id: string) => (b.future ? null : (num(b.segments[id]) ?? 0));
+    const series: PeriodSeries[] = segments.slice(0, 8).map((s, i) => ({
+      key: s.id,
+      label: s.name,
+      color: s.id === 'uncategorised' ? 'var(--series-neutral)' : focus ? SLOTS[i]! : (ROOT_COLORS[s.name] ?? SLOTS[i]!),
+      type: 'bar',
+      stack: 'spending',
+      values: current.map((b) => value(b, s.id)),
+    }));
+    // More than eight segments fold into "Other" rather than generating new colours.
+    if (segments.length > 8) {
+      series.push({
+        key: 'other',
+        label: 'Other',
+        color: 'var(--series-neutral)',
+        type: 'bar',
+        stack: 'spending',
+        values: current.map((b) => (b.future ? null : segments.slice(8).reduce((sum, s) => sum + (num(b.segments[s.id]) ?? 0), 0))),
+      });
+    }
+    if (props.compare) {
+      series.push({
+        key: 'prevTotal',
+        label: `Total · ${data.previous.label}`,
+        color: 'var(--text)',
+        type: 'line',
+        dashed: true,
+        values: current.map((_, i) => num(data.prior[i]?.segmentTotal)),
+      });
+    }
+    body =
+      segments.length === 0 ? (
+        <Empty>No spending in this period.</Empty>
       ) : (
         <PeriodChart
-          ariaLabel="Expenses by category per period"
-          labels={periods.map((p) => p.label)}
+          ariaLabel="Expenses by category"
+          labels={current.map((b) => b.label)}
+          compareLabels={compareLabels(data, props.compare)}
           series={series}
           formatAxis={compact}
           formatValue={moneyNumber}
           selectable={segments.filter((s) => s.drillable).map((s) => s.id)}
-          onSelect={(id) => onFocus(id)}
+          onSelect={(id) => change({ focus: id })}
         />
-      )}
-    </Card>
+      );
+  }
+  return (
+    <ChartCard
+      title={
+        <span className="flex flex-wrap items-baseline gap-2">
+          Expenses by category
+          {data?.focus && (
+            <span className="text-xs font-normal">
+              <button className="text-accent underline" onClick={() => change({ focus: undefined })}>
+                All expenses
+              </button>
+              <span className="text-muted"> › {data.focus.name}</span>
+            </span>
+          )}
+        </span>
+      }
+      description="Click a category to drill in."
+      loading={isPlaceholderData}
+      controls={
+        <SeriesControls
+          range={props.range}
+          resolution={data?.resolution ?? props.resolution}
+          compare={props.compare}
+          previousLabel={data?.previous.label ?? 'previous period'}
+          onChange={change}
+        />
+      }
+    >
+      {body}
+    </ChartCard>
   );
 }
 
-function AccountsSection({ data }: { data: Data }) {
-  const groups = Map.groupBy(data.current.accounts, (a) => a.group);
+function IncomeExpensesSection(props: {
+  range: DateRange;
+  tags: string[];
+  resolution: Resolution;
+  compare: boolean;
+  onChange: (p: { resolution: Resolution; compare: boolean | undefined }) => void;
+}) {
+  const { data, isPlaceholderData } = useFlows(props.range, props.resolution, props.tags);
+  let body: ReactNode = <Loading />;
+  if (data) {
+    const at = (key: 'income' | 'expenses') => data.current.map((b) => (b.future ? null : Number(b[key])));
+    const series: PeriodSeries[] = [
+      { key: 'income', label: 'Income', color: 'var(--series-1)', type: 'bar', values: at('income') },
+      { key: 'expenses', label: 'Expenses', color: 'var(--series-2)', type: 'bar', values: at('expenses') },
+    ];
+    if (props.compare) {
+      const prior = (key: 'income' | 'expenses') => data.current.map((_, i) => num(data.prior[i]?.[key]));
+      series.push(
+        {
+          key: 'prevIncome',
+          label: `Income · ${data.previous.label}`,
+          color: 'var(--series-1)',
+          type: 'line',
+          dashed: true,
+          values: prior('income'),
+        },
+        {
+          key: 'prevExpenses',
+          label: `Expenses · ${data.previous.label}`,
+          color: 'var(--series-2)',
+          type: 'line',
+          dashed: true,
+          values: prior('expenses'),
+        },
+      );
+    }
+    body = (
+      <PeriodChart
+        ariaLabel="Income and expenses"
+        labels={data.current.map((b) => b.label)}
+        compareLabels={compareLabels(data, props.compare)}
+        series={series}
+        formatAxis={compact}
+        formatValue={moneyNumber}
+      />
+    );
+  }
   return (
-    <Card className="p-4">
-      <h2 className="mb-3 text-sm font-medium">Accounts today</h2>
-      {[...groups].map(([group, accounts]) => (
-        <div key={group} className="mb-3">
-          <h3 className="text-muted mb-1 text-xs font-medium">{group}</h3>
-          {accounts.map((a) => (
-            <div key={a.id} className="flex flex-wrap items-baseline gap-x-3 py-0.5 text-sm">
-              <span className="flex-1">
-                {a.name} <span className="text-muted text-xs">{a.institution}</span>
-              </span>
-              {a.status !== 'ok' && (
-                <span title={a.notes.join('\n')}>
-                  <Badge tone={a.status === 'stale' ? 'warning' : 'negative'}>{a.status === 'missing' ? 'No price/rate' : a.status}</Badge>
-                </span>
-              )}
-              {a.overrideValue && (
-                <span title="Display only: uses your override price or rate and is not in any total">
-                  <Badge>Override {money(a.overrideValue)}</Badge>
-                </span>
-              )}
-              <span className="tabular w-32 text-right">{a.aud ? money(a.aud) : '—'}</span>
-              {a.notes.length > 0 && <span className="text-muted w-full text-xs">{a.notes.join(' · ')}</span>}
-            </div>
-          ))}
-        </div>
-      ))}
-    </Card>
-  );
-}
-
-function RecentEvents({ data }: { data: Data }) {
-  return (
-    <Card className="p-4">
-      <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-sm font-medium">Recent events</h2>
-        <Link to="/events" search={{ page: 0 }} className="text-accent text-xs underline">
-          All events
-        </Link>
-      </div>
-      {data.recent.map((e) => (
-        <div key={e.id} className="flex flex-wrap gap-x-3 py-0.5 text-sm">
-          <span className="text-muted tabular w-24">{shortDate(e.occurredOn)}</span>
-          <span className="min-w-0 flex-1 truncate">{e.description}</span>
-          <span className="text-muted text-xs">{e.status === 'unmatched_transfer' ? 'unmatched transfer' : e.type.replace('_', ' ')}</span>
-        </div>
-      ))}
-    </Card>
+    <ChartCard
+      title="Income and expenses"
+      loading={isPlaceholderData}
+      controls={
+        <SeriesControls
+          range={props.range}
+          resolution={data?.resolution ?? props.resolution}
+          compare={props.compare}
+          previousLabel={data?.previous.label ?? 'previous period'}
+          onChange={props.onChange}
+        />
+      }
+    >
+      {body}
+    </ChartCard>
   );
 }

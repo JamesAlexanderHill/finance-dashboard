@@ -14,12 +14,13 @@ Aggregate historical/current net worth and cashflow, plus account and investment
 
 ## Functional requirements
 
-1. Show assets, liabilities, net worth, income, spending, net cash flow for a selected period vs the previous N periods (global control: week/month/quarter/year/custom granularity, default month, N default 6). Net cash flow = income − all unbalanced outflows.
-5. Views: net-worth timeline; cash-flow Sankey plus per-period income/outflow split bar; expenses stacked bar by top-level category with drill-down; tag filter across cash-flow and expense views.
+1. One page for a selected page period (presets: this/last month, this/last quarter, year to date, last year, last 30/90 days, last 12 months; previous/next stepping; custom dates; default this month), compared with the previous period: the previous calendar period for whole months, quarters and years, the same dates last year for year to date, otherwise the same number of days before.
+5. Sections: summary cards (net worth, assets, liabilities at period end with change over the period; income, expenses, net cash flow, savings rate and top spending category vs the previous period); net worth (split: assets above the line, liabilities below, net line; or net only); cumulative expenses; cash-flow Sankey; expenses stacked by top-level category with drill-down; income/expenses paired bars. A tag filter applies to cash-flow and expense views.
+8. Each time-series chart has its own resolution (day/week/month/quarter/year; buckets clipped to the period, coarsened past 400) and a compare toggle overlaying the previous period as dashed lines aligned by bucket. The Sankey has no resolution; its compare toggle shows previous-period node values on hover.
 2. Offer investment charts: price series, unit count series, and market-value series separately.
 3. Use event classifications to avoid double-counted transfers and trades.
 4. Expose lineage, valuation date, missing/stale and incomplete summaries.
-6. Net worth is valued at each period end (or today for the current period); points marked partial or stale show why on hover. Foreign-currency cash-flow legs are converted at the rate applying on their date; legs with no rate are left out and counted.
+6. Net worth is valued at each bucket end (or today for the current bucket; buckets after today are left empty); points marked partial or stale show why on hover. Foreign-currency cash-flow legs are converted at the rate applying on their date; legs with no rate are left out and counted.
 7. Expenses stack by top-level category in the Sankey's colours; selecting a category shows its children. More than eight segments fold into "Other".
 
 ## Owned contracts and data

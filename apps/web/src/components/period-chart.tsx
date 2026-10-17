@@ -13,11 +13,15 @@ export interface PeriodSeries {
   stack?: string;
   /** Per-period flag: draw this line point as an open marker (stale or partial). */
   hollow?: boolean[];
+  /** Draw a line dashed, e.g. the previous period overlaid for comparison. */
+  dashed?: boolean;
 }
 
 const HEIGHT = 240;
 const PAD = { top: 12, right: 12, bottom: 28, left: 64 };
 const GAP = 2;
+/** Above this many periods, line points are drawn only where they are hollow. */
+const DOT_LIMIT = 40;
 
 function niceTicks(min: number, max: number, count = 4) {
   if (min === max) return [min];
@@ -41,6 +45,8 @@ export function PeriodChart(props: {
   formatValue: (n: number) => string;
   /** Extra lines for a period's tooltip (e.g. why a point is partial). */
   notes?: string[][];
+  /** The previous period's label for each period, shown in the tooltip when dashed series overlay it. */
+  compareLabels?: Array<string | undefined>;
   onSelect?: (key: string) => void;
   /** Series keys that can be selected. */
   selectable?: string[];
@@ -77,7 +83,7 @@ export function PeriodChart(props: {
     const plotWidth = width - PAD.left - PAD.right;
     const band = plotWidth / labels.length;
     const groupWidth = Math.min(band * 0.7, 28 * groups.length + GAP * (groups.length - 1));
-    const barWidth = groups.length ? (groupWidth - GAP * (groups.length - 1)) / groups.length : 0;
+    const barWidth = groups.length ? Math.max(1, (groupWidth - GAP * (groups.length - 1)) / groups.length) : 0;
     const x = (i: number) => PAD.left + band * i + band / 2;
     const y = (v: number) => PAD.top + (1 - (v - y0) / (y1 - y0)) * (HEIGHT - PAD.top - PAD.bottom);
 
@@ -98,7 +104,9 @@ export function PeriodChart(props: {
         }
       });
     });
-    return { x, y, band, rects, ticks: niceTicks(y0, y1) };
+    // Thin the axis labels so they never collide (about 72px each).
+    const labelEvery = Math.max(1, Math.ceil(labels.length / Math.max(1, Math.floor(plotWidth / 72))));
+    return { x, y, band, rects, ticks: niceTicks(y0, y1), labelEvery };
   }, [width, labels, series]);
 
   const lineSeries = series.filter((s) => s.type === 'line');
@@ -108,7 +116,10 @@ export function PeriodChart(props: {
         {series.map((s) => (
           <li key={s.key} className="text-muted flex items-center gap-1.5">
             {s.type === 'line' ? (
-              <span className="inline-block h-0.5 w-4 rounded" style={{ background: s.color }} />
+              <span
+                className="inline-block w-4"
+                style={s.dashed ? { borderTop: `2px dashed ${s.color}` } : { height: 2, borderRadius: 2, background: s.color }}
+              />
             ) : (
               <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />
             )}
@@ -141,7 +152,7 @@ export function PeriodChart(props: {
               </g>
             ))}
             {labels.map((label, i) => (
-              <g key={label} onMouseEnter={() => setHover(i)}>
+              <g key={i} onMouseEnter={() => setHover(i)}>
                 <rect
                   x={geometry.x(i) - geometry.band / 2}
                   y={PAD.top}
@@ -149,9 +160,11 @@ export function PeriodChart(props: {
                   height={HEIGHT - PAD.top - PAD.bottom}
                   fill={hover === i ? 'var(--surface-2)' : 'transparent'}
                 />
-                <text x={geometry.x(i)} y={HEIGHT - 8} textAnchor="middle" className="fill-muted text-[11px]">
-                  {label}
-                </text>
+                {i % geometry.labelEvery === 0 && (
+                  <text x={geometry.x(i)} y={HEIGHT - 8} textAnchor="middle" className="fill-muted text-[11px]">
+                    {label}
+                  </text>
+                )}
               </g>
             ))}
             {geometry.rects.map((r) => (
@@ -173,9 +186,16 @@ export function PeriodChart(props: {
               const path = points.reduce((d, p, i) => (p ? `${d}${d && points[i - 1] ? 'L' : 'M'}${p[0]},${p[1]}` : d), '');
               return (
                 <g key={s.key} pointerEvents="none">
-                  <path d={path} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" />
+                  <path
+                    d={path}
+                    fill="none"
+                    stroke={s.color}
+                    strokeWidth={2}
+                    strokeLinejoin="round"
+                    strokeDasharray={s.dashed ? '5 4' : undefined}
+                  />
                   {points.map((p, i) =>
-                    p ? (
+                    p && !s.dashed && (labels.length <= DOT_LIMIT || s.hollow?.[i]) ? (
                       <circle
                         key={i}
                         cx={p[0]}
@@ -197,12 +217,18 @@ export function PeriodChart(props: {
             className="border-line bg-surface pointer-events-none absolute top-0 z-10 max-w-xs rounded border px-2 py-1 text-xs shadow-sm"
             style={{ left: Math.min(Math.max(0, geometry.x(hover) + geometry.band / 2), Math.max(0, width - 260)) }}
           >
-            <div className="text-muted mb-0.5">{labels[hover]}</div>
+            <div className="text-muted mb-0.5">
+              {labels[hover]}
+              {props.compareLabels?.[hover] && <span> · dashed: {props.compareLabels[hover]}</span>}
+            </div>
             {series
               .filter((s) => s.values[hover] != null && s.values[hover] !== 0)
               .map((s) => (
                 <div key={s.key} className="flex items-center gap-1.5">
-                  <span className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />
+                  <span
+                    className="inline-block h-2 w-2 rounded-sm"
+                    style={s.dashed ? { border: `1.5px dashed ${s.color}` } : { background: s.color }}
+                  />
                   <span className="flex-1">{s.label}</span>
                   <span className="tabular">{props.formatValue(s.values[hover]!)}</span>
                 </div>

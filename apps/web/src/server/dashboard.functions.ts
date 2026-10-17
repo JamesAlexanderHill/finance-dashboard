@@ -1,153 +1,201 @@
 import { createServerFn } from '@tanstack/react-start';
-import { and, desc, eq, ne } from 'drizzle-orm';
-import { dashboardQuery } from '@finance/contracts';
-import { events, getDb } from '@finance/db';
-import { REPORTING_CURRENCY } from '@finance/domain';
+import { dashboardRange, dashboardSeriesQuery } from '@finance/contracts';
 import {
+  bucketsIn,
   buildSankey,
   cashFlowByPeriod,
   expensesByPeriod,
   netWorthAt,
-  periodSeries,
   UNCATEGORISED,
-  type AccountValue,
+  type DatedLeg,
+  type Period,
+  type SankeyCategory,
 } from '@finance/ledger';
-import { mul, todayIso } from '@finance/shared';
+import { add, addDays, previousRange, rangeLabel, todayIso, type DateRange } from '@finance/shared';
 import { loadCashFlowLegs, loadCategories } from './cashflow.server';
 import { workspaceMiddleware } from './session';
 import { loadValuationInputs } from './valuation.server';
 
-const RECENT_EVENTS = 8;
+const describe = (r: DateRange) => ({ ...r, label: rangeLabel(r) });
+const within = (legs: readonly DatedLeg[], r: DateRange) => legs.filter((l) => l.occurredOn >= r.from && l.occurredOn <= r.to);
+const sumSegments = (segments: Record<string, string>) => add('0', ...Object.values(segments));
 
-/** Everything the dashboard shows for one setting of the global period control. */
-export const getDashboard = createServerFn({ method: 'GET' })
+function categoryNames(cats: readonly SankeyCategory[]) {
+  const byId = new Map(cats.map((c) => [c.id, c]));
+  const root = (id: string | null) => {
+    let c = id ? byId.get(id) : undefined;
+    while (c?.parentId && byId.has(c.parentId)) c = byId.get(c.parentId);
+    return c?.name ?? null;
+  };
+  const name = (id: string) => (id === UNCATEGORISED ? 'Uncategorised' : (byId.get(id)?.name ?? 'Unknown'));
+  return { byId, root, name };
+}
+
+/** The summary cards and Sankey for the page period, each with the previous period's figures to compare. */
+export const getDashboardSummary = createServerFn({ method: 'GET' })
   .middleware([workspaceMiddleware])
-  .validator(dashboardQuery)
+  .validator(dashboardRange)
   .handler(async ({ context, data }) => {
     const { workspaceId } = context;
     const today = todayIso();
-    const periods =
-      data.granularity === 'custom' && data.from && data.to
-        ? periodSeries('custom', { from: data.from, to: data.to }, data.n)
-        : periodSeries(data.granularity === 'custom' ? 'month' : data.granularity, { date: data.date ?? today }, data.n);
-    const selected = periods.at(-1)!;
-
-    const [valuation, cashLegs, cats, recent] = await Promise.all([
+    const range: DateRange = { from: data.from, to: data.to };
+    const previous = previousRange(range);
+    const [valuation, cashLegs, cats] = await Promise.all([
       loadValuationInputs(workspaceId),
-      loadCashFlowLegs(workspaceId, { from: periods[0]!.from, to: selected.to, tagIds: data.tagIds }),
+      loadCashFlowLegs(workspaceId, { from: previous.from, to: range.to, tagIds: data.tagIds }),
       loadCategories(workspaceId),
-      getDb()
-        .select({ id: events.id, type: events.type, status: events.status, occurredOn: events.occurredOn, description: events.description })
-        .from(events)
-        .where(and(eq(events.workspaceId, workspaceId), ne(events.type, 'opening_balance')))
-        .orderBy(desc(events.occurredOn))
-        .limit(RECENT_EVENTS),
     ]);
+    const { root, name } = categoryNames(cats);
 
-    // Net worth at each period end (or today, for a period still in progress).
-    const netWorth = periods.map((p) => {
-      const point = netWorthAt(valuation.accounts, p.to < today ? p.to : today, valuation.prices, valuation.fx);
-      return {
-        label: p.label,
-        on: point.on,
-        assets: point.assets,
-        liabilities: point.liabilities,
-        netWorth: point.netWorth,
-        partial: point.partial,
-        stale: point.stale,
-        notes: point.accounts.filter((a) => a.notes.length).map((a) => `${a.name}: ${a.notes.join('; ')}`),
-      };
-    });
+    // Net worth at the end of the period (or today, if it is still running) against its start.
+    const clip = (d: string) => (d < today ? d : today);
+    const valueAt = (on: string) => {
+      const p = netWorthAt(valuation.accounts, on, valuation.prices, valuation.fx);
+      return { on, assets: p.assets, liabilities: p.liabilities, netWorth: p.netWorth, partial: p.partial, stale: p.stale };
+    };
+    const end = valueAt(clip(range.to));
+    const start = valueAt(clip(addDays(range.from, -1)));
 
-    const now = netWorthAt(valuation.accounts, today, valuation.prices, valuation.fx);
-    const fxOverrides = new Map(
-      [...valuation.overrides].flatMap(([instrumentId, o]) => {
-        const i = valuation.instruments.get(instrumentId);
-        return i?.exchange === 'FX' ? [[i.symbol, o.price] as const] : [];
-      }),
+    const [flowPrev, flowNow] = cashFlowByPeriod(
+      cashLegs.legs,
+      cats,
+      [previous, range].map((r) => ({ ...r, label: '' })),
     );
-    /**
-     * What a value would be at the user's override price or FX rate, where one is set. Display only:
-     * never part of any total.
-     */
-    const overrideValue = (a: AccountValue, instrumentId: string | null): string | null => {
-      const priceOverride = instrumentId ? valuation.overrides.get(instrumentId)?.price : undefined;
-      const fxOverride = fxOverrides.get(a.currency);
-      if (!a.quantity || (!priceOverride && !fxOverride)) return null;
-      const price = a.kind === 'instrument' ? (priceOverride ?? a.price?.price) : '1';
-      const rate = a.currency === REPORTING_CURRENCY ? '1' : (fxOverride ?? a.fx?.price);
-      return price && rate ? mul(mul(a.quantity, price), rate) : null;
-    };
-    const byId = new Map(valuation.accounts.map((a) => [a.id, a]));
-    const accounts = now.accounts
-      .filter((a) => a.quantity !== null || a.status === 'untracked')
-      .map((a) => {
-        const input = byId.get(a.id)!;
-        return {
-          id: a.id,
-          name: a.name,
-          institution: input.institution,
-          group:
-            input.provider === 'manual'
-              ? 'Manual'
-              : a.classification === 'liability'
-                ? 'Liabilities'
-                : a.kind === 'instrument'
-                  ? 'Investments'
-                  : 'Cash',
-          aud: a.aud,
-          status: a.status,
-          notes: a.notes,
-          knownAsOf: a.knownAsOf,
-          overrideValue: overrideValue(a, input.instrumentId ?? null),
-        };
-      });
+    const [expPrev, expNow] = expensesByPeriod(
+      cashLegs.legs,
+      cats,
+      [previous, range].map((r) => ({ ...r, label: '' })),
+      null,
+    );
+    const top = Object.entries(expNow!.segments).sort((a, b) => Number(b[1]) - Number(a[1]))[0];
 
-    const flows = cashFlowByPeriod(cashLegs.legs, cats, periods);
-    const expenses = expensesByPeriod(cashLegs.legs, cats, periods, data.expenseFocus);
-    const segmentIds = [...new Set(expenses.flatMap((e) => Object.keys(e.segments)))];
-    const catById = new Map(cats.map((c) => [c.id, c]));
-    const order = (id: string) => (id === UNCATEGORISED ? 1e9 : cats.findIndex((c) => c.id === id));
-    const selectedLegs = cashLegs.legs.filter((l) => l.occurredOn >= selected.from && l.occurredOn <= selected.to);
-    const sankey = buildSankey(selectedLegs, cats, null);
-    const rootName = (id: string | null) => {
-      let c = id ? catById.get(id) : undefined;
-      while (c?.parentId && catById.has(c.parentId)) c = catById.get(c.parentId);
-      return c?.name ?? null;
-    };
+    const sankeyNow = buildSankey(within(cashLegs.legs, range), cats, null);
+    const sankeyPrev = buildSankey(within(cashLegs.legs, previous), cats, null);
 
     return {
-      periods,
-      selected,
-      netWorth,
-      current: {
-        on: today,
-        assets: now.assets,
-        liabilities: now.liabilities,
-        netWorth: now.netWorth,
-        partial: now.partial,
-        stale: now.stale,
-        accounts,
+      range: describe(range),
+      previous: describe(previous),
+      netWorth: { start, end },
+      flows: {
+        current: {
+          income: flowNow!.income,
+          expenses: flowNow!.outflow,
+          net: flowNow!.net,
+          spending: sankeyNow.totals.spending,
+          saved: sankeyNow.totals.saved,
+        },
+        previous: {
+          income: flowPrev!.income,
+          expenses: flowPrev!.outflow,
+          net: flowPrev!.net,
+          spending: sankeyPrev.totals.spending,
+          saved: sankeyPrev.totals.saved,
+        },
       },
-      flows,
-      expenses: {
-        focus:
-          data.expenseFocus && catById.has(data.expenseFocus)
-            ? { id: data.expenseFocus, name: catById.get(data.expenseFocus)!.name }
-            : null,
-        segments: segmentIds
-          .sort((a, b) => order(a) - order(b))
-          .map((id) => ({
-            id,
-            name: id === UNCATEGORISED ? 'Uncategorised' : catById.get(id)!.name,
-            root: id === UNCATEGORISED ? null : rootName(id),
-            drillable: id !== UNCATEGORISED && id !== data.expenseFocus && cats.some((c) => c.parentId === id),
-          })),
-        periods: expenses,
+      topCategory: top ? { id: top[0], name: name(top[0]), amount: top[1], previous: expPrev!.segments[top[0]] ?? '0' } : null,
+      sankey: {
+        nodes: sankeyNow.nodes.map((n) => ({ ...n, root: root(n.categoryId) })),
+        links: sankeyNow.links,
+        /** Previous-period value per node ID, for the compare toggle. */
+        previous: Object.fromEntries(sankeyPrev.nodes.map((n) => [n.id, n.value])),
       },
-      totals: sankey.totals,
-      sankey: { nodes: sankey.nodes.map((n) => ({ ...n, root: rootName(n.categoryId) })), links: sankey.links },
       fx: { unconverted: cashLegs.unconverted, staleConverted: cashLegs.staleConverted },
-      recent,
+    };
+  });
+
+/** Both periods bucketed at the same resolution; previous buckets line up with current ones by index. */
+function bucketPair(range: DateRange, resolution: Parameters<typeof bucketsIn>[1]) {
+  const current = bucketsIn(range, resolution);
+  return {
+    resolution: current.resolution,
+    current: current.buckets,
+    previous: bucketsIn(previousRange(range), current.resolution).buckets,
+  };
+}
+
+/** Net worth at the end of each bucket of the page period and of the previous period. */
+export const getNetWorthSeries = createServerFn({ method: 'GET' })
+  .middleware([workspaceMiddleware])
+  .validator(dashboardSeriesQuery)
+  .handler(async ({ context, data }) => {
+    const today = todayIso();
+    const range: DateRange = { from: data.from, to: data.to };
+    const valuation = await loadValuationInputs(context.workspaceId);
+    const { resolution, current, previous } = bucketPair(range, data.resolution);
+    const series = (buckets: Period[]) =>
+      buckets.map((b) => {
+        // Buckets that start after today have no value yet.
+        if (b.from > today) return { label: b.label, on: b.to, value: null };
+        const p = netWorthAt(valuation.accounts, b.to < today ? b.to : today, valuation.prices, valuation.fx);
+        return {
+          label: b.label,
+          on: p.on,
+          value: {
+            assets: p.assets,
+            liabilities: p.liabilities,
+            netWorth: p.netWorth,
+            partial: p.partial,
+            stale: p.stale,
+            notes: p.accounts.filter((a) => a.notes.length).map((a) => `${a.name}: ${a.notes.join('; ')}`),
+          },
+        };
+      });
+    return {
+      resolution,
+      range: describe(range),
+      previous: describe(previousRange(range)),
+      current: series(current),
+      prior: series(previous),
+    };
+  });
+
+/** Income, expenses and expenses by category per bucket of the page period and of the previous period. */
+export const getFlowSeries = createServerFn({ method: 'GET' })
+  .middleware([workspaceMiddleware])
+  .validator(dashboardSeriesQuery)
+  .handler(async ({ context, data }) => {
+    const { workspaceId } = context;
+    const today = todayIso();
+    const range: DateRange = { from: data.from, to: data.to };
+    const { resolution, current, previous } = bucketPair(range, data.resolution);
+    const [cashLegs, cats] = await Promise.all([
+      loadCashFlowLegs(workspaceId, { from: previous[0]!.from, to: range.to, tagIds: data.tagIds }),
+      loadCategories(workspaceId),
+    ]);
+    const { byId, root, name } = categoryNames(cats);
+    const focus = data.expenseFocus && byId.has(data.expenseFocus) ? data.expenseFocus : null;
+
+    const series = (buckets: Period[]) => {
+      const flows = cashFlowByPeriod(cashLegs.legs, cats, buckets);
+      const expenses = expensesByPeriod(cashLegs.legs, cats, buckets, focus);
+      return buckets.map((b, i) => ({
+        label: b.label,
+        future: b.from > today,
+        income: flows[i]!.income,
+        expenses: flows[i]!.outflow,
+        net: flows[i]!.net,
+        segments: expenses[i]!.segments,
+        segmentTotal: sumSegments(expenses[i]!.segments),
+      }));
+    };
+    const now = series(current);
+    const prior = series(previous);
+
+    const order = (id: string) => (id === UNCATEGORISED ? 1e9 : cats.findIndex((c) => c.id === id));
+    const segmentIds = [...new Set([...now, ...prior].flatMap((b) => Object.keys(b.segments)))].sort((a, b) => order(a) - order(b));
+    return {
+      resolution,
+      range: describe(range),
+      previous: describe(previousRange(range)),
+      current: now,
+      prior,
+      focus: focus ? { id: focus, name: name(focus) } : null,
+      segments: segmentIds.map((id) => ({
+        id,
+        name: name(id),
+        root: id === UNCATEGORISED ? null : root(id),
+        drillable: id !== UNCATEGORISED && id !== focus && cats.some((c) => c.parentId === id),
+      })),
+      fx: { unconverted: cashLegs.unconverted, staleConverted: cashLegs.staleConverted },
     };
   });
