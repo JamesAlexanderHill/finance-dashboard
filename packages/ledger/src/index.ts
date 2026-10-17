@@ -1,4 +1,6 @@
 export * from './decisions';
+export * from './assignments';
+export * from './line-items';
 export * from './projection';
 export * from './sankey';
 export * from './matching';

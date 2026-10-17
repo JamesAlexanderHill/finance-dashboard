@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { ItemisationError, projectEvents, validateItemisation, type ActiveTransaction, type DecisionRecord } from '../src';
+import {
+  ItemisationError,
+  projectEvents,
+  validateItemisation,
+  type ActiveTransaction,
+  type AssignmentRecord,
+  type DecisionRecord,
+  type LineItem,
+} from '../src';
 
 const tx = (id: string, amount: string, extra: Partial<ActiveTransaction> = {}): ActiveTransaction => ({
   id,
@@ -28,45 +36,85 @@ const decision = (transactionId: string, kind: DecisionRecord['kind'], payload: 
   payload,
 });
 
+const assignment = (transactionId: string, legKey: string, kind: AssignmentRecord['kind'], payload: unknown): AssignmentRecord => ({
+  id: `a${++seq}`,
+  seq,
+  transactionId,
+  legKey,
+  kind,
+  payload,
+});
+const category = (transactionId: string, categoryId: string, legKey = 'principal') =>
+  assignment(transactionId, legKey, 'category', { categoryId });
+const line = (id: string, transactionId: string, position: number, amount: string, description = ''): LineItem => ({
+  id,
+  transactionId,
+  position,
+  amount,
+  description,
+});
+const empty = {
+  decisions: [] as DecisionRecord[],
+  lineItems: [] as LineItem[],
+  assignments: [] as AssignmentRecord[],
+  categories,
+  openingBalances: [],
+};
+
 describe('event projection', () => {
   test('is deterministic and starts every leg uncategorised', () => {
-    const input = { transactions: [tx('a', '-30'), tx('b', '1000')], decisions: [], categories, openingBalances: [] };
+    const input = { ...empty, transactions: [tx('a', '-30'), tx('b', '1000')] };
     const first = projectEvents(input);
     expect(projectEvents(input)).toEqual(first);
     expect(first.map((e) => e.type).sort()).toEqual(['expense', 'income']);
     expect(first.flatMap((e) => e.legs).every((l) => l.categoryId === null)).toBe(true);
   });
 
-  test('the latest category decision wins and a refund keeps its expense category', () => {
-    const decisions = [
-      decision('a', 'category', { categoryId: 'salary' }, 'principal'),
-      decision('a', 'category', { categoryId: 'groceries' }, 'principal'),
-      decision('r', 'category', { categoryId: 'groceries' }, 'principal'),
-    ];
-    const events = projectEvents({ transactions: [tx('a', '-30'), tx('r', '5')], decisions, categories, openingBalances: [] });
+  test('the latest category assignment wins and a refund keeps its expense category', () => {
+    const assignments = [category('a', 'salary'), category('a', 'groceries'), category('r', 'groceries')];
+    const events = projectEvents({ ...empty, transactions: [tx('a', '-30'), tx('r', '5')], assignments });
     expect(events.find((e) => e.transactionIds[0] === 'a')!.legs[0]!.categoryId).toBe('groceries');
     expect(events.find((e) => e.transactionIds[0] === 'r')!.type).toBe('refund');
   });
 
-  test('itemisation produces one leg per line with stable keys', () => {
-    const decisions = [
-      decision('a', 'itemisation', {
-        lines: [
-          { amount: '-10', description: 'Milk' },
-          { amount: '-20', description: 'Bread' },
-        ],
-      }),
-    ];
-    const [event] = projectEvents({ transactions: [tx('a', '-30')], decisions, categories, openingBalances: [] });
-    expect(event!.legs.map((l) => [l.legKey, l.amount])).toEqual([
-      ['line:0', '-10'],
-      ['line:1', '-20'],
+  test('line items become the legs, in order, keyed by line item id', () => {
+    const lineItems = [line('l2', 'a', 1, '-20', 'Bread'), line('l1', 'a', 0, '-10', 'Milk')];
+    const [event] = projectEvents({ ...empty, transactions: [tx('a', '-30')], lineItems });
+    expect(event!.legs.map((l) => [l.legKey, l.role, l.amount, l.description])).toEqual([
+      ['line:l1', 'line_item', '-10', 'Milk'],
+      ['line:l2', 'line_item', '-20', 'Bread'],
     ]);
   });
 
+  test('a line keeps its category when other lines change', () => {
+    const assignments = [category('a', 'groceries', 'line:l1')];
+    const before = projectEvents({
+      ...empty,
+      transactions: [tx('a', '-30')],
+      lineItems: [line('l1', 'a', 0, '-10'), line('l2', 'a', 1, '-20')],
+      assignments,
+    });
+    // l2 is replaced by two new lines and l1 moves to the end.
+    const after = projectEvents({
+      ...empty,
+      transactions: [tx('a', '-30')],
+      lineItems: [line('l3', 'a', 0, '-5'), line('l4', 'a', 1, '-15'), line('l1', 'a', 2, '-10')],
+      assignments,
+    });
+    const categoryOf = (events: typeof before, key: string) => events[0]!.legs.find((l) => l.legKey === key)?.categoryId;
+    expect(categoryOf(before, 'line:l1')).toBe('groceries');
+    expect(categoryOf(after, 'line:l1')).toBe('groceries');
+    expect(after[0]!.legs.filter((l) => l.categoryId).map((l) => l.legKey)).toEqual(['line:l1']);
+  });
+
+  test('without valid line items the transaction itself is the leg', () => {
+    const unbalanced = [line('l1', 'a', 0, '-10'), line('l2', 'a', 1, '-15')];
+    const [event] = projectEvents({ ...empty, transactions: [tx('a', '-30')], lineItems: unbalanced });
+    expect(event!.legs.map((l) => [l.legKey, l.role, l.amount])).toEqual([['principal', 'principal', '-30']]);
+  });
+
   test('categories pointing at a removed category fall back to Uncategorised', () => {
-    const decisions = [decision('a', 'category', { categoryId: 'gone' }, 'principal')];
-    const [event] = projectEvents({ transactions: [tx('a', '-30')], decisions, categories, openingBalances: [] });
+    const [event] = projectEvents({ ...empty, transactions: [tx('a', '-30')], assignments: [category('a', 'gone')] });
     expect(event!.legs[0]!.categoryId).toBeNull();
   });
 });
@@ -89,8 +137,8 @@ describe('itemisation validation', () => {
 });
 
 describe('grouping and transfers', () => {
-  const project = (transactions: ActiveTransaction[], decisions: DecisionRecord[] = []) =>
-    projectEvents({ transactions, decisions, categories, openingBalances: [] });
+  const project = (transactions: ActiveTransaction[], decisions: DecisionRecord[] = [], assignments: AssignmentRecord[] = []) =>
+    projectEvents({ ...empty, transactions, decisions, assignments });
 
   test('a Wise conversion and its fee across currency accounts form one conversion event', () => {
     const [event, ...rest] = project([
@@ -118,12 +166,10 @@ describe('grouping and transfers', () => {
   });
 
   test('linked opposite transactions are one internal transfer; principal categories are dropped', () => {
-    const decisions = [
-      decision('out', 'link', { groupId: 'g1' }),
-      decision('in', 'link', { groupId: 'g1' }),
-      decision('out', 'category', { categoryId: 'groceries' }, 'principal'),
-    ];
-    const events = project([tx('out', '-500', { accountId: 'cba' }), tx('in', '500', { accountId: 'wise' })], decisions);
+    const decisions = [decision('out', 'link', { groupId: 'g1' }), decision('in', 'link', { groupId: 'g1' })];
+    const events = project([tx('out', '-500', { accountId: 'cba' }), tx('in', '500', { accountId: 'wise' })], decisions, [
+      category('out', 'groceries'),
+    ]);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: 'internal_transfer', isInternal: true, governingDecisionId: 'g1' });
     expect(events[0]!.legs.every((l) => l.categoryId === null)).toBe(true);

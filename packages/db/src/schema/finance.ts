@@ -423,6 +423,29 @@ export const transactionReceipts = pgTable(
   (t) => [index('transaction_receipts_transaction_idx').on(t.transactionId)],
 );
 
+/**
+ * A part of a canonical transaction the user added (e.g. from a receipt). The only user data on a
+ * transaction: its lines sum exactly to the transaction amount and become the transaction's legs.
+ */
+export const transactionLineItems = pgTable(
+  'transaction_line_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id),
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => transactions.id),
+    position: integer('position').notNull(),
+    amount: amount('amount').notNull(),
+    description: text('description').notNull().default(''),
+    createdBy: text('created_by').references(() => user.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('transaction_line_items_transaction_idx').on(t.transactionId, t.position)],
+);
+
 // ---------------------------------------------------------------- reconciliation decisions
 
 export const decisionKind = pgEnum('decision_kind', ['category', 'tags', 'suppression', 'itemisation', 'link', 'transfer']);
@@ -430,7 +453,8 @@ export const decisionActor = pgEnum('decision_actor', ['user', 'system']);
 
 /**
  * Append-only. The current decision for (transaction, kind, legKey) is the one with the
- * highest `seq`; a change or undo is a new row that supersedes the previous one.
+ * highest `seq`; a change or undo is a new row that supersedes the previous one. `category`, `tags`
+ * and `itemisation` are no longer written: they moved to leg assignments and line items (ADR 0014).
  */
 export const reconciliationDecisions = pgTable(
   'reconciliation_decisions',
@@ -491,6 +515,35 @@ export const tags = pgTable(
   (t) => [uniqueIndex('tags_workspace_name_uq').on(t.workspaceId, t.name)],
 );
 
+export const legAssignmentKind = pgEnum('leg_assignment_kind', ['category', 'tags']);
+
+/**
+ * Append-only category and tag assignments on event legs (ADR 0014). Legs are rebuilt, so an assignment
+ * names the leg by its stable identity: its transaction plus leg key (`principal`, `fee` or
+ * `line:<line item id>`). The current one for (transaction, leg key, kind) has the highest `seq`.
+ */
+export const legAssignments = pgTable(
+  'leg_assignments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    seq: bigserial('seq', { mode: 'number' }).notNull().unique(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id),
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => transactions.id),
+    legKey: text('leg_key').notNull(),
+    kind: legAssignmentKind('kind').notNull(),
+    payload: jsonb('payload').notNull(),
+    supersedesId: uuid('supersedes_id'),
+    actor: decisionActor('actor').notNull().default('user'),
+    createdBy: text('created_by').references(() => user.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('leg_assignments_leg_idx').on(t.transactionId, t.legKey, t.kind, t.seq)],
+);
+
 // ---------------------------------------------------------------- events (pure projection)
 
 export const eventType = pgEnum('event_type', [
@@ -545,7 +598,7 @@ export const eventLegs = pgTable(
       .references(() => financialAccounts.id),
     transactionId: uuid('transaction_id').references(() => transactions.id),
     role: legRole('role').notNull(),
-    /** Stable leg identity within its transaction (`principal`, `line:0`, …); categories are keyed on it. */
+    /** Stable leg identity within its transaction (`principal`, `fee`, `line:<line item id>`); assignments are keyed on it. */
     legKey: text('leg_key').notNull(),
     occurredOn: date('occurred_on').notNull(),
     description: text('description').notNull(),

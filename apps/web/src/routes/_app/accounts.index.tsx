@@ -2,8 +2,8 @@ import { queryOptions, useQuery, useQueryClient, useSuspenseQuery } from '@tanst
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
 import { useState, type FormEvent } from 'react';
-import { possibleDuplicates } from '@finance/domain/accounts';
-import { todayIso } from '@finance/shared';
+import { possibleDuplicates, statementCoverage, type Period } from '@finance/domain/accounts';
+import { addDays, todayIso } from '@finance/shared';
 import { Badge, Button, Card, Empty, PageHeader } from '../../components/ui';
 import { money, shortDate } from '../../lib/format';
 import {
@@ -32,6 +32,7 @@ function AccountsPage() {
   const visible = accounts.data.filter((a) => !a.mergedIntoId && !a.closedOn);
   const archived = accounts.data.filter((a) => !a.mergedIntoId && a.closedOn);
   const groups = Map.groupBy(visible, (a) => a.institution);
+  const range = importRange(visible);
 
   return (
     <>
@@ -54,6 +55,7 @@ function AccountsPage() {
                 <AccountRow
                   key={a.id}
                   account={a}
+                  range={range}
                   duplicates={a.provider === 'manual' ? possibleDuplicates(a, visible) : []}
                   mergedIn={accounts.data.filter((m) => m.mergedIntoId === a.id)}
                   mergeTargets={visible.filter((t) => t.id !== a.id && t.institutionId === a.institutionId && t.commodity === a.commodity)}
@@ -104,11 +106,13 @@ function Archived({ accounts }: { accounts: Account[] }) {
 
 function AccountRow({
   account: a,
+  range,
   duplicates,
   mergedIn,
   mergeTargets,
 }: {
   account: Account;
+  range: Period | null;
   duplicates: Account[];
   mergedIn: Account[];
   mergeTargets: Account[];
@@ -155,6 +159,7 @@ function AccountRow({
         <div className="text-muted text-xs">
           {a.maskedIdentifier} · {a.accountType.replace('_', ' ')} · {a.classification} · {a.activeTransactions} transactions
         </div>
+        {a.provider !== 'manual' && range && <CoverageBar periods={a.statementPeriods} range={range} />}
         <DuplicateWarning duplicates={duplicates} />
         <MergedAccounts accounts={mergedIn} />
       </div>
@@ -172,6 +177,69 @@ function AccountRow({
         <div className="text-muted text-xs">{a.balance ? `as of ${shortDate(a.balance.on)}` : 'Balance unknown'}</div>
       </div>
       {a.provider === 'manual' && <ManualValues account={a} />}
+    </div>
+  );
+}
+
+/**
+ * The span every coverage bar is drawn against: from the earliest statement of the listed accounts to today,
+ * so an account whose statements stop short of today shows how far behind it is.
+ */
+function importRange(accounts: Account[]): Period | null {
+  const periods = accounts.flatMap((a) => a.statementPeriods);
+  if (periods.length === 0) return null;
+  return {
+    start: periods.reduce((min, p) => (p.start < min ? p.start : min), periods[0]!.start),
+    end: periods.reduce((max, p) => (p.end > max ? p.end : max), todayIso()),
+  };
+}
+
+const dayNumber = (iso: string) => Date.parse(`${iso}T00:00:00Z`) / 86_400_000;
+const span = (p: Period) => `${shortDate(p.start)} – ${shortDate(p.end)}`;
+
+/**
+ * Feature 02: which part of the import range this account's statements cover. Continuous statements
+ * show as one segment; hovering a segment or a gap shows its dates, so missing statements can be found.
+ */
+function CoverageBar({ periods, range }: { periods: Period[]; range: Period }) {
+  const { covered, gaps } = statementCoverage(periods);
+  const first = covered[0];
+  const last = covered.at(-1);
+  // Stretches before this account's first statement and after its last, where other accounts have statements.
+  const missing = [
+    ...(first && first.start > range.start ? [{ start: range.start, end: addDays(first.start, -1) }] : []),
+    ...gaps,
+    ...(last && last.end < range.end ? [{ start: addDays(last.end, 1), end: range.end }] : []),
+  ];
+  const origin = dayNumber(range.start);
+  const days = dayNumber(range.end) - origin + 1;
+  const position = (p: Period) => ({
+    left: `${((dayNumber(p.start) - origin) / days) * 100}%`,
+    width: `max(${((dayNumber(p.end) - dayNumber(p.start) + 1) / days) * 100}%, 2px)`,
+  });
+
+  const summary = !first
+    ? 'No statements imported'
+    : `Statements ${span({ start: first.start, end: last!.end })}${gaps.length ? `, ${gaps.length} ${gaps.length === 1 ? 'gap' : 'gaps'}` : ''}`;
+  return (
+    <div className="mt-1.5 max-w-md">
+      <div role="img" aria-label={summary} className="bg-surface-2 relative h-2 overflow-hidden rounded-full">
+        {missing.map((p) => (
+          <div key={`m${p.start}`} title={`Missing ${span(p)}`} className="hover:bg-line absolute inset-y-0" style={position(p)} />
+        ))}
+        {covered.map((p) => (
+          <div key={p.start} title={`Covered ${span(p)}`} className="bg-accent absolute inset-y-0 rounded-full" style={position(p)} />
+        ))}
+      </div>
+      <div className="text-muted mt-0.5 text-xs">
+        {first ? `Statements ${span({ start: first.start, end: last!.end })}` : 'No statements imported'}
+        {gaps.length > 0 && (
+          <span className="text-warning">
+            {' '}
+            · {gaps.length} {gaps.length === 1 ? 'gap' : 'gaps'}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

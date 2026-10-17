@@ -20,6 +20,8 @@ Consolidated cross-account economic events with typed movement legs and provenan
 4. Provide cross-account timeline and per-leg source traceability.
 5. Build one event from transactions sharing a provider reference or a current link group. Principal legs moving value both in and out make an internal event (a currency conversion when commodities differ, otherwise a transfer); fee rows become fee legs.
 6. A lone transaction hinted or marked as a transfer, or whose linked counterpart is inactive, is an unmatched transfer: internal and excluded from income/expense.
+7. Each transaction contributes its line items as legs when it has some that sum to its amount; otherwise the transaction itself is the leg (ADR 0014).
+8. Events and legs are where the user categorises and tags (feature 14): the Events page lists each leg with its category, suggestion and tags, filters to uncategorised events, and selects legs for bulk categorisation.
 
 ## Owned contracts and data
 
@@ -52,7 +54,7 @@ This feature owns its corresponding domain policies and primary records as descr
 | [Financial Accounts](02-financial-accounts.md) | Integration | Account-aware money legs link multi-account transfers into one economic activity. |
 | [Source Files / Statements](03-source-files-statements.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Import Processing](04-import-processing.md) | Integration | Successful transaction imports trigger event/leg posting or replay for affected records. |
-| [Transactions](05-transactions.md) | Integration | Eligible transactions produce economic events/legs; event provenance points back to transactions. |
+| [Transactions](05-transactions.md) | Integration | Eligible transactions produce economic events/legs, using their line items when present; event provenance points back to transactions. |
 | [Reconciliation](07-reconciliation.md) | Integration | Reconciliation consolidates matched transactions into one financial event and preserves manual decisions. |
 | [Financial Instruments](08-instruments.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Asset Price History](09-asset-price-history.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
@@ -60,7 +62,7 @@ This feature owns its corresponding domain policies and primary records as descr
 | [Valuation and FX](11-valuation-fx.md) | Integration | Economic legs provide spend/income classification and cash movements for valuation. |
 | [Manual Accounts](12-manual-accounts.md) | None | No direct interaction in v0.2; review if either feature changes scope. |
 | [Financial Dashboard](13-dashboard.md) | Integration | Income/expense/cashflow derived from event classification to avoid double counting. |
-| [Categories and Sankey](14-categories.md) | Integration | Event projection applies category decisions to income/expense legs; internal events expose only fee/tax/interest legs. |
+| [Categories and Sankey](14-categories.md) | Integration | Event projection applies leg assignments (categories, tags) to income/expense legs; internal events expose only fee/tax/interest legs. Categorising happens on the Events page. |
 
 ## Changes requiring reciprocal documentation
 

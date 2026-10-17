@@ -12,7 +12,8 @@ import {
   financialAccounts,
   instruments,
   priceObservations,
-  reconciliationDecisions,
+  legAssignments,
+  transactionLineItems,
   sourceFiles,
   sourceRecords,
   statements,
@@ -22,7 +23,17 @@ import {
   type Database,
 } from '@finance/db';
 import { instrumentCommodity, type ParsedStatement } from '@finance/domain';
-import { acceptSuggestions, CategoriseError, categoriseLegs, recordDecisions, suggestCategories } from '@finance/ledger/store';
+import { ItemisationError } from '@finance/ledger';
+import {
+  acceptSuggestions,
+  CategoriseError,
+  categoriseLegs,
+  findSimilarLegs,
+  recordAssignments,
+  recordDecisions,
+  setLineItems,
+  suggestCategories,
+} from '@finance/ledger/store';
 import {
   AccountArchiveError,
   AccountMergeError,
@@ -175,7 +186,7 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     expect(await activeDescriptions()).toEqual(['T1', 'T2']);
   });
 
-  test('a category decision survives soft deletion and reimport', async () => {
+  test('a category assignment survives soft deletion and reimport', async () => {
     const a = await importStatement('A', ['Groceries']);
     const txId = await idOf('Groceries');
     const categoryId = crypto.randomUUID();
@@ -183,7 +194,7 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
       sql`insert into categories (id, workspace_id, name, kind) values (${categoryId}, ${workspaceId}, 'Essentials', 'expense')`,
     );
     await db.transaction((tx) =>
-      recordDecisions(tx, workspaceId, [
+      recordAssignments(tx, workspaceId, [
         { workspaceId, transactionId: txId, kind: 'category', legKey: 'principal', payload: { categoryId }, userId },
       ]),
     );
@@ -194,7 +205,7 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     expect(leg!.categoryId).toBe(categoryId);
   });
 
-  test('categorising many legs at once records one decision per changed leg and skips the rest', async () => {
+  test('categorising many legs at once records one assignment per changed leg and skips the rest', async () => {
     await importStatement('A', ['Shop 1', 'Shop 2', 'Shop 3']);
     await importParsed('B', {
       ...parsed([]),
@@ -221,8 +232,7 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
         ),
       );
     const categoryOf = async (id: string) => (await db.select().from(eventLegs).where(eq(eventLegs.transactionId, id)))[0]!.categoryId;
-    const decisionCount = async () =>
-      (await db.select().from(reconciliationDecisions).where(eq(reconciliationDecisions.kind, 'category'))).length;
+    const assignmentCount = async () => (await db.select().from(legAssignments).where(eq(legAssignments.kind, 'category'))).length;
 
     // The internal transfer's principal leg cannot carry a category.
     expect(await categorise([s1!, s2!, move!], categoryId)).toEqual({ categorised: 2 });
@@ -234,7 +244,7 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     ]);
     // Legs that already have the category are not recorded again.
     expect(await categorise([s1!, s2!, s3!], categoryId)).toEqual({ categorised: 1 });
-    expect(await decisionCount()).toBe(3);
+    expect(await assignmentCount()).toBe(3);
 
     expect(await categorise([s1!], null)).toEqual({ categorised: 1 });
     expect(await categoryOf(s1!)).toBeNull();
@@ -281,6 +291,196 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     expect(await accept()).toEqual({ categorised: 1 });
     expect((await db.select().from(eventLegs).where(eq(eventLegs.transactionId, c!)))[0]!.categoryId).toBe(lifestyle);
     expect(await accept()).toEqual({ categorised: 0 });
+  });
+
+  test('line items become legs, keep their categories when edited, and must sum to the transaction', async () => {
+    await importStatement('A', ['Supermarket']);
+    const txId = await idOf('Supermarket');
+    const categoryId = crypto.randomUUID();
+    await db.execute(sql`insert into categories (id, workspace_id, name, kind) values (${categoryId}, ${workspaceId}, 'Milk', 'expense')`);
+    const save = (lines: Array<{ id?: string; amount: string; description: string }> | null) =>
+      db.transaction((tx) => setLineItems(tx, workspaceId, txId, lines, userId));
+    const legsOf = async () =>
+      (await db.select().from(eventLegs).where(eq(eventLegs.transactionId, txId))).sort((a, b) => a.legKey.localeCompare(b.legKey));
+
+    await expect(
+      save([
+        { amount: '-4.00', description: 'Milk' },
+        { amount: '-5.00', description: 'Bread' },
+      ]),
+    ).rejects.toThrow(ItemisationError);
+    await save([
+      { amount: '-4.00', description: 'Milk' },
+      { amount: '-6.00', description: 'Bread' },
+    ]);
+    const lines = await db.select().from(transactionLineItems).where(eq(transactionLineItems.transactionId, txId));
+    const milk = lines.find((l) => l.description === 'Milk')!;
+    expect((await legsOf()).map((l) => [l.legKey, l.role])).toEqual(
+      expect.arrayContaining([
+        [`line:${milk.id}`, 'line_item'],
+        [`line:${lines.find((l) => l.description === 'Bread')!.id}`, 'line_item'],
+      ]),
+    );
+    await db.transaction((tx) => categoriseLegs(tx, workspaceId, [{ transactionId: txId, legKey: `line:${milk.id}` }], categoryId, userId));
+
+    // Bread is split in two; Milk is sent back with its id and keeps its category.
+    await save([
+      { amount: '-3.00', description: 'Bread' },
+      { amount: '-3.00', description: 'Butter' },
+      { id: milk.id, amount: '-4.00', description: 'Milk' },
+    ]);
+    const legs = await legsOf();
+    expect(legs).toHaveLength(3);
+    expect(legs.filter((l) => l.categoryId).map((l) => l.legKey)).toEqual([`line:${milk.id}`]);
+
+    // Without line items the transaction is its own leg again.
+    await save(null);
+    expect((await legsOf()).map((l) => [l.legKey, l.amount])).toEqual([['principal', '-10.00000000']]);
+  });
+
+  test('the migration moves itemisation, category and tag decisions to line items and leg assignments', async () => {
+    await importStatement('A', ['Supermarket', 'Cafe']);
+    const [shop, cafe] = await Promise.all(['Supermarket', 'Cafe'].map(idOf));
+    const [old, current] = [crypto.randomUUID(), crypto.randomUUID()];
+    await db.execute(sql`insert into categories (id, workspace_id, name, kind) values
+      (${old}, ${workspaceId}, 'Old', 'expense'), (${current}, ${workspaceId}, 'Current', 'expense')`);
+    const lines = (amounts: string[]) => ({ lines: amounts.map((amount, i) => ({ amount, description: `L${i}` })) });
+    const rows: Array<[string, string, string, unknown]> = [
+      [shop!, 'itemisation', '', lines(['-5.00', '-5.00'])],
+      [shop!, 'itemisation', '', lines(['-4.00', '-6.00'])],
+      [shop!, 'category', 'line:1', { categoryId: old }],
+      [shop!, 'category', 'line:1', { categoryId: current }],
+      [shop!, 'category', 'line:7', { categoryId: old }],
+      [cafe!, 'category', 'principal', { categoryId: current }],
+      [cafe!, 'tags', 'principal', { tagIds: [] }],
+    ];
+    for (const [transactionId, kind, legKey, payload] of rows) {
+      await db.execute(sql`insert into reconciliation_decisions (workspace_id, transaction_id, kind, leg_key, payload)
+        values (${workspaceId}, ${transactionId}, ${kind}, ${legKey}, ${JSON.stringify(payload)}::jsonb)`);
+    }
+    const migration = await Bun.file(new URL('../../db/migrations/0011_leg_assignments_line_items.sql', import.meta.url)).text();
+    for (const statement of migration.split('--> statement-breakpoint').filter((st) => st.includes('INSERT INTO'))) {
+      await db.execute(sql.raw(statement));
+    }
+
+    const items = (await db.select().from(transactionLineItems)).sort((a, b) => a.position - b.position);
+    expect(items.map((l) => [l.transactionId, l.position, l.amount, l.description])).toEqual([
+      [shop, 0, '-4.00000000', 'L0'],
+      [shop, 1, '-6.00000000', 'L1'],
+    ]);
+    const assigned = (await db.select().from(legAssignments)).map((a) => [a.transactionId, a.legKey, a.kind, a.payload]);
+    expect(assigned).toHaveLength(3);
+    expect(assigned).toEqual(
+      expect.arrayContaining([
+        [shop, `line:${items[1]!.id}`, 'category', { categoryId: current }],
+        [cafe, 'principal', 'category', { categoryId: current }],
+        [cafe, 'principal', 'tags', { tagIds: [] }],
+      ]),
+    );
+  });
+
+  test('categorising a leg offers identical, similar and already-categorised transactions to tick', async () => {
+    // One file, so rows with the same normalised description stay separate transactions (by ordinal).
+    await importStatement('A', [
+      'Corner Grocer 1234',
+      'CORNER GROCER #1234',
+      'Corner-Grocer 1234',
+      'corner grocer 5678',
+      'corner grocer 4321',
+      'Corner Grocer North',
+      'Corner Grocer 99',
+      'Corner Shop',
+      '1234',
+      'Ox Grocer',
+      'Ox Bakery',
+    ]);
+    await importParsed('B', {
+      ...parsed([]),
+      accounts: [
+        {
+          ...parsed([]).accounts[0]!,
+          rows: [{ rowIndex: 0, postedOn: '2026-01-06', description: 'Corner Grocer 1234', amount: '-5.00', transferHint: true, raw: {} }],
+        },
+      ],
+    });
+    const [source, shouty, hyphen, digits, suppressed, north, ninetyNine, shop, onlyDigits, ox] = await Promise.all(
+      [
+        'Corner Grocer 1234',
+        'CORNER GROCER #1234',
+        'Corner-Grocer 1234',
+        'corner grocer 5678',
+        'corner grocer 4321',
+        'Corner Grocer North',
+        'Corner Grocer 99',
+        'Corner Shop',
+        '1234',
+        'Ox Grocer',
+      ].map(
+        async (d) =>
+          (
+            await db
+              .select({ id: transactions.id })
+              .from(transactions)
+              .where(and(eq(transactions.description, d), eq(transactions.amount, '-10.00')))
+          )[0]!.id,
+      ),
+    );
+    const [essentials, lifestyle] = [crypto.randomUUID(), crypto.randomUUID()];
+    await db.execute(sql`insert into categories (id, workspace_id, name, kind) values
+      (${essentials}, ${workspaceId}, 'Essentials', 'expense'), (${lifestyle}, ${workspaceId}, 'Lifestyle', 'expense')`);
+    const categorise = (ids: string[], to: string) =>
+      db.transaction((tx) =>
+        categoriseLegs(
+          tx,
+          workspaceId,
+          ids.map((transactionId) => ({ transactionId, legKey: 'principal' })),
+          to,
+          userId,
+        ),
+      );
+    await categorise([ninetyNine!], lifestyle);
+    await categorise([north!], essentials);
+    await db.transaction((tx) =>
+      recordDecisions(tx, workspaceId, [
+        { workspaceId, transactionId: suppressed!, kind: 'suppression', payload: { suppressed: true }, userId },
+      ]),
+    );
+
+    const find = (transactionId: string, categoryId: string) =>
+      db.transaction((tx) => findSimilarLegs(tx, workspaceId, { transactionId, legKey: 'principal', categoryId }));
+    const ids = (rows: Array<{ transactionId: string }>) => rows.map((r) => r.transactionId).sort();
+    const sections = async (transactionId: string, categoryId: string) => {
+      const found = await find(transactionId, categoryId);
+      return { identical: ids(found.identical), similar: ids(found.similar), categorised: ids(found.categorised) };
+    };
+
+    // Identical ignores case, spacing and punctuation but not digits. The leg itself, the internal
+    // transfer, the suppressed transaction and legs already in the chosen category are not offered.
+    expect(await sections(source!, essentials)).toEqual({
+      identical: [shouty!, hyphen!].sort(),
+      similar: [digits!, shop!].sort(),
+      categorised: [ninetyNine!],
+    });
+    expect((await find(source!, essentials)).categorised[0]!.categoryId).toBe(lifestyle);
+    expect(await sections(source!, lifestyle)).toEqual({
+      identical: [shouty!, hyphen!].sort(),
+      similar: [digits!, shop!].sort(),
+      categorised: [north!],
+    });
+    // Sharing the merchant's first word is enough to be similar ("Corner Shop", "Corner Grocer North").
+    expect(await sections(shop!, lifestyle)).toEqual({
+      identical: [],
+      similar: [source!, shouty!, hyphen!, digits!].sort(),
+      categorised: [north!],
+    });
+    expect(await sections(ox!, essentials)).toEqual({ identical: [], similar: [], categorised: [] });
+    // A description of only digits matches nothing.
+    expect(await sections(onlyDigits!, essentials)).toEqual({ identical: [], similar: [], categorised: [] });
+
+    // Applying records a decision only for the legs that were ticked.
+    expect(await categorise([source!, shouty!], essentials)).toEqual({ categorised: 2 });
+    const categoryOf = async (id: string) => (await db.select().from(eventLegs).where(eq(eventLegs.transactionId, id)))[0]!.categoryId;
+    expect([await categoryOf(shouty!), await categoryOf(hyphen!), await categoryOf(digits!)]).toEqual([essentials, null, null]);
   });
 
   test('provider IDs dedupe across files, and one statement can cover several accounts', async () => {
@@ -443,7 +643,7 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
       sql`insert into categories (id, workspace_id, name, kind) values (${categoryId}, ${workspaceId}, 'Lifestyle', 'expense')`,
     );
     await db.transaction((tx) =>
-      recordDecisions(tx, workspaceId, [
+      recordAssignments(tx, workspaceId, [
         { workspaceId, transactionId: moved, kind: 'category', legKey: 'principal', payload: { categoryId }, userId },
       ]),
     );
