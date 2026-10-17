@@ -22,7 +22,14 @@ import {
   type Database,
 } from '@finance/db';
 import { instrumentCommodity, type ParsedStatement } from '@finance/domain';
-import { acceptSuggestions, CategoriseError, categoriseLegs, recordDecisions, suggestCategories } from '@finance/ledger/store';
+import {
+  acceptSuggestions,
+  CategoriseError,
+  categoriseLegs,
+  findSimilarLegs,
+  recordDecisions,
+  suggestCategories,
+} from '@finance/ledger/store';
 import {
   AccountArchiveError,
   AccountMergeError,
@@ -281,6 +288,110 @@ describe.skipIf(!url)('statement import pipeline (PostgreSQL)', () => {
     expect(await accept()).toEqual({ categorised: 1 });
     expect((await db.select().from(eventLegs).where(eq(eventLegs.transactionId, c!)))[0]!.categoryId).toBe(lifestyle);
     expect(await accept()).toEqual({ categorised: 0 });
+  });
+
+  test('categorising a leg offers identical, similar and already-categorised transactions to tick', async () => {
+    // One file, so rows with the same normalised description stay separate transactions (by ordinal).
+    await importStatement('A', [
+      'Corner Grocer 1234',
+      'CORNER GROCER #1234',
+      'Corner-Grocer 1234',
+      'corner grocer 5678',
+      'corner grocer 4321',
+      'Corner Grocer North',
+      'Corner Grocer 99',
+      'Corner Shop',
+      '1234',
+      'Ox Grocer',
+      'Ox Bakery',
+    ]);
+    await importParsed('B', {
+      ...parsed([]),
+      accounts: [
+        {
+          ...parsed([]).accounts[0]!,
+          rows: [{ rowIndex: 0, postedOn: '2026-01-06', description: 'Corner Grocer 1234', amount: '-5.00', transferHint: true, raw: {} }],
+        },
+      ],
+    });
+    const [source, shouty, hyphen, digits, suppressed, north, ninetyNine, shop, onlyDigits, ox] = await Promise.all(
+      [
+        'Corner Grocer 1234',
+        'CORNER GROCER #1234',
+        'Corner-Grocer 1234',
+        'corner grocer 5678',
+        'corner grocer 4321',
+        'Corner Grocer North',
+        'Corner Grocer 99',
+        'Corner Shop',
+        '1234',
+        'Ox Grocer',
+      ].map(
+        async (d) =>
+          (
+            await db
+              .select({ id: transactions.id })
+              .from(transactions)
+              .where(and(eq(transactions.description, d), eq(transactions.amount, '-10.00')))
+          )[0]!.id,
+      ),
+    );
+    const [essentials, lifestyle] = [crypto.randomUUID(), crypto.randomUUID()];
+    await db.execute(sql`insert into categories (id, workspace_id, name, kind) values
+      (${essentials}, ${workspaceId}, 'Essentials', 'expense'), (${lifestyle}, ${workspaceId}, 'Lifestyle', 'expense')`);
+    const categorise = (ids: string[], to: string) =>
+      db.transaction((tx) =>
+        categoriseLegs(
+          tx,
+          workspaceId,
+          ids.map((transactionId) => ({ transactionId, legKey: 'principal' })),
+          to,
+          userId,
+        ),
+      );
+    await categorise([ninetyNine!], lifestyle);
+    await categorise([north!], essentials);
+    await db.transaction((tx) =>
+      recordDecisions(tx, workspaceId, [
+        { workspaceId, transactionId: suppressed!, kind: 'suppression', payload: { suppressed: true }, userId },
+      ]),
+    );
+
+    const find = (transactionId: string, categoryId: string) =>
+      db.transaction((tx) => findSimilarLegs(tx, workspaceId, { transactionId, legKey: 'principal', categoryId }));
+    const ids = (rows: Array<{ transactionId: string }>) => rows.map((r) => r.transactionId).sort();
+    const sections = async (transactionId: string, categoryId: string) => {
+      const found = await find(transactionId, categoryId);
+      return { identical: ids(found.identical), similar: ids(found.similar), categorised: ids(found.categorised) };
+    };
+
+    // Identical ignores case, spacing and punctuation but not digits. The leg itself, the internal
+    // transfer, the suppressed transaction and legs already in the chosen category are not offered.
+    expect(await sections(source!, essentials)).toEqual({
+      identical: [shouty!, hyphen!].sort(),
+      similar: [digits!, shop!].sort(),
+      categorised: [ninetyNine!],
+    });
+    expect((await find(source!, essentials)).categorised[0]!.categoryId).toBe(lifestyle);
+    expect(await sections(source!, lifestyle)).toEqual({
+      identical: [shouty!, hyphen!].sort(),
+      similar: [digits!, shop!].sort(),
+      categorised: [north!],
+    });
+    // Sharing the merchant's first word is enough to be similar ("Corner Shop", "Corner Grocer North").
+    expect(await sections(shop!, lifestyle)).toEqual({
+      identical: [],
+      similar: [source!, shouty!, hyphen!, digits!].sort(),
+      categorised: [north!],
+    });
+    expect(await sections(ox!, essentials)).toEqual({ identical: [], similar: [], categorised: [] });
+    // A description of only digits matches nothing.
+    expect(await sections(onlyDigits!, essentials)).toEqual({ identical: [], similar: [], categorised: [] });
+
+    // Applying records a decision only for the legs that were ticked.
+    expect(await categorise([source!, shouty!], essentials)).toEqual({ categorised: 2 });
+    const categoryOf = async (id: string) => (await db.select().from(eventLegs).where(eq(eventLegs.transactionId, id)))[0]!.categoryId;
+    expect([await categoryOf(shouty!), await categoryOf(hyphen!), await categoryOf(digits!)]).toEqual([essentials, null, null]);
   });
 
   test('provider IDs dedupe across files, and one statement can cover several accounts', async () => {
