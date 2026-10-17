@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { possibleDuplicates, type TrackedAccountRef } from '../src/accounts';
+import { possibleDuplicates, statementCoverage, type TrackedAccountRef } from '../src/accounts';
 
 const tracked: TrackedAccountRef[] = [
   { id: 'loan', name: 'Investment Home Loan', institution: 'Commbank', provider: 'commbank', classification: 'liability' },
@@ -25,5 +25,42 @@ describe('possible duplicates of a manual account', () => {
   test('ignores other classifications and other manual accounts', () => {
     expect(ids('Home loan', 'asset')).toEqual([]);
     expect(ids('House', 'asset')).toEqual([]);
+  });
+});
+
+describe('statement coverage', () => {
+  test('no statements cover nothing', () => {
+    expect(statementCoverage([])).toEqual({ covered: [], gaps: [] });
+  });
+
+  test('statements that run on from each other or overlap merge into one period', () => {
+    const periods = [
+      { start: '2026-02-01', end: '2026-02-28' },
+      { start: '2026-01-01', end: '2026-01-31' },
+      { start: '2026-02-15', end: '2026-03-31' },
+    ];
+    expect(statementCoverage(periods)).toEqual({ covered: [{ start: '2026-01-01', end: '2026-03-31' }], gaps: [] });
+  });
+
+  test('a missing statement leaves a gap between the periods either side', () => {
+    const periods = [
+      { start: '2026-03-01', end: '2026-03-31' },
+      { start: '2026-01-01', end: '2026-01-31' },
+    ];
+    expect(statementCoverage(periods)).toEqual({
+      covered: [
+        { start: '2026-01-01', end: '2026-01-31' },
+        { start: '2026-03-01', end: '2026-03-31' },
+      ],
+      gaps: [{ start: '2026-02-01', end: '2026-02-28' }],
+    });
+  });
+
+  test('a statement inside another adds nothing', () => {
+    const periods = [
+      { start: '2026-01-01', end: '2026-06-30' },
+      { start: '2026-02-01', end: '2026-02-28' },
+    ];
+    expect(statementCoverage(periods).covered).toEqual([{ start: '2026-01-01', end: '2026-06-30' }]);
   });
 });

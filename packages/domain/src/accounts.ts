@@ -1,4 +1,5 @@
 /** Browser-safe account rules (imported as `@finance/domain/accounts`). */
+import { addDays, type IsoDate } from '@finance/shared';
 
 export interface TrackedAccountRef {
   id: string;
@@ -34,4 +35,26 @@ export function possibleDuplicates<T extends TrackedAccountRef>(
     const theirs = new Set([...words(a.name), ...words(a.institution), ...words(a.provider)]);
     return keys.some((w) => theirs.has(w));
   });
+}
+
+/** An inclusive range of calendar dates, such as a statement's period. */
+export interface Period {
+  start: IsoDate;
+  end: IsoDate;
+}
+
+/**
+ * What an account's statements cover (feature 02): their periods merged where they overlap or run on
+ * from each other (one ends the day before the next starts), and the gaps between the merged periods.
+ */
+export function statementCoverage(periods: readonly Period[]): { covered: Period[]; gaps: Period[] } {
+  const covered: Period[] = [];
+  for (const p of [...periods].sort((a, b) => a.start.localeCompare(b.start))) {
+    const last = covered.at(-1);
+    if (last && p.start <= addDays(last.end, 1)) {
+      if (p.end > last.end) last.end = p.end;
+    } else covered.push({ start: p.start, end: p.end });
+  }
+  const gaps = covered.slice(1).map((p, i) => ({ start: addDays(covered[i]!.end, 1), end: addDays(p.start, -1) }));
+  return { covered, gaps };
 }
