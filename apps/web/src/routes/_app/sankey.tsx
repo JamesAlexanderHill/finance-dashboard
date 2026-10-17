@@ -3,7 +3,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useServerFn } from '@tanstack/react-start';
 import { useState } from 'react';
 import { z } from 'zod';
-import { addMonths, endOfMonth, startOfMonth, todayIso } from '@finance/shared';
+import { addMonths, endOfMonth, previousRange, rangeLabel, startOfMonth, todayIso } from '@finance/shared';
 import { SankeyChart, type ChartNode } from '../../components/sankey-chart';
 import { Button, Card, Empty, PageHeader } from '../../components/ui';
 import { money, monthYear, shortDate } from '../../lib/format';
@@ -16,6 +16,8 @@ const searchSchema = z.object({
   to: isoDate.optional(),
   tags: z.array(z.uuid()).optional(),
   focus: z.uuid().optional(),
+  /** Show the previous period's value on each node. */
+  compare: z.boolean().optional(),
 });
 type Search = z.infer<typeof searchSchema>;
 
@@ -34,15 +36,15 @@ const cashFlowQuery = (s: Search) => {
 };
 const categoriesQuery = queryOptions({ queryKey: ['categories'], queryFn: () => listCategories() });
 
-export const Route = createFileRoute('/_app/cash-flow')({
+export const Route = createFileRoute('/_app/sankey')({
   validateSearch: searchSchema,
   loaderDeps: ({ search }) => search,
   loader: ({ context, deps }) =>
     Promise.all([context.queryClient.ensureQueryData(cashFlowQuery(deps)), context.queryClient.ensureQueryData(categoriesQuery)]),
-  component: CashFlowPage,
+  component: SankeyPage,
 });
 
-function CashFlowPage() {
+function SankeyPage() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const { data } = useSuspenseQuery(cashFlowQuery(search));
@@ -50,6 +52,12 @@ function CashFlowPage() {
   const [selected, setSelected] = useState<ChartNode | null>(null);
   const { from, to } = period(search);
   const isMonth = from === startOfMonth(from) && to === endOfMonth(from);
+  const previous = previousRange({ from, to });
+  // The previous period at the same focus and tags, fetched only while comparing.
+  const prior = useQuery({
+    ...cashFlowQuery({ ...search, ...previous }),
+    enabled: !!search.compare,
+  });
 
   const set = (patch: Partial<Search>) => {
     setSelected(null);
@@ -74,7 +82,7 @@ function CashFlowPage() {
   return (
     <>
       <PageHeader
-        title="Cash flow"
+        title="Sankey"
         description={isMonth ? monthYear(from) : `${shortDate(from)} – ${shortDate(to)}`}
         actions={
           <>
@@ -147,18 +155,29 @@ function CashFlowPage() {
         </p>
       )}
       <Card className="p-4">
-        {data.focus && (
-          <div className="mb-2 flex items-center gap-2 text-sm">
-            <button className="text-accent underline" onClick={() => set({ focus: undefined })}>
-              All categories
-            </button>
-            <span className="text-muted">› {data.focus.path.join(' › ')}</span>
-          </div>
-        )}
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+          {data.focus && (
+            <>
+              <button className="text-accent underline" onClick={() => set({ focus: undefined })}>
+                All categories
+              </button>
+              <span className="text-muted">› {data.focus.path.join(' › ')}</span>
+            </>
+          )}
+          <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs">
+            <input type="checkbox" checked={!!search.compare} onChange={(e) => set({ compare: e.target.checked || undefined })} />
+            Compare with {rangeLabel(previous)} (hover a node)
+          </label>
+        </div>
         {data.links.length === 0 ? (
           <Empty>No cash flow in this period{search.tags?.length ? ' for the selected tags' : ''}.</Empty>
         ) : (
-          <SankeyChart nodes={data.nodes} links={data.links} onSelect={onSelect} />
+          <SankeyChart
+            nodes={data.nodes}
+            links={data.links}
+            onSelect={onSelect}
+            previous={search.compare && prior.data ? Object.fromEntries(prior.data.nodes.map((n) => [n.id, n.value])) : undefined}
+          />
         )}
         {data.negative.length > 0 && (
           <p className="text-muted mt-2 text-xs">

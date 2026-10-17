@@ -6,13 +6,17 @@ export interface PeriodSeries {
   label: string;
   /** A CSS colour (use the --series-* tokens). */
   color: string;
-  type: 'bar' | 'line';
+  type: 'bar' | 'line' | 'area';
   /** One value per period; null leaves a gap. */
   values: Array<number | null>;
-  /** Bars sharing a stack key are stacked; other bars sit side by side. */
+  /** Bars (or areas) sharing a stack key are stacked; other bars sit side by side. */
   stack?: string;
+  /** Draw a line as steps: each period's value is held flat across its band. */
+  step?: boolean;
   /** Per-period flag: draw this line point as an open marker (stale or partial). */
   hollow?: boolean[];
+  /** Leave out of the legend and tooltip, e.g. markers drawn over an area that already names the value. */
+  unlisted?: boolean;
   /** Draw a line dashed, e.g. the previous period overlaid for comparison. */
   dashed?: boolean;
 }
@@ -34,7 +38,9 @@ function niceTicks(min: number, max: number, count = 4) {
 }
 
 /**
- * Bars (grouped or stacked) and lines over a sequence of periods on one shared value axis. A legend
+ * Bars (grouped or stacked), stacked areas and lines over a sequence of periods on one shared value
+ * axis. Positive values stack up from zero and negative ones down, so an area or bar stack can sit
+ * above and below the line. A legend
  * names every series; hovering a period shows all its values (and any notes); clicking a bar segment
  * calls `onSelect` with its series key (for drill-down).
  */
@@ -75,6 +81,26 @@ export function PeriodChart(props: {
       }
       for (const s of series.filter((x) => x.type === 'line')) if (s.values[i] != null) extents.push(s.values[i]!);
     });
+
+    // Stacked areas: each series' band per period, from the stack's running total in its direction.
+    const areaSeries = series.filter((s) => s.type === 'area');
+    const totals = new Map<string, { up: number[]; down: number[] }>();
+    const bands = areaSeries.map((s) => {
+      const key = s.stack ?? s.key;
+      if (!totals.has(key)) totals.set(key, { up: labels.map(() => 0), down: labels.map(() => 0) });
+      const t = totals.get(key)!;
+      return {
+        series: s,
+        spans: s.values.map((v, i) => {
+          if (v == null) return null;
+          const side = v >= 0 ? t.up : t.down;
+          const from = side[i]!;
+          side[i] = from + v;
+          extents.push(side[i]!);
+          return [from, side[i]!] as const;
+        }),
+      };
+    });
     let [y0, y1] = [Math.min(...extents), Math.max(...extents)];
     if (y0 === y1) y1 = y0 + 1;
     const pad = (y1 - y0) * 0.06;
@@ -106,32 +132,54 @@ export function PeriodChart(props: {
     });
     // Thin the axis labels so they never collide (about 72px each).
     const labelEvery = Math.max(1, Math.ceil(labels.length / Math.max(1, Math.floor(plotWidth / 72))));
-    return { x, y, band, rects, ticks: niceTicks(y0, y1), labelEvery };
+    // One polygon per run of consecutive values: along the top edge, then back along the base.
+    const areas = bands.map(({ series: s, spans }) => {
+      const runs: Array<Array<{ i: number; from: number; to: number }>> = [];
+      spans.forEach((span, i) => {
+        if (!span) return;
+        if (!spans[i - 1]) runs.push([]);
+        runs.at(-1)!.push({ i, from: span[0], to: span[1] });
+      });
+      const d = runs
+        .map((run) => {
+          const top = run.map((p) => `${x(p.i)},${y(p.to)}`);
+          const base = [...run].reverse().map((p) => `${x(p.i)},${y(p.from)}`);
+          return `M${top.join('L')}L${base.join('L')}Z`;
+        })
+        .join('');
+      const edge = runs.map((run) => `M${run.map((p) => `${x(p.i)},${y(p.to)}`).join('L')}`).join('');
+      return { key: s.key, color: s.color, d, edge };
+    });
+    return { x, y, band, rects, areas, ticks: niceTicks(y0, y1), labelEvery };
   }, [width, labels, series]);
 
   const lineSeries = series.filter((s) => s.type === 'line');
   return (
     <div>
       <ul className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs" aria-label="Legend">
-        {series.map((s) => (
-          <li key={s.key} className="text-muted flex items-center gap-1.5">
-            {s.type === 'line' ? (
-              <span
-                className="inline-block w-4"
-                style={s.dashed ? { borderTop: `2px dashed ${s.color}` } : { height: 2, borderRadius: 2, background: s.color }}
-              />
-            ) : (
-              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />
-            )}
-            {props.selectable?.includes(s.key) ? (
-              <button className="hover:text-ink underline" onClick={() => props.onSelect?.(s.key)}>
-                {s.label}
-              </button>
-            ) : (
-              s.label
-            )}
-          </li>
-        ))}
+        {series
+          .filter((s) => !s.unlisted)
+          .map((s) => (
+            <li key={s.key} className="text-muted flex items-center gap-1.5">
+              {s.type === 'area' ? (
+                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color, opacity: 0.7 }} />
+              ) : s.type === 'line' ? (
+                <span
+                  className="inline-block w-4"
+                  style={s.dashed ? { borderTop: `2px dashed ${s.color}` } : { height: 2, borderRadius: 2, background: s.color }}
+                />
+              ) : (
+                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />
+              )}
+              {props.selectable?.includes(s.key) ? (
+                <button className="hover:text-ink underline" onClick={() => props.onSelect?.(s.key)}>
+                  {s.label}
+                </button>
+              ) : (
+                s.label
+              )}
+            </li>
+          ))}
       </ul>
       <div ref={ref} className="relative w-full">
         {geometry && (
@@ -167,6 +215,12 @@ export function PeriodChart(props: {
                 )}
               </g>
             ))}
+            {geometry.areas.map((a) => (
+              <g key={a.key} pointerEvents="none">
+                <path d={a.d} fill={a.color} fillOpacity={0.7} />
+                <path d={a.edge} fill="none" stroke={a.color} strokeWidth={1.5} strokeLinejoin="round" />
+              </g>
+            ))}
             {geometry.rects.map((r) => (
               <rect
                 key={`${r.key}-${r.i}`}
@@ -183,7 +237,13 @@ export function PeriodChart(props: {
             ))}
             {lineSeries.map((s) => {
               const points = s.values.map((v, i) => (v == null ? null : ([geometry.x(i), geometry.y(v)] as const)));
-              const path = points.reduce((d, p, i) => (p ? `${d}${d && points[i - 1] ? 'L' : 'M'}${p[0]},${p[1]}` : d), '');
+              const half = geometry.band / 2;
+              const path = s.step
+                ? points.reduce(
+                    (d, p, i) => (p ? `${d}${d && points[i - 1] ? `V${p[1]}` : `M${p[0] - half},${p[1]}`}H${p[0] + half}` : d),
+                    '',
+                  )
+                : points.reduce((d, p, i) => (p ? `${d}${d && points[i - 1] ? 'L' : 'M'}${p[0]},${p[1]}` : d), '');
               return (
                 <g key={s.key} pointerEvents="none">
                   <path
@@ -195,7 +255,7 @@ export function PeriodChart(props: {
                     strokeDasharray={s.dashed ? '5 4' : undefined}
                   />
                   {points.map((p, i) =>
-                    p && !s.dashed && (labels.length <= DOT_LIMIT || s.hollow?.[i]) ? (
+                    p && !s.dashed && !s.step && (labels.length <= DOT_LIMIT || s.hollow?.[i]) ? (
                       <circle
                         key={i}
                         cx={p[0]}
@@ -222,7 +282,7 @@ export function PeriodChart(props: {
               {props.compareLabels?.[hover] && <span> · dashed: {props.compareLabels[hover]}</span>}
             </div>
             {series
-              .filter((s) => s.values[hover] != null && s.values[hover] !== 0)
+              .filter((s) => !s.unlisted && s.values[hover] != null && s.values[hover] !== 0)
               .map((s) => (
                 <div key={s.key} className="flex items-center gap-1.5">
                   <span

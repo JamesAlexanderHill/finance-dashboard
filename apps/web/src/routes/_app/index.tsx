@@ -4,7 +4,6 @@ import type { ReactNode } from 'react';
 import { z } from 'zod';
 import { daysBetween, presetRange, RANGE_PRESETS, shiftRange, todayIso, type DateRange } from '@finance/shared';
 import { PeriodChart, type PeriodSeries } from '../../components/period-chart';
-import { SankeyChart } from '../../components/sankey-chart';
 import { Badge, Button, Card, Empty, PageHeader } from '../../components/ui';
 import { money, shortDate } from '../../lib/format';
 import { listCategories } from '../../server/categories.functions';
@@ -27,7 +26,6 @@ const searchSchema = z.object({
   nwMode: z.enum(['split', 'net']).optional(),
   cumRes: resolution,
   cumCmp: z.boolean().optional(),
-  sankeyCmp: z.boolean().optional(),
   catRes: resolution,
   catCmp: z.boolean().optional(),
   focus: z.uuid().optional(),
@@ -198,12 +196,6 @@ function Dashboard() {
         resolution={res(search.cumRes)}
         compare={search.cumCmp ?? false}
         onChange={(p) => set({ cumRes: p.resolution, cumCmp: p.compare })}
-      />
-      <SankeySection
-        data={summary}
-        tags={tags}
-        compare={search.sankeyCmp ?? false}
-        onCompare={(sankeyCmp) => set({ sankeyCmp: sankeyCmp || undefined })}
       />
       <CategorySection
         range={range}
@@ -454,6 +446,16 @@ const Loading = () => <Empty>Loading…</Empty>;
 
 // ---- Net worth ----
 
+/** Account groups in stacking order, each with a fixed colour; liabilities stack below the line. */
+const NET_WORTH_GROUPS = [
+  { name: 'Cash', color: 'var(--series-1)', liability: false },
+  { name: 'Investments', color: 'var(--series-7)', liability: false },
+  { name: 'Property & other', color: 'var(--series-3)', liability: false },
+  { name: 'Loans', color: 'var(--series-2)', liability: true },
+  { name: 'Credit cards', color: 'var(--series-8)', liability: true },
+  { name: 'Other liabilities', color: 'var(--series-4)', liability: true },
+] as const;
+
 function NetWorthSection(props: {
   range: DateRange;
   resolution: Resolution;
@@ -475,24 +477,27 @@ function NetWorthSection(props: {
     const points = data.current.map((p) => p.value);
     const flags = points.map((v) => !!v && (v.partial || v.stale));
     const series: PeriodSeries[] = [];
+    // Split stacks assets by group above the line and liabilities below; net is one area.
+    const lineColor = mode === 'split' ? 'var(--text)' : 'var(--series-1)';
     if (mode === 'split') {
-      series.push(
-        { key: 'assets', label: 'Assets', color: 'var(--series-3)', type: 'bar', stack: 'nw', values: points.map((v) => num(v?.assets)) },
-        {
-          key: 'liabilities',
-          label: 'Liabilities',
-          color: 'var(--series-2)',
-          type: 'bar',
-          stack: 'nw',
-          // Owed amounts sit below the line.
-          values: points.map((v) => (v ? -Number(v.liabilities) : null)),
-        },
-      );
+      for (const g of NET_WORTH_GROUPS) {
+        const values = points.map((v) => (v ? (num(v.groups[g.name]) ?? 0) * (g.liability ? -1 : 1) : null));
+        if (values.some((v) => v)) series.push({ key: g.name, label: g.name, color: g.color, type: 'area', stack: 'nw', values });
+      }
+    } else {
+      series.push({
+        key: 'netArea',
+        label: 'Net worth',
+        color: 'var(--series-1)',
+        type: 'area',
+        values: points.map((v) => num(v?.netWorth)),
+      });
     }
     series.push({
       key: 'netWorth',
       label: 'Net worth',
-      color: 'var(--series-1)',
+      color: lineColor,
+      unlisted: mode === 'net',
       type: 'line',
       values: points.map((v) => num(v?.netWorth)),
       hollow: flags,
@@ -501,7 +506,7 @@ function NetWorthSection(props: {
       series.push({
         key: 'prevNetWorth',
         label: `Net worth · ${data.previous.label}`,
-        color: 'var(--series-1)',
+        color: lineColor,
         type: 'line',
         dashed: true,
         values: data.current.map((_, i) => num(data.prior[i]?.value?.netWorth)),
@@ -530,7 +535,9 @@ function NetWorthSection(props: {
   return (
     <ChartCard
       title="Net worth"
-      description={`At the end of each ${data?.resolution ?? props.resolution}. Open markers are partial or stale: hover for why.`}
+      description={`At the end of each ${data?.resolution ?? props.resolution}. ${
+        mode === 'split' ? 'Assets by group above the line, liabilities below. ' : ''
+      }Open markers are partial or stale: hover for why.`}
       loading={isPlaceholderData}
       controls={
         <SeriesControls
@@ -576,7 +583,14 @@ function CumulativeExpensesSection(props: {
   let body: ReactNode = <Loading />;
   if (data) {
     const series: PeriodSeries[] = [
-      { key: 'expenses', label: 'Expenses to date', color: 'var(--series-2)', type: 'line', values: cumulative(data.current, 'expenses') },
+      {
+        key: 'expenses',
+        label: 'Expenses to date',
+        color: 'var(--series-2)',
+        type: 'line',
+        step: true,
+        values: cumulative(data.current, 'expenses'),
+      },
     ];
     if (props.compare) {
       const prior = cumulative(data.prior, 'expenses');
@@ -585,6 +599,7 @@ function CumulativeExpensesSection(props: {
         label: `Expenses to date · ${data.previous.label}`,
         color: 'var(--series-2)',
         type: 'line',
+        step: true,
         dashed: true,
         values: data.current.map((_, i) => prior[i] ?? null),
       });
@@ -616,49 +631,6 @@ function CumulativeExpensesSection(props: {
       }
     >
       {body}
-    </ChartCard>
-  );
-}
-
-function SankeySection({
-  data,
-  tags,
-  compare,
-  onCompare,
-}: {
-  data: SummaryData;
-  tags: string[];
-  compare: boolean;
-  onCompare: (on: boolean) => void;
-}) {
-  const navigate = useNavigate();
-  const toCashFlow = { from: data.range.from, to: data.range.to, tags: tags.length ? tags : undefined };
-  return (
-    <ChartCard
-      title={`Cash flow · ${data.range.label}`}
-      description="Income through to where it went. Click a category to open it on the Cash flow page."
-      controls={
-        <>
-          <CompareToggle on={compare} label={data.previous.label} onChange={onCompare} />
-          <Link to="/cash-flow" search={toCashFlow} className="text-accent text-xs underline">
-            Open
-          </Link>
-        </>
-      }
-    >
-      {data.sankey.links.length ? (
-        <SankeyChart
-          nodes={data.sankey.nodes}
-          links={data.sankey.links}
-          previous={compare ? data.sankey.previous : undefined}
-          onSelect={(node) => {
-            const categoryId = data.sankey.nodes.find((n) => n.id === node.id)?.categoryId;
-            void navigate({ to: '/cash-flow', search: { ...toCashFlow, focus: node.drillable && categoryId ? categoryId : undefined } });
-          }}
-        />
-      ) : (
-        <Empty>No cash flow in this period.</Empty>
-      )}
     </ChartCard>
   );
 }

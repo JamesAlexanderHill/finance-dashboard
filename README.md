@@ -24,8 +24,8 @@ All four slices of the [delivery plan](docs/PRD.md#12-delivery-plan) are built:
 - Daily price CSV import with column mapping, conflict review, manual prices and instrument aliases; holdings with separate price, units and value charts.
 
 - Valuation in AUD with FX rates as priced instruments, staleness and partial totals, display-only overrides, and manual accounts (with a warning when one looks like a tracked account).
-- A one-page dashboard driven by a page-period selector (presets such as this month, year to date or the last 12 months, stepping and custom dates): summary cards, net worth (assets above the line and liabilities below, or net worth alone), cumulative expenses, the cash-flow Sankey, expenses by category with drill-down, and paired income/expense bars. Each chart has its own resolution (day to year) and can overlay the previous period.
-- Six sections, each with its own tabs: **Dashboard** (overview, cash flow), **Events** (events, transfers), **Accounts** (accounts, transactions, statements), **Categories**, **Assets** (holdings, prices) and **Settings**.
+- A one-page dashboard driven by a page-period selector (presets such as this month, year to date or the last 12 months, stepping and custom dates): summary cards, net worth as a stacked area (assets by group above the line and liabilities below, or net worth alone), expenses to date as a stepped line, expenses by category with drill-down, and paired income/expense bars. Each chart has its own resolution (day to year) and can overlay the previous period. The cash-flow Sankey has its own **Sankey** tab, which can show each node's previous-period value.
+- Six sections, each with its own tabs: **Dashboard** (overview, Sankey), **Events** (events, transfers), **Accounts** (accounts, transactions, statements), **Categories**, **Assets** (holdings, prices) and **Settings**.
 - A failed statement upload can be deleted, or uploaded again: the new upload replaces it rather than being refused as a duplicate.
 
 Not built yet: a Stripe parser.

@@ -10,14 +10,15 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as CashFlowRouteImport } from './routes/cash-flow'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PricesRouteImport } from './routes/prices'
 import { Route as StatementsRouteImport } from './routes/statements'
 import { Route as TransactionsRouteImport } from './routes/transactions'
 import { Route as TransfersRouteImport } from './routes/transfers'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
-import { Route as AppCashFlowRouteImport } from './routes/_app/cash-flow'
 import { Route as AppCategoriesRouteImport } from './routes/_app/categories'
+import { Route as AppSankeyRouteImport } from './routes/_app/sankey'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as HoldingsIndexRouteImport } from './routes/holdings.index'
 import { Route as HoldingsInstrumentIdRouteImport } from './routes/holdings.$instrumentId'
@@ -39,6 +40,11 @@ import { Route as ApiJobsJobIdEventsRouteImport } from './routes/api/jobs/$jobId
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CashFlowRoute = CashFlowRouteImport.update({
+  id: '/cash-flow',
+  path: '/cash-flow',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -71,14 +77,14 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppCashFlowRoute = AppCashFlowRouteImport.update({
-  id: '/cash-flow',
-  path: '/cash-flow',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppCategoriesRoute = AppCategoriesRouteImport.update({
   id: '/categories',
   path: '/categories',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSankeyRoute = AppSankeyRouteImport.update({
+  id: '/sankey',
+  path: '/sankey',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -174,13 +180,14 @@ const ApiJobsJobIdEventsRoute = ApiJobsJobIdEventsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/cash-flow': typeof CashFlowRoute
   '/login': typeof LoginRoute
   '/prices': typeof PricesRoute
   '/statements': typeof StatementsRoute
   '/transactions': typeof TransactionsRoute
   '/transfers': typeof TransfersRoute
-  '/cash-flow': typeof AppCashFlowRoute
   '/categories': typeof AppCategoriesRoute
+  '/sankey': typeof AppSankeyRoute
   '/settings': typeof AppSettingsRoute
   '/holdings/$instrumentId': typeof HoldingsInstrumentIdRoute
   '/holdings/': typeof HoldingsIndexRoute
@@ -201,13 +208,14 @@ export interface FileRoutesByFullPath {
   '/api/jobs/$jobId/events': typeof ApiJobsJobIdEventsRoute
 }
 export interface FileRoutesByTo {
+  '/cash-flow': typeof CashFlowRoute
   '/login': typeof LoginRoute
   '/prices': typeof PricesRoute
   '/statements': typeof StatementsRoute
   '/transactions': typeof TransactionsRoute
   '/transfers': typeof TransfersRoute
-  '/cash-flow': typeof AppCashFlowRoute
   '/categories': typeof AppCategoriesRoute
+  '/sankey': typeof AppSankeyRoute
   '/settings': typeof AppSettingsRoute
   '/holdings/$instrumentId': typeof HoldingsInstrumentIdRoute
   '/': typeof AppIndexRoute
@@ -231,13 +239,14 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/cash-flow': typeof CashFlowRoute
   '/login': typeof LoginRoute
   '/prices': typeof PricesRoute
   '/statements': typeof StatementsRoute
   '/transactions': typeof TransactionsRoute
   '/transfers': typeof TransfersRoute
-  '/_app/cash-flow': typeof AppCashFlowRoute
   '/_app/categories': typeof AppCategoriesRoute
+  '/_app/sankey': typeof AppSankeyRoute
   '/_app/settings': typeof AppSettingsRoute
   '/holdings/$instrumentId': typeof HoldingsInstrumentIdRoute
   '/_app/': typeof AppIndexRoute
@@ -262,13 +271,14 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/cash-flow'
     | '/login'
     | '/prices'
     | '/statements'
     | '/transactions'
     | '/transfers'
-    | '/cash-flow'
     | '/categories'
+    | '/sankey'
     | '/settings'
     | '/holdings/$instrumentId'
     | '/holdings/'
@@ -289,13 +299,14 @@ export interface FileRouteTypes {
     | '/api/jobs/$jobId/events'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/cash-flow'
     | '/login'
     | '/prices'
     | '/statements'
     | '/transactions'
     | '/transfers'
-    | '/cash-flow'
     | '/categories'
+    | '/sankey'
     | '/settings'
     | '/holdings/$instrumentId'
     | '/'
@@ -318,13 +329,14 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
+    | '/cash-flow'
     | '/login'
     | '/prices'
     | '/statements'
     | '/transactions'
     | '/transfers'
-    | '/_app/cash-flow'
     | '/_app/categories'
+    | '/_app/sankey'
     | '/_app/settings'
     | '/holdings/$instrumentId'
     | '/_app/'
@@ -348,6 +360,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  CashFlowRoute: typeof CashFlowRoute
   LoginRoute: typeof LoginRoute
   PricesRoute: typeof PricesRoute
   StatementsRoute: typeof StatementsRoute
@@ -370,6 +383,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cash-flow': {
+      id: '/cash-flow'
+      path: '/cash-flow'
+      fullPath: '/cash-flow'
+      preLoaderRoute: typeof CashFlowRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -414,18 +434,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/cash-flow': {
-      id: '/_app/cash-flow'
-      path: '/cash-flow'
-      fullPath: '/cash-flow'
-      preLoaderRoute: typeof AppCashFlowRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/categories': {
       id: '/_app/categories'
       path: '/categories'
       fullPath: '/categories'
       preLoaderRoute: typeof AppCategoriesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/sankey': {
+      id: '/_app/sankey'
+      path: '/sankey'
+      fullPath: '/sankey'
+      preLoaderRoute: typeof AppSankeyRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings': {
@@ -558,8 +578,8 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
-  AppCashFlowRoute: typeof AppCashFlowRoute
   AppCategoriesRoute: typeof AppCategoriesRoute
+  AppSankeyRoute: typeof AppSankeyRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAccountsAccountIdRoute: typeof AppAccountsAccountIdRoute
@@ -574,8 +594,8 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppCashFlowRoute: AppCashFlowRoute,
   AppCategoriesRoute: AppCategoriesRoute,
+  AppSankeyRoute: AppSankeyRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
   AppAccountsAccountIdRoute: AppAccountsAccountIdRoute,
@@ -593,6 +613,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  CashFlowRoute: CashFlowRoute,
   LoginRoute: LoginRoute,
   PricesRoute: PricesRoute,
   StatementsRoute: StatementsRoute,

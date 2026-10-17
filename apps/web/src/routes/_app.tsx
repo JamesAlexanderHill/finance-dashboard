@@ -21,7 +21,7 @@ const SECTIONS = [
     label: 'Dashboard',
     tabs: [
       { to: '/', label: 'Overview' },
-      { to: '/cash-flow', label: 'Cash flow' },
+      { to: '/sankey', label: 'Sankey' },
     ],
   },
   {

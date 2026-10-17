@@ -11,7 +11,7 @@ import {
   type Period,
   type SankeyCategory,
 } from '@finance/ledger';
-import { add, addDays, previousRange, rangeLabel, todayIso, type DateRange } from '@finance/shared';
+import { add, addDays, neg, previousRange, rangeLabel, todayIso, type DateRange } from '@finance/shared';
 import { loadCashFlowLegs, loadCategories } from './cashflow.server';
 import { workspaceMiddleware } from './session';
 import { loadValuationInputs } from './valuation.server';
@@ -31,7 +31,7 @@ function categoryNames(cats: readonly SankeyCategory[]) {
   return { byId, root, name };
 }
 
-/** The summary cards and Sankey for the page period, each with the previous period's figures to compare. */
+/** The summary cards for the page period, each with the previous period's figures to compare. */
 export const getDashboardSummary = createServerFn({ method: 'GET' })
   .middleware([workspaceMiddleware])
   .validator(dashboardRange)
@@ -45,7 +45,7 @@ export const getDashboardSummary = createServerFn({ method: 'GET' })
       loadCashFlowLegs(workspaceId, { from: previous.from, to: range.to, tagIds: data.tagIds }),
       loadCategories(workspaceId),
     ]);
-    const { root, name } = categoryNames(cats);
+    const { name } = categoryNames(cats);
 
     // Net worth at the end of the period (or today, if it is still running) against its start.
     const clip = (d: string) => (d < today ? d : today);
@@ -93,12 +93,6 @@ export const getDashboardSummary = createServerFn({ method: 'GET' })
         },
       },
       topCategory: top ? { id: top[0], name: name(top[0]), amount: top[1], previous: expPrev!.segments[top[0]] ?? '0' } : null,
-      sankey: {
-        nodes: sankeyNow.nodes.map((n) => ({ ...n, root: root(n.categoryId) })),
-        links: sankeyNow.links,
-        /** Previous-period value per node ID, for the compare toggle. */
-        previous: Object.fromEntries(sankeyPrev.nodes.map((n) => [n.id, n.value])),
-      },
       fx: { unconverted: cashLegs.unconverted, staleConverted: cashLegs.staleConverted },
     };
   });
@@ -113,7 +107,17 @@ function bucketPair(range: DateRange, resolution: Parameters<typeof bucketsIn>[1
   };
 }
 
-/** Net worth at the end of each bucket of the page period and of the previous period. */
+/** Account groups the net worth chart stacks, in drawing order; liabilities stack below the line. */
+export const ASSET_GROUPS = ['Cash', 'Investments', 'Property & other'] as const;
+export const LIABILITY_GROUPS = ['Loans', 'Credit cards', 'Other liabilities'] as const;
+function groupOf(a: { classification: 'asset' | 'liability'; kind: string; accountType: string }): string {
+  if (a.classification === 'liability')
+    return a.accountType === 'loan' ? 'Loans' : a.accountType === 'credit_card' ? 'Credit cards' : 'Other liabilities';
+  if (a.kind === 'instrument' || a.accountType === 'investment' || a.accountType === 'brokerage') return 'Investments';
+  return a.accountType === 'bank' || a.accountType === 'payment_processor' ? 'Cash' : 'Property & other';
+}
+
+/** Net worth, split by account group, at the end of each bucket of the page period and of the previous period. */
 export const getNetWorthSeries = createServerFn({ method: 'GET' })
   .middleware([workspaceMiddleware])
   .validator(dashboardSeriesQuery)
@@ -121,6 +125,7 @@ export const getNetWorthSeries = createServerFn({ method: 'GET' })
     const today = todayIso();
     const range: DateRange = { from: data.from, to: data.to };
     const valuation = await loadValuationInputs(context.workspaceId);
+    const groupById = new Map(valuation.accounts.map((a) => [a.id, groupOf(a)]));
     const { resolution, current, previous } = bucketPair(range, data.resolution);
     const series = (buckets: Period[]) =>
       buckets.map((b) => {
@@ -134,6 +139,13 @@ export const getNetWorthSeries = createServerFn({ method: 'GET' })
             assets: p.assets,
             liabilities: p.liabilities,
             netWorth: p.netWorth,
+            /** AUD per account group; liabilities are amounts owed (positive). */
+            groups: p.accounts.reduce<Record<string, string>>((out, a) => {
+              if (!a.aud) return out;
+              const group = groupById.get(a.id)!;
+              out[group] = add(out[group] ?? '0', a.classification === 'liability' ? neg(a.aud) : a.aud);
+              return out;
+            }, {}),
             partial: p.partial,
             stale: p.stale,
             notes: p.accounts.filter((a) => a.notes.length).map((a) => `${a.name}: ${a.notes.join('; ')}`),
