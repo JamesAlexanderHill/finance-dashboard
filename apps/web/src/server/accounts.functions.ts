@@ -52,6 +52,17 @@ export const listAccounts = createServerFn({ method: 'GET' })
           order by bo.observed_on desc, (bo.kind = 'closing') desc limit 1)`,
         activeTransactions: sql<number>`(select count(*)::int from transactions t where t.account_id = ${financialAccounts.id}
           and t.is_source_supported and not t.is_suppressed)`,
+        // Periods of the live, imported statements naming it or an account merged into it (rows or balances).
+        statementPeriods: sql<{ start: string; end: string }[]>`(
+          select coalesce(json_agg(json_build_object('start', s.period_start, 'end', s.period_end) order by s.period_start), '[]')
+          from statements s join source_files sf on sf.id = s.source_file_id
+          where sf.deleted_at is null and s.status in ('completed', 'partial')
+            and s.period_start is not null and s.period_end is not null
+            and exists (
+              select 1 from financial_accounts m
+              where ${financialAccounts.id} in (m.id, m.merged_into_id)
+                and (exists (select 1 from source_records sr where sr.source_file_id = sf.id and sr.account_id = m.id)
+                  or exists (select 1 from balance_observations bo where bo.source_file_id = sf.id and bo.account_id = m.id))))`,
       })
       .from(financialAccounts)
       .innerJoin(institutions, eq(institutions.id, financialAccounts.institutionId))
