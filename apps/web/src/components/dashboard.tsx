@@ -17,7 +17,7 @@ import { getDashboardSummary, getFlowSeries, getNetWorthSeries } from '../server
 import { PeriodPicker } from './period-picker';
 import { Card, Empty, PageHeader } from './ui';
 
-// Shared by the Dashboard's Overview and Expenses tabs: one page period in the URL drives both.
+// Shared by the Dashboard's tabs: one page period in the URL drives Overview, Expenses and Sankey.
 
 export const RESOLUTIONS = ['day', 'week', 'month', 'quarter', 'year'] as const;
 export type Resolution = (typeof RESOLUTIONS)[number];
@@ -34,7 +34,9 @@ export const periodSearch = {
 export type PeriodSearch = { preset?: RangePreset | 'custom'; from?: string; to?: string; tags?: string[] };
 
 export const DEFAULT_PRESET: RangePreset = 'mtd';
-const isCustom = (s: PeriodSearch): s is PeriodSearch & { from: string; to: string } => s.preset === 'custom' && !!s.from && !!s.to;
+/** Explicit dates, from the calendar or an older link that names from/to without a preset. */
+const isCustom = (s: PeriodSearch): s is PeriodSearch & { from: string; to: string } =>
+  (s.preset === 'custom' || !s.preset) && !!s.from && !!s.to;
 
 /** The page period the search names; defaults to month to date. */
 export function pageRange(s: PeriodSearch): DateRange {
@@ -113,7 +115,11 @@ export function DashboardHeader<S extends PeriodSearch>({
         description={description}
         actions={
           <PeriodPicker
-            value={search.preset === 'custom' ? { preset: 'custom', range } : { preset: search.preset ?? DEFAULT_PRESET, range }}
+            value={
+              isCustom(search) || search.preset === 'custom'
+                ? { preset: 'custom', range }
+                : { preset: search.preset ?? DEFAULT_PRESET, range }
+            }
             onChange={(v) =>
               set({
                 ...reset,

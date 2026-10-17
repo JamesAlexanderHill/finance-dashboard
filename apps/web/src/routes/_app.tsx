@@ -22,7 +22,7 @@ const SECTIONS = [
     tabs: [
       { to: '/', label: 'Overview', keepsPeriod: true },
       { to: '/expenses', label: 'Expenses', keepsPeriod: true },
-      { to: '/sankey', label: 'Sankey' },
+      { to: '/sankey', label: 'Sankey', keepsPeriod: true },
     ],
   },
   {
@@ -103,7 +103,7 @@ function AppLayout() {
               <Link
                 key={t.to}
                 to={t.to}
-                // Overview and Expenses share the page period, so moving between them keeps it.
+                // The Dashboard's tabs share the page period, so moving between them keeps it.
                 search={'keepsPeriod' in t ? (keepPeriod as never) : undefined}
                 className={`-mb-px border-b-2 py-2 whitespace-nowrap ${
                   t === tab ? 'border-accent text-ink font-medium' : 'text-muted hover:text-ink border-transparent'
