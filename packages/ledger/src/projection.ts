@@ -1,18 +1,18 @@
 import { abs, cmp, isNegative, isPositive, type DecimalString, type IsoDate } from '@finance/shared';
 import { deterministicUuid } from '@finance/shared/node';
-import {
-  currentDecisions,
-  decisionKey,
-  type CategoryPayload,
-  type DecisionRecord,
-  type ItemisationPayload,
-  type LinkPayload,
-  type TagsPayload,
-  type TransferPayload,
-} from './decisions';
+import { assignmentKey, currentAssignments, type AssignmentRecord, type CategoryPayload, type TagsPayload } from './assignments';
+import { currentDecisions, decisionKey, type DecisionRecord, type LinkPayload, type TransferPayload } from './decisions';
+import { lineItemsValid, lineLegKey, type LineItem } from './line-items';
 
 export type EventType =
-  'income' | 'expense' | 'refund' | 'internal_transfer' | 'currency_conversion' | 'investment_buy' | 'investment_sell' | 'opening_balance';
+  | 'income'
+  | 'expense'
+  | 'refund'
+  | 'internal_transfer'
+  | 'currency_conversion'
+  | 'investment_buy'
+  | 'investment_sell'
+  | 'opening_balance';
 export type EventStatus = 'ok' | 'unmatched_transfer';
 export type LegRole = 'principal' | 'fee' | 'line_item';
 
@@ -73,12 +73,16 @@ export interface ProjectedEvent {
 export interface ProjectionInput {
   transactions: readonly ActiveTransaction[];
   decisions: readonly DecisionRecord[];
+  /** Line items the user added to transactions; a principal transaction with valid ones is projected as them. */
+  lineItems: readonly LineItem[];
+  /** Category and tag assignments on legs (ADR 0014). */
+  assignments: readonly AssignmentRecord[];
   /** Live categories; decisions pointing elsewhere resolve to Uncategorised. */
   categories: readonly CategoryRef[];
   openingBalances: readonly OpeningBalance[];
 }
 
-/** Leg identity within a transaction; category and tag decisions are keyed on it. */
+/** Leg identity of an un-itemised transaction; category and tag assignments are keyed on it. */
 export const legKeyFor = (role: 'principal' | 'fee') => (role === 'fee' ? 'fee' : 'principal');
 
 /** Groups transactions that share a provider reference or a current link group (union-find). */
@@ -116,20 +120,34 @@ function components(transactions: readonly ActiveTransaction[], linkGroupOf: (tx
  * internal: an investment buy/sell when units of an instrument move, a conversion when currencies
  * differ, otherwise a transfer. A lone transfer whose counterpart is
  * missing is an unmatched transfer. Internal principal legs are never categorised.
+ *
+ * Each transaction contributes its line items as legs when it has some that sum to its amount, and
+ * otherwise one leg of its own. Categories and tags come from leg assignments on those legs.
  */
 export function projectEvents(input: ProjectionInput): ProjectedEvent[] {
   const decisions = currentDecisions(input.decisions);
+  const assignments = currentAssignments(input.assignments);
+  const lineItemsOf = new Map<string, LineItem[]>();
+  for (const line of input.lineItems) lineItemsOf.set(line.transactionId, [...(lineItemsOf.get(line.transactionId) ?? []), line]);
   const categories = new Map(input.categories.map((c) => [c.id, c]));
   const events: ProjectedEvent[] = [];
 
   const payload = <T>(txId: string, kind: DecisionRecord['kind'], legKey = '') =>
     decisions.get(decisionKey(txId, kind, legKey))?.payload as T | undefined;
   const linkGroupOf = (txId: string) => payload<LinkPayload>(txId, 'link')?.groupId ?? null;
+  const assigned = <T>(txId: string, legKey: string, kind: AssignmentRecord['kind']) =>
+    assignments.get(assignmentKey(txId, legKey, kind))?.payload as T | undefined;
   const categoryFor = (txId: string, legKey: string) => {
-    const id = payload<CategoryPayload>(txId, 'category', legKey)?.categoryId ?? null;
+    const id = assigned<CategoryPayload>(txId, legKey, 'category')?.categoryId ?? null;
     return id && categories.has(id) ? id : null;
   };
-  const tagsFor = (txId: string, legKey: string) => [...(payload<TagsPayload>(txId, 'tags', legKey)?.tagIds ?? [])].sort();
+  const tagsFor = (txId: string, legKey: string) => [...(assigned<TagsPayload>(txId, legKey, 'tags')?.tagIds ?? [])].sort();
+  /** A principal transaction's line items, in order, when they still sum to its amount; otherwise none. */
+  const linesFor = (tx: ActiveTransaction) => {
+    if (tx.role !== 'principal') return null;
+    const lines = [...(lineItemsOf.get(tx.id) ?? [])].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+    return lines.length && lineItemsValid(tx.amount, lines) ? lines : null;
+  };
 
   for (const members of components(input.transactions, linkGroupOf)) {
     const ids = members.map((t) => t.id).sort();
@@ -137,10 +155,10 @@ export function projectEvents(input: ProjectionInput): ProjectedEvent[] {
     const eventId = deterministicUuid('event', ...ids, ...linkGroups);
 
     const legs = members.flatMap((tx) => {
-      const lines = tx.role === 'principal' ? (payload<ItemisationPayload>(tx.id, 'itemisation')?.lines ?? null) : null;
+      const lines = linesFor(tx);
       const parts = lines
-        ? lines.map((line, i) => ({
-            legKey: `line:${i}`,
+        ? lines.map((line) => ({
+            legKey: lineLegKey(line.id),
             role: 'line_item' as const,
             amount: line.amount,
             description: line.description || tx.description,

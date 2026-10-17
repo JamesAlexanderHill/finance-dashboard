@@ -502,11 +502,7 @@ function RecentTransactions({ accountId, commodity }: { accountId: string; commo
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <h2 className="text-muted text-sm font-medium">Recent transactions</h2>
         {data.hasMore && (
-          <Link
-            to="/accounts/transactions"
-            search={{ accountId, status: 'active', uncategorised: false, page: 0 }}
-            className="text-sm underline"
-          >
+          <Link to="/accounts/transactions" search={{ accountId, status: 'active', page: 0 }} className="text-sm underline">
             All transactions
           </Link>
         )}
@@ -517,7 +513,7 @@ function RecentTransactions({ accountId, commodity }: { accountId: string; commo
           <Link
             key={t.id}
             to="/accounts/transactions"
-            search={{ id: t.id, status: 'all', uncategorised: false, page: 0 }}
+            search={{ id: t.id, status: 'all', page: 0 }}
             className="border-line hover:bg-surface-2 flex items-center gap-4 border-b px-4 py-2 text-sm last:border-0"
           >
             <span className="tabular text-muted w-24 shrink-0">{shortDate(t.postedOn)}</span>

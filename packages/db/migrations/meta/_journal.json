@@ -78,6 +78,13 @@
       "when": 1791985304117,
       "tag": "0010_account_paired_asset",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792232671217,
+      "tag": "0011_leg_assignments_line_items",
+      "breakpoints": true
     }
   ]
 }

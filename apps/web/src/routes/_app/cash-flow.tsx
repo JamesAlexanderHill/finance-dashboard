@@ -131,7 +131,7 @@ function CashFlowPage() {
       {(t.uncategorisedIncome !== '0' || t.uncategorisedExpense !== '0') && (
         <p className="text-warning mb-4 text-sm">
           {money(t.uncategorisedIncome)} income and {money(t.uncategorisedExpense)} spending are uncategorised.{' '}
-          <Link to="/accounts/transactions" search={{ uncategorised: true, status: 'active', page: 0, from, to }} className="underline">
+          <Link to="/events" search={{ uncategorised: true, page: 0, from, to }} className="underline">
             Categorise them
           </Link>
         </p>
@@ -229,11 +229,7 @@ function NodeLegs({ node, from, to, tags, onClose }: { node: ChartNode; from: st
       {legs.data?.map((l) => (
         <div key={l.id} className="border-line flex flex-wrap gap-3 border-b px-4 py-2 text-sm last:border-0">
           <span className="text-muted tabular w-24">{shortDate(l.occurredOn)}</span>
-          <Link
-            to="/accounts/transactions"
-            search={{ id: l.transactionId ?? undefined, status: 'all', uncategorised: false, page: 0 }}
-            className="flex-1 hover:underline"
-          >
+          <Link to="/events" search={{ id: l.eventId, uncategorised: false, page: 0 }} className="flex-1 hover:underline">
             {l.description}
           </Link>
           <span className="text-muted">{l.accountName}</span>

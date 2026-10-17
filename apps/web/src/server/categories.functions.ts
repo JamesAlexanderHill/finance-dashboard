@@ -2,7 +2,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { createCategoryInput, deleteCategoryInput, renameCategoryInput } from '@finance/contracts';
 import { categories, getDb, tags } from '@finance/db';
-import { lockWorkspace, recordDecisions } from '@finance/ledger/store';
+import { lockWorkspace, recordAssignments } from '@finance/ledger/store';
 import { workspaceMiddleware } from './session';
 
 export class CategoryError extends Error {}
@@ -60,7 +60,7 @@ export const renameCategory = createServerFn({ method: 'POST' })
   });
 
 /**
- * Deletes (archives) a child category. Its legs are reassigned by appending new category decisions,
+ * Deletes (archives) a child category. Its legs are reassigned by appending new category assignments,
  * so history is kept and the projection never points at an archived category.
  */
 export const deleteCategory = createServerFn({ method: 'POST' })
@@ -86,7 +86,7 @@ export const deleteCategory = createServerFn({ method: 'POST' })
       const current = await tx.execute<{ transaction_id: string; leg_key: string }>(sql`
         select transaction_id, leg_key from (
           select distinct on (transaction_id, leg_key) transaction_id, leg_key, payload
-          from reconciliation_decisions
+          from leg_assignments
           where workspace_id = ${workspaceId} and kind = 'category'
           order by transaction_id, leg_key, seq desc
         ) latest where latest.payload->>'categoryId' = ${c.id}
@@ -95,7 +95,7 @@ export const deleteCategory = createServerFn({ method: 'POST' })
         .update(categories)
         .set({ archivedAt: sql`now()` })
         .where(eq(categories.id, c.id));
-      await recordDecisions(
+      await recordAssignments(
         tx,
         workspaceId,
         [...current].map((d) => ({

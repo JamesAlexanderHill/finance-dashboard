@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Executor } from '@finance/db';
-import { recordDecisions } from './decisions';
+import { recordAssignments } from './assignments';
 import { lockWorkspace } from './lock';
 import type { LegRef } from './categorise';
 
@@ -10,7 +10,7 @@ export interface CategorySuggestion extends LegRef {
 
 /**
  * Category suggestions (feature 14) for the uncategorised legs of the given transactions: the
- * category of the most recently categorised leg with the same leg key whose transaction has the same
+ * category most recently assigned to a leg with the same leg key whose transaction has the same
  * description key. Derived on read and never stored. Line items and internal principal legs get none.
  */
 export async function suggestCategories(tx: Executor, workspaceId: string, transactionIds: string[]): Promise<CategorySuggestion[]> {
@@ -24,7 +24,7 @@ export async function suggestCategories(tx: Executor, workspaceId: string, trans
       select sl.category_id
       from transactions st
       join event_legs sl on sl.transaction_id = st.id and sl.leg_key = l.leg_key and sl.category_id is not null
-      join reconciliation_decisions d on d.transaction_id = sl.transaction_id and d.leg_key = sl.leg_key and d.kind = 'category'
+      join leg_assignments d on d.transaction_id = sl.transaction_id and d.leg_key = sl.leg_key and d.kind = 'category'
       where st.workspace_id = t.workspace_id and st.description_key = t.description_key
       order by d.seq desc
       limit 1
@@ -43,7 +43,7 @@ export async function suggestCategories(tx: Executor, workspaceId: string, trans
 }
 
 /**
- * Accepts the current suggestions for the given legs, recording an ordinary category decision for
+ * Accepts the current suggestions for the given legs, recording an ordinary category assignment for
  * each. Suggestions are recomputed here, so a leg whose suggestion changed or vanished is skipped.
  */
 export async function acceptSuggestions(tx: Executor, workspaceId: string, legs: LegRef[], userId: string) {
@@ -53,7 +53,7 @@ export async function acceptSuggestions(tx: Executor, workspaceId: string, legs:
     wanted.has(`${s.transactionId}:${s.legKey}`),
   );
   if (suggestions.length === 0) return { categorised: 0 };
-  await recordDecisions(
+  await recordAssignments(
     tx,
     workspaceId,
     suggestions.map((s) => ({

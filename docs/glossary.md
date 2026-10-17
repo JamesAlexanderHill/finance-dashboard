@@ -105,13 +105,17 @@ The division of one canonical transaction into line items that sum exactly to it
 _Avoid_: Split (reserved for stock splits)
 
 **Line item**:
-One part of an itemised transaction; it becomes its own leg.
+One part of an itemised transaction, stored on the transaction with its own identity; the only data a user adds to a transaction. Each becomes its own leg; a transaction without line items is its own leg.
 
 **Reconciliation**:
 Linking equivalent or related records with stated confidence and provenance.
 
 **Reconciliation decision**:
-A recorded user or automatic choice (link, unlink, itemisation, category, tag, merge, suppression); later choices supersede earlier ones rather than editing them.
+A recorded user or automatic choice about transactions (link, unlink, transfer mark, merge, suppression); later choices supersede earlier ones rather than editing them.
+
+**Leg assignment**:
+A recorded category or tag on a leg, keyed on the leg's stable identity (transaction plus leg key) so it survives event rebuilds; later assignments supersede earlier ones.
+_Avoid_: Category decision
 
 ### Categories
 

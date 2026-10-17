@@ -75,6 +75,7 @@
     "0010-statement-multi-account-routing.md",
     "0011-institutions-single-commodity-accounts.md",
     "0012-persisted-automatic-transfer-matches.md",
-    "0013-valuation-rules.md"
+    "0013-valuation-rules.md",
+    "0014-leg-assignments-and-line-items.md"
   ]
 }
